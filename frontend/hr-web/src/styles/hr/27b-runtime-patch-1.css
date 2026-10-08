@@ -1,0 +1,2 @@
+/* ---- runtime patch (toast position, injected by the prototype at load) ---- */
+.toast{text-align:center;position:fixed!important;inset:20px auto auto 50%!important;transform:translateX(-50%)!important}

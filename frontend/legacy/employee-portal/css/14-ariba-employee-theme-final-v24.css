@@ -1,0 +1,4 @@
+
+/* Light/Dark labels: نهاري dark green, ليلي white */
+html[data-ariba-theme="light"] .ariba-mode-btn .ariba-theme-label,html[data-ariba-theme="light"] #aribaModeBtn,html[data-ariba-theme="light"] .ariba-mode-label{color:#014D3D!important}
+html[data-ariba-theme="dark"] .ariba-mode-btn .ariba-theme-label,html[data-ariba-theme="dark"] #aribaModeBtn,html[data-ariba-theme="dark"] .ariba-mode-label{color:#fff!important}

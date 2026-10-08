@@ -1,0 +1,7 @@
+
+@font-face{font-family:'ARIBA Two';src:url('./fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('./fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('./fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-weight:700 900;font-style:normal;font-display:swap}
+:root{--font-ar:'ARIBA Two',Arial,sans-serif;--font-en:'ARIBA Two',Arial,sans-serif}
+html,body,button,input,select,textarea{font-family:var(--font-ar)!important}
+body{font-variant-numeric:tabular-nums}

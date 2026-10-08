@@ -1,0 +1,34 @@
+
+(function(){
+'use strict';
+function en(){return typeof window.ARIBA_UI_LANG==='function'&&window.ARIBA_UI_LANG()==='en';}
+var ADD={
+ 'أربيا':'Ariba','أريبا':'Ariba','تطبيق الموظف':'Employee App','الحضور':'Attendance','الإجازات':'Leaves','الراتب':'Salary','فريقي':'My Team','ملفي':'My Profile','الرئيسية':'Home','الإشعارات':'Notifications','طلبات معلقة':'Pending Requests','طلبات معلقة':'Pending Requests','آخر راتب معتمد':'Latest Approved Salary','رصيد الإجازة':'Leave Balance','نهاية العام':'Year-End Balance','حتى اليوم':'As of Today','جهة العمل':'Employer','القسم':'Department','الجنسية':'Nationality','المدير المباشر':'Direct Manager','الرقم الوظيفي':'Employee No.','الاسم':'Name','الاسم بالإنجليزي':'English Name','البيانات الشخصية':'Personal Information','الوثائق والعقد':'Documents & Contract','أرصدة الإجازات':'Leave Balances','الراتب الحالي':'Current Salary','كشف الراتب':'Salary Statement','بيانات البنك':'Bank Details','الراتب الأساسي':'Basic Salary','بدل السكن':'Housing Allowance','بدل المواصلات':'Transport Allowance','بدل المشروع':'Project Allowance','بدلات أخرى':'Other Allowances','الإجمالي':'Gross Salary','الصافي':'Net Salary','صافي الراتب المستحق':'Net Salary Payable','قسيمة الراتب':'Salary Slip','عرض القسيمة':'View Salary Slip','طباعة':'Print','الشهر':'Month','السنة':'Year','لا توجد قسيمة راتب معتمدة للشهر والسنة المحددين.':'No approved salary slip is available for the selected month and year.','الراتب الشهري المعتمد':'Approved Monthly Payroll','الرواتب الشهرية المعتمدة':'Approved Monthly Payroll','الإقامة / الهوية':'Iqama / ID','انتهاء الإقامة':'Iqama Expiry','جواز السفر':'Passport','انتهاء الجواز':'Passport Expiry','التأمين الطبي':'Medical Insurance','انتهاء التأمين':'Insurance Expiry','العقد':'Contract','انتهاء العقد':'Contract End','تنبيهات انتهاء الوثائق والعقود':'Document & Contract Expiry Alerts','تاريخ الانتهاء':'Expiry Date','متبقي':'Remaining','ينتهي اليوم':'Expires Today','منتهي منذ':'Expired','يوم':'days','يوم واحد':'one day','تاريخ المباشرة':'Join Date','طبيعة العقد':'Contract Nature','مدة العقد (شهر)':'Contract Duration (Months)','محدد المدة':'Fixed-term','غير محدد المدة':'Indefinite-term','الحالة':'Status','التاريخ':'Date','الوقت':'Time','ملاحظات':'Notes','إرسال الطلب':'Submit Request','طلباتي':'My Requests','طلب جديد':'New Request','إلغاء':'Cancel','موافقة':'Approve','رفض':'Reject','معلق':'Pending','معلقة':'Pending','مكتمل':'Completed','مرفوض':'Rejected','لا توجد طلبات':'No requests','سلفة':'Advance','مهمة خارجية':'External Assignment','عن بعد':'Remote Work','تم تسجيل حضورك':'Attendance recorded','تم تسجيل الانصراف':'Check-out recorded','تسجيل الحضور':'Check In','تسجيل الانصراف':'Check Out','حالة الحضور اليوم':'Today\'s Attendance Status','سجل هذا الشهر':'This Month\'s Record','إجازات رسمية قادمة':'Upcoming Public Holidays','طلبات تحتاج موافقتك':'Requests Requiring Your Approval','فريقك':'Your Team','زملاؤك':'Colleagues','مديرك المباشر':'Your Direct Manager','الوضع النهاري':'Light Mode','الوضع الليلي':'Dark Mode','نهاري':'Light','ليلي':'Dark','تبديل الوضع':'Toggle Theme','العربية':'Arabic','الإنجليزية':'English','دخول':'Login','تسجيل الخروج':'Logout','اسم المستخدم':'Username','كلمة المرور':'Password','بيانات الدخول غير صحيحة':'Invalid login details','يناير':'January','فبراير':'February','مارس':'March','أبريل':'April','مايو':'May','يونيو':'June','يوليو':'July','أغسطس':'August','سبتمبر':'September','أكتوبر':'October','نوفمبر':'November','ديسمبر':'December','شركة اريبا لخدمات الأعمال':'Ariba Solutions for Business Services','شركة أريبا لخدمات الأعمال':'Ariba Solutions for Business Services','الاستحقاقات':'Earnings','الاستقطاعات':'Deductions','إجمالي الاستقطاعات':'Total Deductions','الراتب المستحق':'Salary Due','لم يتم إصدار مسير معتمد للموظف حتى الآن.':'No approved payroll has been issued for this employee yet.','لا توجد مسيرات معتمدة حتى الآن.':'No approved payroll records are available yet.','بيانات الموظف':'Employee Data','البيانات الأساسية':'Basic Information','الموافقات':'Approvals','التنبيهات':'Notifications','تسجيل الحضور':'Check In','تسجيل الانصراف':'Check Out'
+};
+Object.assign(window.ARIBA_UI_MAP||{},ADD);
+function escapeRx(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+function translateRoot(root){if(!root||!en())return;try{
+  if(window.ME&&ME.name_en&&ME.name){var walker0=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),n0=[];while(walker0.nextNode())n0.push(walker0.currentNode);n0.forEach(function(n){if(n.nodeValue.trim()===ME.name)n.nodeValue=ME.name_en;});}
+  var walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+  nodes.forEach(function(n){var s=n.nodeValue;if(!s.trim())return;Object.keys(ADD).sort(function(a,b){return b.length-a.length;}).forEach(function(k){if(s.indexOf(k)>=0)s=s.split(k).join(ADD[k]);});n.nodeValue=s;});
+  root.querySelectorAll('input,textarea,select').forEach(function(el){if(el.placeholder&&ADD[el.placeholder])el.placeholder=ADD[el.placeholder];});
+  document.documentElement.dir='ltr';document.body.dir='ltr';
+}catch(e){}}
+function activeTranslate(){if(!en())return;translateRoot(document.getElementById('appContent')||document.body);var hdr=document.querySelector('.hdr');if(hdr)translateRoot(hdr);}
+window.ARIBA_ENGLISH_REFRESH=activeTranslate;
+var renderNames=['renderHome','renderAtt','renderLv','renderPay','renderTeam','renderProf','renderApprovals','renderOvertime'];
+function wrap(name){var f=window[name];if(typeof f!=='function'||f.__aribaV21Lang)return;var w=function(){var r=f.apply(this,arguments);setTimeout(activeTranslate,0);return r;};w.__aribaV21Lang=true;window[name]=w;}
+function install(){renderNames.forEach(wrap);activeTranslate();}
+setTimeout(install,300);setTimeout(install,1000);setTimeout(install,2200);
+/* Observe only app content and only while English is active; debounce to avoid churn. */
+var obsTimer=null;var obs=new MutationObserver(function(){if(!en())return;clearTimeout(obsTimer);obsTimer=setTimeout(activeTranslate,80);});
+setTimeout(function(){var root=document.getElementById('appContent');if(root)obs.observe(root,{childList:true,subtree:true});},800);
+
+/* Fix employee header name to English immediately after context refresh. */
+var oldRC=window.refreshAribaContext;
+if(typeof oldRC==='function'&&!oldRC.__aribaV21Name){var rc=async function(){var c=await oldRC.apply(this,arguments);try{if(c&&c.employee){ME.name_en=c.employee.nameEn||c.employee.name_en||c.employee.ne||ME.name_en||'';ME.nameAr=c.employee.nameAr||ME.nameAr||ME.name||'';if(en()){var h=document.getElementById('userNameHdr');if(h)h.textContent=ME.name_en||ME.name;}}}catch(e){}return c;};rc.__aribaV21Name=true;window.refreshAribaContext=rc;}
+
+/* Silent sync: never repaint the current page just because polling ran. */
+var oldPoll=window.ARIBA_HR_SILENT_POLL;
+window.ARIBA_EMPLOYEE_SYNC_POLICY={interval:1000,mode:'signature-only'};
+})();

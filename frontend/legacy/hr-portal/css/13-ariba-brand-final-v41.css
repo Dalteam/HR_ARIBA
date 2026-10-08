@@ -1,0 +1,9 @@
+
+:root{--ariba-dark:#014D3D;--ariba-bright:#29B35E;--ariba-soft:#E4E4BC;--ariba-black:#231F20}
+html[data-ariba-theme="dark"]{--bg:#07130f;--p:#0b1b16;--c:#10231c;--c2:#153127;--bd:#23483b;--bl:#29B35E;--gr:#29B35E;--cy:#29B35E;--pu:#014D3D;--tx:#edf7f2;--mu:#9ab4aa;--dm:#648276;--am:#777746}
+html[data-ariba-theme="light"]{--bg:#f7f8f7;--p:#FFFFFF;--c:#FFFFFF;--c2:#F4F0E4;--bd:#d6e3de;--bl:#014D3D;--gr:#29B35E;--cy:#014D3D;--pu:#014D3D;--tx:#231F20;--mu:#587066;--dm:#7a928a;--am:#777746}
+body{background:var(--bg)!important;color:var(--tx)!important}
+.topbar,.sb,.card,.modal,.login-box,.tbar,.panel,.box{border-color:var(--bd)!important}
+.btn.bpl,.btn.bgl{background:var(--ariba-bright)!important;border-color:var(--ariba-bright)!important;color:#fff!important}
+.btn:hover{border-color:var(--ariba-bright)!important}
+html[data-ariba-theme="light"] .topbar,html[data-ariba-theme="light"] .sb,html[data-ariba-theme="light"] .card,html[data-ariba-theme="light"] .modal,html[data-ariba-theme="light"] .tbar{box-shadow:0 4px 18px rgba(1,77,61,.06)!important}

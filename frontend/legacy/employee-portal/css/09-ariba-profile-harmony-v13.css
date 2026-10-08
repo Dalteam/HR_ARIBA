@@ -1,0 +1,37 @@
+
+/* Profile hero: same visual language as the cards below. */
+body.ariba-light .profile-hero{
+  background:linear-gradient(145deg,#014D3D,#075444)!important;
+  border:1px solid #29B35E!important;
+  color:#fff!important;
+  box-shadow:0 12px 30px rgba(1,77,61,.16)!important;
+}
+body.ariba-light .profile-hero .profile-mini{
+  background:rgba(255,255,255,.10)!important;
+  border:1px solid rgba(255,255,255,.16)!important;
+  color:#fff!important;
+}
+body.ariba-light .profile-hero .profile-mini span{color:#DCEBE5!important}
+body.ariba-light .profile-hero .profile-mini b{color:#fff!important}
+
+body.ariba-dark .profile-hero{
+  background:linear-gradient(145deg,#013D31,#075444)!important;
+  border:1px solid #29B35E!important;
+  color:#fff!important;
+  box-shadow:0 12px 30px rgba(0,0,0,.20)!important;
+}
+body.ariba-dark .profile-hero .profile-mini{
+  background:rgba(255,255,255,.08)!important;
+  border:1px solid rgba(255,255,255,.14)!important;
+  color:#fff!important;
+}
+body.ariba-dark .profile-hero .profile-mini span{color:#DCEBE5!important}
+body.ariba-dark .profile-hero .profile-mini b{color:#fff!important}
+.profile-hero .profile-photo-fallback{
+  background:#014D3D!important;
+  color:#fff!important;
+  border-color:#29B35E!important;
+}
+.profile-hero .profile-photo{
+  border-color:#29B35E!important;
+}

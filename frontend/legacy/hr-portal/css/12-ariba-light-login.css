@@ -1,0 +1,5 @@
+
+html[data-ariba-theme="light"] #LG{background:#F4F0E4!important;color:#231F20!important}
+html[data-ariba-theme="light"] #LG>div{background:#FFFFFF!important;border-color:#D6D3C7!important;box-shadow:0 12px 40px rgba(1,77,61,.12)!important}
+html[data-ariba-theme="light"] #LG input{background:#F4F0E4!important;color:#231F20!important;border-color:#D6D3C7!important}
+html[data-ariba-theme="light"] .login-box{background:#FFFFFF!important;color:#231F20!important}

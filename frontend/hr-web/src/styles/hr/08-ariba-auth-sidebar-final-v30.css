@@ -1,0 +1,22 @@
+/* ---- prototype style block #6 (ariba-auth-sidebar-final-v30) ---- */
+/* Navigation is inaccessible until the secure HR session is established. */
+#SB,#aribaSidebarToggleV17,#aribaEmployeeAppLink{
+  visibility:visible;
+  pointer-events:auto;
+}
+html.ariba-authenticated #SB,
+body.ariba-authenticated #SB,
+html.ariba-authenticated #aribaSidebarToggleV17,
+body.ariba-authenticated #aribaSidebarToggleV17,
+html.ariba-authenticated #aribaEmployeeAppLink,
+body.ariba-authenticated #aribaEmployeeAppLink{
+  visibility:visible!important;
+  pointer-events:auto!important;
+}
+body.ariba-auth-locked #SB,
+body.ariba-auth-locked #aribaSidebarToggleV17,
+body.ariba-auth-locked #aribaEmployeeAppLink{
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+

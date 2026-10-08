@@ -1,0 +1,17 @@
+/* employee styles — one file per style block of the V114 prototype, named after the split files in
+   frontend/legacy/employee-portal/css. Order matters: it is the order the browser applied them. */
+@import "./employee/00-app-fonts-and-header.css";
+@import "./employee/02-styles.css";
+@import "./employee/03-ariba-pwa-ui.css";
+@import "./employee/04-ariba-final-employee-ui.css";
+@import "./employee/05-ariba-fonts.css";
+@import "./employee/06-ariba-employee-final-palette-v10.css";
+@import "./employee/07-ariba-employee-final-palette-v11.css";
+@import "./employee/08-ariba-employee-theme-v12.css";
+@import "./employee/09-ariba-profile-harmony-v13.css";
+@import "./employee/10-ariba-employee-theme-label-fix-v20.css";
+@import "./employee/10b-runtime-patch-1.css";
+@import "./employee/11-ariba-silent-refresh-v19.css";
+@import "./employee/12-ariba-employee-v21-theme-language.css";
+@import "./employee/13-ariba-employee-v22-manual-refresh.css";
+@import "./employee/14-ariba-employee-theme-final-v24.css";

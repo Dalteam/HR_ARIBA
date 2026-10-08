@@ -1,0 +1,278 @@
+/* Employee app styles — ported verbatim from the V114 prototype
+   (‪_2_EMPLOYEE_تطبيق_الموظف_V114 1.html), in the order the browser applied them.
+   The markup reproduces the prototype's classes and ids. App-specific additions are at the end. */
+/* ARIBA Two, served from /public/fonts so it renders the same on every device.
+   The prototype also refers to the face names "ARIBA Two Light/Medium/Bold" (locally installed
+   fonts), so those names are mapped to the same files. */
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-weight:300 400;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-weight:500 600;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-weight:700 900;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two Light';src:url('/fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'ARIBA Two Medium';src:url('/fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'ARIBA Two Bold';src:url('/fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-display:swap}
+/* ---- prototype style block #0 (main) ---- */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#0b0f1a;color:#e2e8f0;min-height:100vh}
+:root{--bg:#0b0f1a;--c:#1a2235;--c2:#1e2d42;--bd:#243044;--bl:#3b82f6;--gr:#10b981;--rd:#ef4444;--am:#f59e0b;--pu:#8b5cf6;--cy:#06b6d4;--mu:#64748b;--dm:#94a3b8;--tx:#e2e8f0}
+
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login-box{background:var(--c);border:1px solid rgba(59,130,246,.2);border-radius:20px;padding:36px 28px;width:100%;max-width:360px;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+.login-logo{text-align:center;margin-bottom:20px}
+.logo-big{font-size:36px;font-weight:900;color:var(--bl);letter-spacing:3px;margin-bottom:4px}
+.logo-sub{font-size:13px;color:var(--mu)}
+.fg label{display:block;font-size:11px;color:var(--mu);margin-bottom:4px;font-weight:600}
+.fg input{width:100%;padding:11px 14px;border:1px solid var(--bd);border-radius:10px;background:var(--c2);color:var(--tx);font-size:14px;font-family:inherit;margin-bottom:12px}
+.login-err{color:var(--rd);font-size:12px;text-align:center;margin-bottom:8px;display:none}
+.btn-login{width:100%;padding:13px;background:var(--bl);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+
+/* SCREEN */
+.screen{display:none;flex-direction:column;min-height:100vh}
+.screen.on{display:flex}
+
+/* HEADER */
+.hdr{background:var(--c);border-bottom:1px solid var(--bd);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.hdr-title{font-weight:700;font-size:15px}
+.hdr-user{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mu)}
+
+/* CONTENT */
+.content{flex:1;padding:14px;padding-bottom:80px;overflow-y:auto}
+
+/* NAV */
+.bnav{position:fixed;bottom:0;left:0;right:0;background:var(--c);border-top:1px solid var(--bd);display:flex;z-index:10}
+.bni{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px;cursor:pointer;color:var(--mu);border:none;background:transparent;font-size:10px;gap:3px;font-family:inherit}
+.bni.on{color:var(--bl)}
+.bni i{font-size:22px}
+
+/* CARD */
+.card{background:var(--c);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.card-title{font-size:13px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+
+/* KPI */
+.kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.kpi{background:var(--c2);border-radius:12px;padding:12px;text-align:center}
+.kpi-label{font-size:10px;color:var(--mu);margin-bottom:4px}
+.kpi-val{font-size:20px;font-weight:800}
+.kpi-sub{font-size:10px;color:var(--mu)}
+
+/* REQ */
+.req-item{display:flex;align-items:center;gap:8px;padding:10px;background:var(--c2);border-radius:10px;margin-bottom:6px}
+
+/* BADGE */
+.b{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.bg{background:rgba(16,185,129,.15);color:var(--gr)}
+.br{background:rgba(239,68,68,.15);color:var(--rd)}
+.ba{background:rgba(245,158,11,.15);color:var(--am)}
+.bk{background:rgba(100,116,139,.15);color:var(--mu)}
+
+/* ATT */
+.att-big{text-align:center;padding:20px 0}
+.att-time{font-size:40px;font-weight:900;color:var(--cy);font-variant-numeric:tabular-nums}
+.att-date{font-size:12px;color:var(--mu);margin-top:4px}
+.att-status{text-align:center;padding:10px;border-radius:10px;font-size:13px;margin:8px 0}
+.att-in{background:rgba(16,185,129,.1);color:var(--gr)}
+.att-none{background:rgba(100,116,139,.1);color:var(--mu)}
+.loc-badge{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--c2);border-radius:10px;margin-bottom:10px;font-size:12px}
+.loc-dot{width:8px;height:8px;border-radius:50%;background:var(--mu);flex-shrink:0}
+
+/* BTN */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit}
+.btn-success{background:var(--gr);color:#fff;width:100%;justify-content:center;margin-top:10px}
+.btn-danger{background:var(--rd);color:#fff;width:100%;justify-content:center;margin-top:6px}
+.btn-primary{background:var(--bl);color:#fff}
+
+/* LV TYPE */
+.lv-type{border:2px solid var(--bd);border-radius:10px;padding:8px 4px;text-align:center;cursor:pointer;font-size:11px;transition:all .15s}
+.lv-type.on{border-color:var(--bl)}
+label{display:block;font-size:11px;color:var(--mu);margin-bottom:4px;font-weight:600;margin-top:8px}
+input[type=date],input[type=time],input[type=number],textarea,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:8px;background:var(--c2);color:var(--tx);font-size:13px;font-family:inherit}
+
+/* TOAST */
+.toast-wrap{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:999;pointer-events:none}
+.toast{background:var(--c);border:1px solid var(--bd);padding:10px 18px;border-radius:20px;font-size:13px;margin-bottom:8px;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---- prototype style block #1 (ariba-pwa-ui) ---- */
+#aribaInstallBtn{position:fixed;left:16px;bottom:86px;z-index:9999;border:1px solid #2f80ed;background:#1b5fd1;color:#fff;border-radius:12px;padding:10px 14px;font-weight:700;box-shadow:0 8px 25px #0006;display:none;cursor:pointer}#aribaInstallBtn:hover{filter:brightness(1.08)}
+
+/* ---- prototype style block #2 (ariba-final-employee-ui) ---- */
+:root{--ariba-radius:18px}
+body{background:radial-gradient(circle at 50% -10%,rgba(41,179,94,.12),transparent 35%),#0b0f1a}
+.hdr{padding:12px 16px;backdrop-filter:blur(12px)}
+.profile-hero{background:linear-gradient(145deg,#1d2b42,#152035);border:1px solid rgba(41,179,94,.22);border-radius:22px;padding:18px;margin-bottom:12px;box-shadow:0 14px 40px rgba(0,0,0,.22)}
+.profile-photo{width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid rgba(41,179,94,.7);background:#0f1726;display:block}
+.profile-photo-fallback{width:82px;height:82px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#20324b;border:3px solid rgba(41,179,94,.5);font-size:24px;font-weight:800}
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.profile-mini{background:rgba(8,15,28,.28);border:1px solid rgba(255,255,255,.05);border-radius:12px;padding:9px}
+.profile-mini b{display:block;font-size:11px;margin-top:3px}
+.profile-mini span{font-size:9px;color:var(--mu)}
+.section-title{font-size:13px;font-weight:800;margin-bottom:10px}
+.salary-card{border-right:3px solid var(--gr)}
+.salary-month{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid rgba(36,48,68,.4)}
+.salary-month:last-child{border-bottom:0}
+.salary-net{font-size:18px;font-weight:900;color:var(--gr)}
+.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.quick-btn{padding:12px;border:1px solid var(--bd);background:var(--c2);border-radius:14px;text-align:center;color:var(--tx);font-family:inherit}
+@media(min-width:700px){.content{max-width:900px;width:100%;margin:auto}.quick-grid{grid-template-columns:repeat(4,1fr)}.profile-grid{grid-template-columns:repeat(4,1fr)}}
+
+/* ---- prototype style block #3 (ariba-fonts) ---- */
+:root{--font-ar:'ARIBA Two',Arial,sans-serif;--font-en:'ARIBA Two',Arial,sans-serif}
+html,body,button,input,select,textarea{font-family:var(--font-ar)!important}
+body{font-variant-numeric:tabular-nums}
+
+/* ---- prototype style block #4 (ariba-employee-final-palette-v10) ---- */
+:root{
+  --ariba-dark:#014D3D;
+  --ariba-green:#29B35E;
+  --ariba-beige:#E4E4BC;
+  --ariba-gray:#D9D9D9;
+}
+
+/* ---- prototype style block #5 (ariba-employee-final-palette-v11) ---- */
+:root{
+  --ariba-dark:#014D3D;
+  --ariba-green:#29B35E;
+  --ariba-beige:#E4E4BC;
+  --ariba-gray:#D9D9D9;
+}
+
+/* ---- prototype style block #6 (ariba-employee-theme-v12) ---- */
+:root{
+ --ariba-dark:#014D3D;
+ --ariba-green:#29B35E;
+ --ariba-beige:#E4E4BC;
+ --ariba-gray:#D9D9D9;
+}
+body.ariba-light{
+ --bg:#F4F0E6;
+ --c:#FFFDF8;
+ --c2:#EEE9DC;
+ --bd:#D8D2C4;
+ --bl:#014D3D;
+ --gr:#29B35E;
+ --rd:#B54A4A;
+ --am:#9B7A32;
+ --pu:#6B5B73;
+ --cy:#014D3D;
+ --mu:#59625F;
+ --dm:#727A76;
+ --tx:#17201D;
+ background:var(--bg)!important;color:var(--tx)!important;
+}
+body.ariba-dark{
+ --bg:#014D3D;
+ --c:#013D31;
+ --c2:#075444;
+ --bd:#176A58;
+ --bl:#29B35E;
+ --gr:#29B35E;
+ --rd:#F07A7A;
+ --am:#E4E4BC;
+ --pu:#D8C9DD;
+ --cy:#E4E4BC;
+ --mu:#D0D9D5;
+ --dm:#E1E7E4;
+ --tx:#FFFFFF;
+ background:var(--bg)!important;color:var(--tx)!important;
+}
+body.ariba-light .hdr,body.ariba-light .card,body.ariba-light .bnav,
+body.ariba-light .login-box{background:var(--c)!important;color:var(--tx)!important}
+body.ariba-dark .hdr,body.ariba-dark .card,body.ariba-dark .bnav,
+body.ariba-dark .login-box{background:var(--c)!important;color:#fff!important}
+body.ariba-light .bni{color:var(--mu)} body.ariba-light .bni.on{color:var(--ariba-dark)}
+body.ariba-dark .bni{color:#D0D9D5} body.ariba-dark .bni.on{color:#29B35E}
+body.ariba-light .btn-primary,body.ariba-light .btn-login{background:#014D3D!important}
+body.ariba-light .btn-success{background:#29B35E!important}
+body.ariba-dark .btn-primary{background:#29B35E!important;color:#013D31!important}
+body.ariba-dark .btn-success{background:#29B35E!important;color:#013D31!important}
+.ariba-top-actions{display:flex;align-items:center;gap:6px;margin-inline-start:10px}
+.ariba-mode-btn,.ariba-lang-btn{
+ border:1px solid var(--ariba-beige)!important;
+ background:var(--ariba-beige)!important;color:var(--ariba-dark)!important;
+ border-radius:10px;padding:7px 10px;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;
+}
+.ariba-mode-btn:hover,.ariba-lang-btn:hover{filter:brightness(.97)}
+body.ariba-dark .ariba-mode-btn,body.ariba-dark .ariba-lang-btn{
+ background:var(--ariba-beige)!important;color:var(--ariba-dark)!important;
+}
+
+/* ---- prototype style block #7 (ariba-profile-harmony-v13) ---- */
+/* Profile hero: same visual language as the cards below. */
+body.ariba-light .profile-hero{
+  background:linear-gradient(145deg,#014D3D,#075444)!important;
+  border:1px solid #29B35E!important;
+  color:#fff!important;
+  box-shadow:0 12px 30px rgba(1,77,61,.16)!important;
+}
+body.ariba-light .profile-hero .profile-mini{
+  background:rgba(255,255,255,.10)!important;
+  border:1px solid rgba(255,255,255,.16)!important;
+  color:#fff!important;
+}
+body.ariba-light .profile-hero .profile-mini span{color:#DCEBE5!important}
+body.ariba-light .profile-hero .profile-mini b{color:#fff!important}
+
+body.ariba-dark .profile-hero{
+  background:linear-gradient(145deg,#013D31,#075444)!important;
+  border:1px solid #29B35E!important;
+  color:#fff!important;
+  box-shadow:0 12px 30px rgba(0,0,0,.20)!important;
+}
+body.ariba-dark .profile-hero .profile-mini{
+  background:rgba(255,255,255,.08)!important;
+  border:1px solid rgba(255,255,255,.14)!important;
+  color:#fff!important;
+}
+body.ariba-dark .profile-hero .profile-mini span{color:#DCEBE5!important}
+body.ariba-dark .profile-hero .profile-mini b{color:#fff!important}
+.profile-hero .profile-photo-fallback{
+  background:#014D3D!important;
+  color:#fff!important;
+  border-color:#29B35E!important;
+}
+.profile-hero .profile-photo{
+  border-color:#29B35E!important;
+}
+
+/* ---- prototype style block #8 (ariba-employee-theme-label-fix-v20) ---- */
+body.ariba-light .ariba-mode-btn{color:#014D3D!important}
+body.ariba-dark .ariba-mode-btn{color:#FFFFFF!important}
+
+
+/* ---- runtime patches injected by the prototype (profile + salary blocks) ---- */
+.profile-hero{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:var(--c2);margin-bottom:12px}
+.profile-avatar{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--gr);color:#fff;font-size:30px;font-weight:800;flex:0 0 auto;overflow:hidden}
+.profile-avatar img{width:100%;height:100%;object-fit:cover}
+.profile-name{font-size:17px;font-weight:800;line-height:1.5}
+.profile-en{font-size:11px;color:var(--mu);margin-top:2px}
+.profile-job{font-size:12px;font-weight:700;margin-top:6px}
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.profile-info{padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--c2);min-width:0}
+.profile-info span{display:block;font-size:10px;color:var(--mu);margin-bottom:4px}
+.profile-info b{display:block;font-size:12px;overflow-wrap:anywhere}
+.hr-pay-row{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid rgba(36,48,68,.25);font-size:12px}
+.hr-pay-row span{color:var(--mu)}
+.hr-pay-row b{font-weight:700}
+.hr-pay-total{margin-top:6px;border-top:1px solid var(--bd);font-size:13px}
+.hr-pay-total b{color:var(--gr)}
+.hr-pay-ded b{color:var(--rd)}
+.hr-pay-net{border-bottom:0;margin-top:4px;padding-top:12px;font-size:16px;font-weight:800}
+.hr-pay-net b{color:var(--cy);font-size:17px}
+.hr-pay-card{overflow:hidden}
+
+/* ---- prototype style block #9 (ariba-silent-refresh-v19) ---- */
+/* Keep the old employee UI visually stable during background synchronization. */
+#appContent{contain:layout style;}
+
+/* ---- prototype style block #10 (ariba-employee-v21-theme-language) ---- */
+html[data-ariba-theme="light"] .ariba-mode-btn .ariba-theme-label,html[data-ariba-theme="light"] #aribaModeBtn,html[data-ariba-theme="light"] .ariba-mode-label{color:#014D3D!important}
+html[data-ariba-theme="dark"] .ariba-mode-btn .ariba-theme-label,html[data-ariba-theme="dark"] #aribaModeBtn,html[data-ariba-theme="dark"] .ariba-mode-label{color:#fff!important}
+
+/* ---- prototype style block #11 (ariba-employee-v22-manual-refresh) ---- */
+#ARIBA_MANUAL_REFRESH_EMP{background:#014D3D!important;color:#fff!important;border-color:#014D3D!important;font-weight:800!important;border-radius:7px;padding:5px 10px;cursor:pointer;font-family:inherit}
+#ARIBA_MANUAL_REFRESH_EMP.busy{opacity:.75;cursor:wait}
+
+/* ---- prototype style block #12 (ariba-employee-theme-final-v24) ---- */
+/* Light/Dark labels: نهاري dark green, ليلي white */
+html[data-ariba-theme="light"] .ariba-mode-btn .ariba-theme-label,html[data-ariba-theme="light"] #aribaModeBtn,html[data-ariba-theme="light"] .ariba-mode-label{color:#014D3D!important}
+html[data-ariba-theme="dark"] .ariba-mode-btn .ariba-theme-label,html[data-ariba-theme="dark"] #aribaModeBtn,html[data-ariba-theme="dark"] .ariba-mode-label{color:#fff!important}

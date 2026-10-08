@@ -1,0 +1,18 @@
+
+:root{--ariba-dark:#014D3D;--ariba-green:#29B35E;--ariba-beige:#E4E4BC;--ariba-cream:#F5F3EA;--ariba-white:#fff;--ariba-gray:#A0A0A0;--ariba-ink:#1F2522}
+html[data-ariba-theme="light"] body{background:var(--ariba-cream)!important;color:var(--ariba-ink)!important}
+html[data-ariba-theme="light"] .topbar,html[data-ariba-theme="light"] .sb{background:var(--ariba-dark)!important;color:#fff!important;border-color:var(--ariba-dark)!important}
+html[data-ariba-theme="light"] .topbar *,html[data-ariba-theme="light"] .sb *{color:#fff!important}
+html[data-ariba-theme="light"] .sb .ni:hover,html[data-ariba-theme="light"] .sb .ni.on,html[data-ariba-theme="light"] .sb .ns.on{background:rgba(41,179,94,.2)!important;color:#fff!important}
+html[data-ariba-theme="light"] .card,html[data-ariba-theme="light"] .panel,html[data-ariba-theme="light"] .box,html[data-ariba-theme="light"] .tbar,html[data-ariba-theme="light"] .modal{background:#fff!important;color:var(--ariba-ink)!important;border-color:#cfd2cf!important;box-shadow:none!important}
+html[data-ariba-theme="light"] input,html[data-ariba-theme="light"] select,html[data-ariba-theme="light"] textarea{background:#fff!important;color:var(--ariba-ink)!important;border-color:#cfd2cf!important}
+html[data-ariba-theme="light"] .stat,html[data-ariba-theme="light"] .tile,html[data-ariba-theme="light"] .kpi{background:var(--ariba-cream)!important;border-color:#d8d6ca!important}
+html[data-ariba-theme="light"] .stat .value,html[data-ariba-theme="light"] .kpi-val,html[data-ariba-theme="light"] .green,html[data-ariba-theme="light"] .num{color:var(--ariba-green)!important}
+html[data-ariba-theme="dark"] body{background:#171c19!important;color:#fff!important}
+html[data-ariba-theme="dark"] .topbar{background:#103f34!important;color:#fff!important}
+html[data-ariba-theme="dark"] .sb{background:#202a26!important;color:#fff!important}
+html[data-ariba-theme="dark"] .topbar *,html[data-ariba-theme="dark"] .sb *{color:#fff!important}
+html[data-ariba-theme="dark"] .card,html[data-ariba-theme="dark"] .panel,html[data-ariba-theme="dark"] .box,html[data-ariba-theme="dark"] .tbar,html[data-ariba-theme="dark"] .modal{background:#202522!important;color:#fff!important;border-color:#35423d!important;box-shadow:none!important}
+html[data-ariba-theme="dark"] input,html[data-ariba-theme="dark"] select,html[data-ariba-theme="dark"] textarea{background:#1d2521!important;color:#fff!important;border-color:#3b4b44!important}
+html[data-ariba-theme="dark"] .stat,html[data-ariba-theme="dark"] .tile,html[data-ariba-theme="dark"] .kpi{background:#213b32!important;border-color:#315848!important}
+html[data-ariba-theme="dark"] .stat .value,html[data-ariba-theme="dark"] .kpi-val,html[data-ariba-theme="dark"] .green,html[data-ariba-theme="dark"] .num{color:var(--ariba-green)!important}

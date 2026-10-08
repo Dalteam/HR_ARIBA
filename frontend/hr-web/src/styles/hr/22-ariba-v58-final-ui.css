@@ -1,0 +1,7 @@
+/* ---- prototype style block #25 (ariba-v58-final-ui) ---- */
+#ARIBA_PAYROLL_ARCHIVE .ariba-archive-row{background:var(--c1);border-bottom:1px solid var(--bd)}
+#ARIBA_PAYROLL_ARCHIVE .ariba-archive-row:hover{background:var(--c2)}
+.ariba-print-currency-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:8px 0 12px}
+.ariba-print-currency-summary .x{border:1px solid #cfd4d0;border-radius:6px;padding:7px;text-align:center;background:#f7f7f3}
+.ariba-print-currency-summary strong{display:block;color:#014D3D;font-size:13px;margin-top:3px}
+

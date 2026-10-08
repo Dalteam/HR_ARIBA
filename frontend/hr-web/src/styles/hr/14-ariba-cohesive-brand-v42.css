@@ -1,0 +1,57 @@
+/* ---- prototype style block #12 (ariba-cohesive-brand-v42) ---- */
+:root{
+  --ariba-dark:#014D3D!important;
+  --ariba-green:#29B35E!important;
+  --ariba-beige:#E4E4BC!important;
+  --ariba-paper:#F4F0E4!important;
+  --ariba-gray:#6B7280!important;
+  --ariba-gray2:#D6D3C7!important;
+  --ariba-charcoal:#202522!important;
+}
+html,body{font-family:inherit}
+body{background:var(--ariba-paper)!important;color:var(--ariba-charcoal)!important}
+.topbar,.sb,.tbar,.header,.navbar{background:var(--ariba-dark)!important;color:#fff!important}
+.card,.panel,.box,.modal,.login-box,.stat,.table-wrap,.section,.tile{
+  background:rgba(255,255,255,.88)!important;
+  border-color:var(--ariba-gray2)!important;
+  box-shadow:0 2px 10px rgba(1,77,61,.06)!important;
+}
+html[data-ariba-theme="dark"] body{background:#202522!important;color:#F4F0E4!important}
+html[data-ariba-theme="dark"] .card,
+html[data-ariba-theme="dark"] .panel,
+html[data-ariba-theme="dark"] .box,
+html[data-ariba-theme="dark"] .modal,
+html[data-ariba-theme="dark"] .login-box,
+html[data-ariba-theme="dark"] .stat,
+html[data-ariba-theme="dark"] .table-wrap,
+html[data-ariba-theme="dark"] .section,
+html[data-ariba-theme="dark"] .tile{
+  background:#2A302D!important;border-color:#46514B!important;color:#F4F0E4!important;
+}
+button,.btn,.tab,.nav-btn,.bni{transition:background-color .12s ease,border-color .12s ease,color .12s ease,transform .08s ease!important}
+button:active,.btn:active,.tab:active,.nav-btn:active,.bni:active{transform:translateY(1px)}
+.btn.bpl,.btn.bgl,.primary,.btn-primary,.active-btn{
+  background:var(--ariba-dark)!important;border-color:var(--ariba-dark)!important;color:#fff!important;
+}
+.btn.bpl:hover,.btn.bgl:hover,.primary:hover,.btn-primary:hover,.active-btn:hover{
+  background:var(--ariba-green)!important;border-color:var(--ariba-green)!important;
+}
+.btn.secondary,.btn.outline,.secondary{
+  background:var(--ariba-beige)!important;border-color:#C9C3AE!important;color:var(--ariba-dark)!important;
+}
+input,select,textarea{
+  background:#fff!important;border-color:var(--ariba-gray2)!important;color:var(--ariba-charcoal)!important;
+}
+html[data-ariba-theme="dark"] input,
+html[data-ariba-theme="dark"] select,
+html[data-ariba-theme="dark"] textarea{
+  background:#252A27!important;border-color:#46514B!important;color:#F4F0E4!important;
+}
+.badge,.b,.pill{border-color:var(--ariba-gray2)!important}
+.bg,.bgl,.success,.ok{background:rgba(41,179,94,.14)!important;color:var(--ariba-dark)!important;border-color:rgba(41,179,94,.35)!important}
+.ba,.warning{background:rgba(228,228,188,.55)!important;color:var(--ariba-dark)!important;border-color:#C9C3AE!important}
+.br,.danger,.error{background:rgba(107,114,128,.12)!important;color:#4B5563!important;border-color:#B8BDB9!important}
+a{color:var(--ariba-dark)!important}
+hr,.divider{border-color:var(--ariba-gray2)!important}
+::selection{background:rgba(41,179,94,.25)!important;color:var(--ariba-dark)!important}
+

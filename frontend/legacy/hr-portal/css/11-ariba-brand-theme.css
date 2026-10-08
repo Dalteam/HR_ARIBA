@@ -1,0 +1,27 @@
+
+/* ARIBA Brand Theme System — Light / Dark */
+:root{
+  --ariba-dark:#014D3D;
+  --ariba-bright:#29B35E;
+  --ariba-soft:#E4E4BC;
+  --ariba-black:#231F20;
+}
+html[data-ariba-theme="dark"]{
+  --bg:#071813;--p:#0b211b;--c:#0e2a22;--c2:#12372d;--bd:#1c5142;
+  --bl:#29B35E;--gr:#29B35E;--cy:#29B35E;--pu:#014D3D;--am:#d8d89f;
+  --tx:#eef8f3;--mu:#9db9af;--dm:#64877b;
+}
+html[data-ariba-theme="light"]{
+  --bg:#F4F0E4;--p:#FFFFFF;--c:#FFFFFF;--c2:#F4F0E4;--bd:#D6D3C7;
+  --bl:#014D3D;--gr:#29B35E;--cy:#014D3D;--pu:#014D3D;--am:#8b8b4f;
+  --tx:#231F20;--mu:#587066;--dm:#7a928a;
+}
+body{transition:background-color .2s,color .2s}
+html[data-ariba-theme="light"] body{background:var(--bg)!important;color:var(--tx)!important}
+html[data-ariba-theme="light"] .card,html[data-ariba-theme="light"] .topbar,html[data-ariba-theme="light"] .sb,
+html[data-ariba-theme="light"] .modal,html[data-ariba-theme="light"] .mw .modal,html[data-ariba-theme="light"] .toast,
+html[data-ariba-theme="light"] .login-box{box-shadow:0 6px 24px rgba(1,77,61,.08)}
+html[data-ariba-theme="light"] input,html[data-ariba-theme="light"] select,html[data-ariba-theme="light"] textarea{background:var(--c2)!important;color:var(--tx)!important;border-color:var(--bd)!important}
+html[data-ariba-theme="light"] .btn,.html[data-ariba-theme="light"] .ib{border-color:var(--bd)}
+.ariba-theme-btn{display:inline-flex!important;align-items:center;justify-content:center;gap:5px;min-width:34px;height:32px;border:1px solid var(--bd)!important;border-radius:8px;background:var(--c2)!important;color:var(--tx)!important;cursor:pointer;font-weight:700}
+.ariba-theme-btn:hover{border-color:var(--ariba-bright)!important;color:var(--ariba-bright)!important}

@@ -1,0 +1,5 @@
+/* ---- prototype style block #3 (ariba-fonts) ---- */
+:root{--font-ar:'ARIBA Two',Arial,sans-serif;--font-en:'ARIBA Two',Arial,sans-serif}
+html,body,button,input,select,textarea{font-family:var(--font-ar)!important}
+body{font-variant-numeric:tabular-nums}
+

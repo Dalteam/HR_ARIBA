@@ -1,0 +1,1 @@
+(function(){try{document.documentElement.setAttribute('data-ariba-theme',localStorage.getItem('ariba_ui_theme')||'dark')}catch(e){document.documentElement.setAttribute('data-ariba-theme','dark')}})();

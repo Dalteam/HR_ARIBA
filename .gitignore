@@ -35,3 +35,5 @@ supabase_*.sql
 logs/
 # Exception: schema + legacy function code (no data) for the parity tests
 !tools/legacy-parity/sql/*.sql
+
+*.bak

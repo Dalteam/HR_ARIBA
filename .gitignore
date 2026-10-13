@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local data and secrets
+*.db
+*.db-journal
+.env
+.env.*
+!.env.example
+.local_auth.json
+
+# Node / Next
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# OS / editors
+.DS_Store
+.idea/
+
+# Local dev file storage
+.storage/
+
+# Database exports (contain production data) — never commit
+*.sql
+*.dump
+supabase_*.sql
+!tools/pre_migration_fixes.sql
+logs/
+# Exception: schema + legacy function code (no data) for the parity tests
+!tools/legacy-parity/sql/*.sql

@@ -1,0 +1,8 @@
+/* ---- prototype style block #19 (ariba-v53-final-request-fixes) ---- */
+/* ألوان الواجهة المطلوبة */
+#HRL,.hr-role,#ARIBA_PAYROLL_ARCHIVE .ct{color:#014D3D!important}
+#HRL{font-weight:800!important}
+#HRL + button.ib{color:#014D3D!important;margin-inline-start:4px!important}
+#HRL + button.ib i{color:#014D3D!important}
+#HRL + button.ib{padding-inline:8px!important}
+

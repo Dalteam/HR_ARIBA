@@ -1,0 +1,3 @@
+
+/* Keep the old employee UI visually stable during background synchronization. */
+#appContent{contain:layout style;}

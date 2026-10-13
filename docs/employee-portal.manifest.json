@@ -1,0 +1,434 @@
+[
+ {
+  "kind": "css",
+  "file": "css/01-ariba-preboot-css.css",
+  "line": 4,
+  "endline": 4,
+  "id": "ariba-preboot-css"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/001-ariba-preboot-js.js",
+  "line": 4,
+  "endline": 42,
+  "id": "ariba-preboot-js"
+ },
+ {
+  "kind": "external",
+  "tag": "<script src=\"https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2\">",
+  "line": 44
+ },
+ {
+  "kind": "js",
+  "file": "js/config/002-supabase-stub-and-sb-fetch.js",
+  "line": 45,
+  "endline": 84,
+  "id": ""
+ },
+ {
+  "kind": "css",
+  "file": "css/02-styles.css",
+  "line": 97,
+  "endline": 178,
+  "id": ""
+ },
+ {
+  "kind": "css",
+  "file": "css/03-ariba-pwa-ui.css",
+  "line": 180,
+  "endline": 182,
+  "id": "ariba-pwa-ui"
+ },
+ {
+  "kind": "css",
+  "file": "css/04-ariba-final-employee-ui.css",
+  "line": 184,
+  "endline": 203,
+  "id": "ariba-final-employee-ui"
+ },
+ {
+  "kind": "css",
+  "file": "css/05-ariba-fonts.css",
+  "line": 204,
+  "endline": 211,
+  "id": "ariba-fonts"
+ },
+ {
+  "kind": "css",
+  "file": "css/06-ariba-employee-final-palette-v10.css",
+  "line": 212,
+  "endline": 219,
+  "id": "ariba-employee-final-palette-v10"
+ },
+ {
+  "kind": "css",
+  "file": "css/07-ariba-employee-final-palette-v11.css",
+  "line": 220,
+  "endline": 227,
+  "id": "ariba-employee-final-palette-v11"
+ },
+ {
+  "kind": "css",
+  "file": "css/08-ariba-employee-theme-v12.css",
+  "line": 228,
+  "endline": 287,
+  "id": "ariba-employee-theme-v12"
+ },
+ {
+  "kind": "css",
+  "file": "css/09-ariba-profile-harmony-v13.css",
+  "line": 289,
+  "endline": 326,
+  "id": "ariba-profile-harmony-v13"
+ },
+ {
+  "kind": "css",
+  "file": "css/10-ariba-employee-theme-label-fix-v20.css",
+  "line": 328,
+  "endline": 331,
+  "id": "ariba-employee-theme-label-fix-v20"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/01-state.js",
+  "line": 380,
+  "endline": 387,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/02-utils.js",
+  "line": 388,
+  "endline": 405,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/03-login-session.js",
+  "line": 406,
+  "endline": 577,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/04-storage-sync-tabs.js",
+  "line": 578,
+  "endline": 596,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/05-home.js",
+  "line": 597,
+  "endline": 637,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/06-leave-types.js",
+  "line": 638,
+  "endline": 656,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/07-leaves.js",
+  "line": 657,
+  "endline": 806,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/08-attendance-gps-forgot.js",
+  "line": 807,
+  "endline": 1005,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/09-pay.js",
+  "line": 1006,
+  "endline": 1030,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/10-team-manager-approvals.js",
+  "line": 1031,
+  "endline": 1106,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/11-profile.js",
+  "line": 1107,
+  "endline": 1142,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/main/12-storage-sync.js",
+  "line": 1143,
+  "endline": 1150,
+  "id": "(main)"
+ },
+ {
+  "kind": "js",
+  "file": "js/requests/004-ariba-secure-workflow-patch.js",
+  "line": 1151,
+  "endline": 1366,
+  "id": "ariba-secure-workflow-patch"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/005-ariba-bilingual-ui.js",
+  "line": 1368,
+  "endline": 1425,
+  "id": "ariba-bilingual-ui"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/006-ariba-pwa-register.js",
+  "line": 1427,
+  "endline": 1436,
+  "id": "ariba-pwa-register"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/007-ariba-final-employee-cloud-ui.js",
+  "line": 1438,
+  "endline": 1524,
+  "id": "ariba-final-employee-cloud-ui"
+ },
+ {
+  "kind": "js",
+  "file": "js/leaves/008-ariba-v20-leave-bilingual.js",
+  "line": 1528,
+  "endline": 1602,
+  "id": "ariba-v20-leave-bilingual"
+ },
+ {
+  "kind": "js",
+  "file": "js/requests/009-ariba-v21-documents-overtime.js",
+  "line": 1604,
+  "endline": 1808,
+  "id": "ariba-v21-documents-overtime"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/010-ariba-v21-language-extra.js",
+  "line": 1810,
+  "endline": 1821,
+  "id": "ariba-v21-language-extra"
+ },
+ {
+  "kind": "js",
+  "file": "js/employees-data/011-ariba-employee-live-sync-v19.js",
+  "line": 1824,
+  "endline": 1933,
+  "id": "ariba-employee-live-sync-v19"
+ },
+ {
+  "kind": "css",
+  "file": "css/11-ariba-silent-refresh-v19.css",
+  "line": 1934,
+  "endline": 1937,
+  "id": "ariba-silent-refresh-v19"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/012-ariba-employee-theme-language-v12.js",
+  "line": 1938,
+  "endline": 1978,
+  "id": "ariba-employee-theme-language-v12"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/013-ariba-employee-cloud-refresh-v15.js",
+  "line": 1979,
+  "endline": 1985,
+  "id": "ariba-employee-cloud-refresh-v15"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/014-ariba-employee-source-of-truth-v19.js",
+  "line": 1986,
+  "endline": 1992,
+  "id": "ariba-employee-source-of-truth-v19"
+ },
+ {
+  "kind": "css",
+  "file": "css/12-ariba-employee-v21-theme-language.css",
+  "line": 1994,
+  "endline": 1997,
+  "id": "ariba-employee-v21-theme-language"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/015-ariba-employee-v21-english-and-quiet.js",
+  "line": 1998,
+  "endline": 2032,
+  "id": "ariba-employee-v21-english-and-quiet"
+ },
+ {
+  "kind": "css",
+  "file": "css/13-ariba-employee-v22-manual-refresh.css",
+  "line": 2035,
+  "endline": 2038,
+  "id": "ariba-employee-v22-manual-refresh"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/016-ariba-employee-v22-manual-and-english.js",
+  "line": 2039,
+  "endline": 2088,
+  "id": "ariba-employee-v22-manual-and-english"
+ },
+ {
+  "kind": "js",
+  "file": "js/employees-data/017-ariba-employee-shared-backend-final-v24.js",
+  "line": 2090,
+  "endline": 2105,
+  "id": "ariba-employee-shared-backend-final-v24"
+ },
+ {
+  "kind": "css",
+  "file": "css/14-ariba-employee-theme-final-v24.css",
+  "line": 2106,
+  "endline": 2110,
+  "id": "ariba-employee-theme-final-v24"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/018-profile-data-getd.js",
+  "line": 2112,
+  "endline": 2288,
+  "id": ""
+ },
+ {
+  "kind": "js",
+  "file": "js/payroll/019-ariba-hr-master-payroll-final.js",
+  "line": 2291,
+  "endline": 2438,
+  "id": "ariba-hr-master-payroll-final"
+ },
+ {
+  "kind": "js",
+  "file": "js/forms/020-ariba-emp-v1-pending-templates.js",
+  "line": 2441,
+  "endline": 2610,
+  "id": "ariba-emp-v1-pending-templates"
+ },
+ {
+  "kind": "js",
+  "file": "js/leaves/021-ariba-emp-v2-fix-normalizeprofile-leave-fields.js",
+  "line": 2611,
+  "endline": 2670,
+  "id": "ariba-emp-v2-fix-normalizeprofile-leave-fields"
+ },
+ {
+  "kind": "js",
+  "file": "js/attendance/022-ariba-emp-v3-attendance-date-lookup.js",
+  "line": 2671,
+  "endline": 2739,
+  "id": "ariba-emp-v3-attendance-date-lookup"
+ },
+ {
+  "kind": "js",
+  "file": "js/leaves/023-ariba-emp-v94-live-leave-balance.js",
+  "line": 2741,
+  "endline": 2832,
+  "id": "ariba-emp-v94-live-leave-balance"
+ },
+ {
+  "kind": "js",
+  "file": "js/auth-permissions/024-ariba-v104-force-password-change.js",
+  "line": 2834,
+  "endline": 2888,
+  "id": "ariba-v104-force-password-change"
+ },
+ {
+  "kind": "js",
+  "file": "js/leaves/025-ariba-emp-v112-leave-from-hr.js",
+  "line": 2890,
+  "endline": 2928,
+  "id": "ariba-emp-v112-leave-from-hr"
+ },
+ {
+  "kind": "js",
+  "file": "js/auth-permissions/026-ariba-v114-change-password-emp.js",
+  "line": 2930,
+  "endline": 3039,
+  "id": "ariba-v114-change-password-emp"
+ },
+ {
+  "kind": "js",
+  "file": "js/requests/027-ariba-v114-forgot-punch-emp.js",
+  "line": 3041,
+  "endline": 3144,
+  "id": "ariba-v114-forgot-punch-emp"
+ },
+ {
+  "kind": "js",
+  "file": "js/attendance/028-ariba-v117-emp-attendance.js",
+  "line": 3146,
+  "endline": 3250,
+  "id": "ariba-v117-emp-attendance"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/029-ariba-v117-english-emp.js",
+  "line": 3252,
+  "endline": 3426,
+  "id": "ariba-v117-english-emp"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/030-ariba-v118-emp-ui.js",
+  "line": 3428,
+  "endline": 3767,
+  "id": "ariba-v118-emp-ui"
+ },
+ {
+  "kind": "js",
+  "file": "js/payroll/031-ariba-v119-emp-payslip.js",
+  "line": 3771,
+  "endline": 3852,
+  "id": "ariba-v119-emp-payslip"
+ },
+ {
+  "kind": "js",
+  "file": "js/requests/032-ariba-v118-bell.js",
+  "line": 3868,
+  "endline": 4079,
+  "id": "ariba-v118-bell"
+ },
+ {
+  "kind": "js",
+  "file": "js/locations/033-ariba-v122-emp-locations.js",
+  "line": 4093,
+  "endline": 4176,
+  "id": "ariba-v122-emp-locations"
+ },
+ {
+  "kind": "js",
+  "file": "js/attendance/034-ariba-v122b-emp-attendance-location.js",
+  "line": 4178,
+  "endline": 4256,
+  "id": "ariba-v122b-emp-attendance-location"
+ },
+ {
+  "kind": "js",
+  "file": "js/employees-data/035-ariba-v124-emp-delete.js",
+  "line": 4266,
+  "endline": 4376,
+  "id": "ariba-v124-emp-delete"
+ },
+ {
+  "kind": "js",
+  "file": "js/core-ui/036-ariba-v126-emp-quiet.js",
+  "line": 4378,
+  "endline": 4464,
+  "id": "ariba-v126-emp-quiet"
+ }
+]

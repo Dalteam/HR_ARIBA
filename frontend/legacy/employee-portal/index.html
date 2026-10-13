@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<!--ARIBA-PREBOOT--><link rel="stylesheet" id="ariba-preboot-css" href="css/01-ariba-preboot-css.css"><script id="ariba-preboot-js" src="js/core-ui/001-ariba-preboot-js.js"></script><!--/ARIBA-PREBOOT-->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/config/002-supabase-stub-and-sb-fetch.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0b0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ARIBA Employee">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+
+<title>تطبيق الموظف - اريبا</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<link rel="stylesheet" href="css/02-styles.css">
+
+<link rel="stylesheet" id="ariba-pwa-ui" href="css/03-ariba-pwa-ui.css">
+
+<link rel="stylesheet" id="ariba-final-employee-ui" href="css/04-ariba-final-employee-ui.css">
+<link rel="stylesheet" id="ariba-fonts" href="css/05-ariba-fonts.css"><!-- ARIBA V20 SHARED BACKEND: Supabase project iwviydmapqpqihcdazpe; HR + Employee use the same backend. -->
+<link rel="stylesheet" id="ariba-employee-final-palette-v10" href="css/06-ariba-employee-final-palette-v10.css">
+<link rel="stylesheet" id="ariba-employee-final-palette-v11" href="css/07-ariba-employee-final-palette-v11.css">
+<link rel="stylesheet" id="ariba-employee-theme-v12" href="css/08-ariba-employee-theme-v12.css">
+
+<link rel="stylesheet" id="ariba-profile-harmony-v13" href="css/09-ariba-profile-harmony-v13.css">
+
+<link rel="stylesheet" id="ariba-employee-theme-label-fix-v20" href="css/10-ariba-employee-theme-label-fix-v20.css">
+
+</head>
+<body>
+
+<!-- TOAST -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- LOGIN -->
+<div class="screen on" id="sc-login">
+<div class="login-wrap">
+<div class="login-box">
+  <div class="login-logo">
+    <div class="logo-big">ARIBA</div>
+    <div class="logo-sub">تطبيق الموظف | Employee App</div>
+  </div>
+  <div class="fg">
+    <label>اسم المستخدم</label>
+    <input id="loginUser" placeholder="EMPxxx" autocomplete="username">
+    <label>كلمة المرور</label>
+    <input id="loginPass" type="password" placeholder="****" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')doLogin()">
+  </div>
+  <div class="login-err" id="loginErr">بيانات الدخول غير صحيحة</div>
+  <button class="btn-login" onclick="doLogin()">دخول</button>
+</div>
+</div>
+</div>
+
+<!-- APP -->
+<div class="screen" id="sc-app">
+  <div class="hdr">
+    <div class="hdr-title" id="pageTitle">الرئيسية</div>
+    <div class="hdr-user">
+      <span id="userNameHdr"></span>
+      <button onclick="doLogout()" style="background:none;border:none;color:var(--rd);cursor:pointer;padding:4px"><i class="ti ti-logout" style="font-size:18px"></i></button>
+    </div>
+  </div>
+  <div class="content" id="appContent"></div>
+  <nav class="bnav">
+    <button class="bni on" onclick="goTab('home',this)" id="tb-home"><i class="ti ti-home-2"></i><span>الرئيسية</span></button>
+    <button class="bni" onclick="goTab('att',this)" id="tb-att"><i class="ti ti-map-pin"></i><span>الحضور</span></button>
+    <button class="bni" onclick="goTab('lv',this)" id="tb-lv"><i class="ti ti-calendar"></i><span>الإجازات</span></button>
+    <button class="bni" onclick="goTab('pay',this)" id="tb-pay"><i class="ti ti-cash"></i><span>الراتب</span></button>
+    <button class="bni" onclick="goTab('team',this)" id="tb-team"><i class="ti ti-users"></i><span>فريقي</span></button>
+    <button class="bni" onclick="goTab('prof',this)" id="tb-prof"><i class="ti ti-user"></i><span>ملفي</span></button>
+  </nav>
+</div>
+
+<script src="js/main/01-state.js"></script><script src="js/main/02-utils.js"></script><script src="js/main/03-login-session.js"></script><script src="js/main/04-storage-sync-tabs.js"></script><script src="js/main/05-home.js"></script><script src="js/main/06-leave-types.js"></script><script src="js/main/07-leaves.js"></script><script src="js/main/08-attendance-gps-forgot.js"></script><script src="js/main/09-pay.js"></script><script src="js/main/10-team-manager-approvals.js"></script><script src="js/main/11-profile.js"></script><script src="js/main/12-storage-sync.js"></script>
+<script id="ariba-secure-workflow-patch" src="js/requests/004-ariba-secure-workflow-patch.js"></script>
+
+<script id="ariba-bilingual-ui" src="js/core-ui/005-ariba-bilingual-ui.js"></script>
+
+<script id="ariba-pwa-register" src="js/core-ui/006-ariba-pwa-register.js"></script>
+
+<script id="ariba-final-employee-cloud-ui" src="js/core-ui/007-ariba-final-employee-cloud-ui.js"></script>
+
+
+
+<script id="ariba-v20-leave-bilingual" src="js/leaves/008-ariba-v20-leave-bilingual.js"></script>
+
+<script id="ariba-v21-documents-overtime" src="js/requests/009-ariba-v21-documents-overtime.js"></script>
+
+<script id="ariba-v21-language-extra" src="js/core-ui/010-ariba-v21-language-extra.js"></script>
+
+
+<script id="ariba-employee-live-sync-v19" src="js/employees-data/011-ariba-employee-live-sync-v19.js"></script>
+<link rel="stylesheet" id="ariba-silent-refresh-v19" href="css/11-ariba-silent-refresh-v19.css">
+<script id="ariba-employee-theme-language-v12" src="js/core-ui/012-ariba-employee-theme-language-v12.js"></script>
+<script id="ariba-employee-cloud-refresh-v15" src="js/core-ui/013-ariba-employee-cloud-refresh-v15.js"></script>
+<script id="ariba-employee-source-of-truth-v19" src="js/core-ui/014-ariba-employee-source-of-truth-v19.js"></script>
+
+<link rel="stylesheet" id="ariba-employee-v21-theme-language" href="css/12-ariba-employee-v21-theme-language.css">
+<script id="ariba-employee-v21-english-and-quiet" src="js/core-ui/015-ariba-employee-v21-english-and-quiet.js"></script>
+
+
+<link rel="stylesheet" id="ariba-employee-v22-manual-refresh" href="css/13-ariba-employee-v22-manual-refresh.css">
+<script id="ariba-employee-v22-manual-and-english" src="js/core-ui/016-ariba-employee-v22-manual-and-english.js"></script>
+
+<script id="ariba-employee-shared-backend-final-v24" src="js/employees-data/017-ariba-employee-shared-backend-final-v24.js"></script>
+<link rel="stylesheet" id="ariba-employee-theme-final-v24" href="css/14-ariba-employee-theme-final-v24.css">
+
+<script src="js/core-ui/018-profile-data-getd.js"></script>
+
+
+<script id="ariba-hr-master-payroll-final" src="js/payroll/019-ariba-hr-master-payroll-final.js"></script>
+</body>
+</html>
+<script id="ariba-emp-v1-pending-templates" src="js/forms/020-ariba-emp-v1-pending-templates.js"></script>
+<script id="ariba-emp-v2-fix-normalizeprofile-leave-fields" src="js/leaves/021-ariba-emp-v2-fix-normalizeprofile-leave-fields.js"></script>
+<script id="ariba-emp-v3-attendance-date-lookup" src="js/attendance/022-ariba-emp-v3-attendance-date-lookup.js"></script>
+
+<script id="ariba-emp-v94-live-leave-balance" src="js/leaves/023-ariba-emp-v94-live-leave-balance.js"></script>
+
+<script id="ariba-v104-force-password-change" src="js/auth-permissions/024-ariba-v104-force-password-change.js"></script>
+
+<script id="ariba-emp-v112-leave-from-hr" src="js/leaves/025-ariba-emp-v112-leave-from-hr.js"></script>
+
+<script id="ariba-v114-change-password-emp" src="js/auth-permissions/026-ariba-v114-change-password-emp.js"></script>
+
+<script id="ariba-v114-forgot-punch-emp" src="js/requests/027-ariba-v114-forgot-punch-emp.js"></script>
+
+<script id="ariba-v117-emp-attendance" src="js/attendance/028-ariba-v117-emp-attendance.js"></script>
+
+<script id="ariba-v117-english-emp" src="js/core-ui/029-ariba-v117-english-emp.js"></script>
+
+<script id="ariba-v118-emp-ui" src="js/core-ui/030-ariba-v118-emp-ui.js"></script>
+
+
+
+<script id="ariba-v119-emp-payslip" src="js/payroll/031-ariba-v119-emp-payslip.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script id="ariba-v118-bell" src="js/requests/032-ariba-v118-bell.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script id="ariba-v122-emp-locations" src="js/locations/033-ariba-v122-emp-locations.js"></script>
+
+<script id="ariba-v122b-emp-attendance-location" src="js/attendance/034-ariba-v122b-emp-attendance-location.js"></script>
+
+
+
+
+
+
+
+
+
+<script id="ariba-v124-emp-delete" src="js/employees-data/035-ariba-v124-emp-delete.js"></script>
+
+<script id="ariba-v126-emp-quiet" src="js/core-ui/036-ariba-v126-emp-quiet.js"></script>

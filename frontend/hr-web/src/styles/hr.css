@@ -1,0 +1,29 @@
+/* hr styles — one file per style block of the V114 prototype, named after the split files in
+   frontend/legacy/hr-portal/css. Order matters: it is the order the browser applied them. */
+@import "./hr/00-app-fonts-and-header.css";
+@import "./hr/02-ariba-fonts.css";
+@import "./hr/03-ariba-photo-css.css";
+@import "./hr/04-styles.css";
+@import "./hr/05-ariba-fix.css";
+@import "./hr/06-map-fix.css";
+@import "./hr/08-ariba-auth-sidebar-final-v30.css";
+@import "./hr/09-ariba-auth-sidebar-lock-v21.css";
+@import "./hr/10-ariba-leave-editor-v31.css";
+@import "./hr/11-ariba-brand-theme.css";
+@import "./hr/12-ariba-light-login.css";
+@import "./hr/13-ariba-brand-final-v41.css";
+@import "./hr/14-ariba-cohesive-brand-v42.css";
+@import "./hr/15-dash-layout-fix.css";
+@import "./hr/16-ariba-v50-excel-palette.css";
+@import "./hr/17-ariba-v52-payslip-polish.css";
+@import "./hr/18-ariba-v53-final-request-fixes.css";
+@import "./hr/19-ariba-theme-label-v3.css";
+@import "./hr/20-ariba-v54-final.css";
+@import "./hr/21-ariba-company-chart-fixed-colors.css";
+@import "./hr/22-ariba-v58-final-ui.css";
+@import "./hr/23-ariba-terminated-v12.css";
+@import "./hr/24-ariba-v18-sidebar-fix.css";
+@import "./hr/25-ariba-v41-final-style.css";
+@import "./hr/26-ariba-v42-requested-ui.css";
+@import "./hr/27-ariba-v60-final-fix.css";
+@import "./hr/27b-runtime-patch-1.css";

@@ -1,0 +1,13 @@
+/* HR portal styles — ported verbatim from the V114 prototype
+   (‪_1_HR_برنامج_الموارد_البشرية_V114.html), in the order the browser applied them.
+   Do not "tidy" these rules: the page markup reproduces the prototype's classes and ids so that
+   this cascade renders exactly like the original. App-specific additions are at the end. */
+/* ARIBA Two, served from /public/fonts so it renders the same on every device.
+   The prototype also refers to the face names "ARIBA Two Light/Medium/Bold" (locally installed
+   fonts), so those names are mapped to the same files. */
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-weight:300 400;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-weight:500 600;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-weight:700 900;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two Light';src:url('/fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'ARIBA Two Medium';src:url('/fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'ARIBA Two Bold';src:url('/fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-display:swap}

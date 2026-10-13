@@ -1,0 +1,17 @@
+/* ---- prototype style block #30 (ariba-v42-requested-ui) ---- */
+/* NIGHT MODE — requested beige / light-gray accents only. DAY MODE remains unchanged. */
+html[data-ariba-theme="dark"] #HRL,
+html[data-ariba-theme="dark"] #HRL + button,
+html[data-ariba-theme="dark"] .ariba-theme-label{color:#E4E4BC!important}
+html[data-ariba-theme="dark"] #aribaThemeBtn,
+html[data-ariba-theme="dark"] #aribaThemeBtn i{color:#E4E4BC!important}
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="saudization"] .ariba-kpi-label,
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="saudization"] .ariba-kpi-value{color:#E4E4BC!important}
+html[data-ariba-theme="light"] #KR [data-ariba-kpi="payroll"]{border-color:#A0A0A0!important}
+html[data-ariba-theme="light"] #KR [data-ariba-kpi="payroll"] .ariba-kpi-value{color:#A0A0A0!important}
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="payroll"]{border-color:#B8BFBC!important}
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="payroll"] .ariba-kpi-value{color:#B8BFBC!important}
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="gender"] .ariba-male-number{color:#E4E4BC!important}
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="departments"] .ariba-dept-number{color:#E4E4BC!important}
+html[data-ariba-theme="dark"] #KR [data-ariba-kpi="pending"] .ariba-pending-number{color:#E4E4BC!important}
+

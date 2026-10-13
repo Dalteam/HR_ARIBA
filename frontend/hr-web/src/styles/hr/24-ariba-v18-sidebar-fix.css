@@ -1,0 +1,5 @@
+/* ---- prototype style block #28 (ariba-v18-sidebar-fix) ---- */
+/* Restore the original HR sidebar; it must not disappear after login. */
+#SB{position:fixed!important;right:0!important;left:auto!important;top:0!important;bottom:0!important;width:220px!important;height:100vh!important;z-index:2147483000!important}
+body:not(.ariba-auth-locked) #SB{display:flex!important;visibility:visible!important;opacity:1!important}
+

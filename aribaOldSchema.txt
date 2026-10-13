@@ -1,0 +1,311 @@
+-- Table order and constraints may not be valid for execution.
+CREATE TABLE public.leave_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  emp_id text NOT NULL,
+  type text NOT NULL,
+  from_date date NOT NULL,
+  to_date date NOT NULL,
+  days integer NOT NULL,
+  notes text,
+  status text DEFAULT 'pending'::text,
+  mgr_status text DEFAULT 'pending'::text,
+  mgr_notes text,
+  mgr_at timestamp with time zone,
+  hr_status text DEFAULT 'pending'::text,
+  hr_notes text,
+  hr_at timestamp with time zone,
+  ceo_status text DEFAULT 'pending'::text,
+  ceo_notes text,
+  ceo_at timestamp with time zone,
+  manager_id text,
+  rejected_by text,
+  rejected_reason text,
+  doc_attachment text,
+  is_financial boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  workflow_request_id uuid UNIQUE,
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT leave_requests_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.attendance (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  emp_id text NOT NULL,
+  date date NOT NULL,
+  time_in time without time zone,
+  time_out time without time zone,
+  location_id text,
+  location_name text,
+  lat numeric,
+  lng numeric,
+  status text DEFAULT 'present'::text,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  late_minutes integer,
+  early_minutes integer,
+  CONSTRAINT attendance_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.permissions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  emp_id text NOT NULL,
+  type text NOT NULL,
+  date date NOT NULL,
+  time time without time zone,
+  dur numeric DEFAULT 1,
+  notes text,
+  status text DEFAULT 'pending'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT permissions_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.employee_directory (
+  employee_id text NOT NULL,
+  username text NOT NULL UNIQUE,
+  name_ar text NOT NULL,
+  name_en text,
+  employer text,
+  department text,
+  job_title text,
+  nationality text,
+  iqama_no text,
+  dob date,
+  join_date date,
+  manager_id text,
+  active boolean NOT NULL DEFAULT true,
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT employee_directory_pkey PRIMARY KEY (employee_id)
+);
+CREATE TABLE public.ariba_auth_accounts (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  username text NOT NULL UNIQUE,
+  password_hash text NOT NULL,
+  role text NOT NULL CHECK (role = ANY (ARRAY['employee'::text, 'manager'::text, 'hr'::text, 'ceo'::text, 'admin'::text, 'finance'::text])),
+  employee_id text,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  must_change boolean NOT NULL DEFAULT false,
+  CONSTRAINT ariba_auth_accounts_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_sessions (
+  token uuid NOT NULL DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL,
+  employee_id text,
+  role text NOT NULL,
+  expires_at timestamp with time zone NOT NULL DEFAULT (now() + '08:00:00'::interval),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_sessions_pkey PRIMARY KEY (token),
+  CONSTRAINT ariba_sessions_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.ariba_auth_accounts(id)
+);
+CREATE TABLE public.workflow_requests (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  employee_id text NOT NULL,
+  request_type text NOT NULL,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  manager_id text,
+  hr_id text NOT NULL DEFAULT '40'::text,
+  ceo_id text NOT NULL DEFAULT '86'::text,
+  current_stage text NOT NULL DEFAULT 'manager'::text CHECK (current_stage = ANY (ARRAY['manager'::text, 'hr'::text, 'ceo'::text, 'employee'::text, 'completed'::text, 'rejected'::text])),
+  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  completed_at timestamp with time zone,
+  rejected_at timestamp with time zone,
+  rejection_reason text,
+  CONSTRAINT workflow_requests_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.workflow_actions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  request_id uuid NOT NULL,
+  actor_employee_id text,
+  actor_account_id uuid,
+  stage text NOT NULL,
+  action text NOT NULL CHECK (action = ANY (ARRAY['submitted'::text, 'approved'::text, 'rejected'::text])),
+  comment text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT workflow_actions_pkey PRIMARY KEY (id),
+  CONSTRAINT workflow_actions_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.workflow_requests(id),
+  CONSTRAINT workflow_actions_actor_account_id_fkey FOREIGN KEY (actor_account_id) REFERENCES public.ariba_auth_accounts(id)
+);
+CREATE TABLE public.workflow_notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  recipient_employee_id text NOT NULL,
+  request_id uuid,
+  title text NOT NULL,
+  body text NOT NULL,
+  stage text,
+  kind text NOT NULL DEFAULT 'workflow'::text,
+  is_read boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  read_at timestamp with time zone,
+  CONSTRAINT workflow_notifications_pkey PRIMARY KEY (id),
+  CONSTRAINT workflow_notifications_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.workflow_requests(id)
+);
+CREATE TABLE public.work_locations (
+  id text NOT NULL,
+  name text NOT NULL,
+  name_en text,
+  employer text NOT NULL DEFAULT 'all'::text,
+  type text NOT NULL DEFAULT 'project'::text,
+  latitude double precision NOT NULL,
+  longitude double precision NOT NULL,
+  radius_m integer NOT NULL DEFAULT 200 CHECK (radius_m >= 10 AND radius_m <= 5000),
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT work_locations_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.employee_payrolls (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  employee_id text NOT NULL,
+  pay_year integer NOT NULL,
+  pay_month integer NOT NULL CHECK (pay_month >= 1 AND pay_month <= 12),
+  approved boolean NOT NULL DEFAULT false,
+  approved_at timestamp with time zone,
+  payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT employee_payrolls_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_documents (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  employee_id text NOT NULL,
+  request_id uuid,
+  document_type text NOT NULL,
+  file_name text NOT NULL,
+  mime_type text NOT NULL DEFAULT 'application/octet-stream'::text,
+  file_size integer NOT NULL DEFAULT 0,
+  file_data bytea NOT NULL,
+  uploaded_by text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_documents_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_preview_pages (
+  slug text NOT NULL,
+  html text NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_preview_pages_pkey PRIMARY KEY (slug)
+);
+CREATE TABLE public.public_holidays (
+  id text NOT NULL,
+  name text NOT NULL,
+  name_en text,
+  holiday_date date NOT NULL,
+  days integer NOT NULL DEFAULT 1,
+  recurring boolean NOT NULL DEFAULT false,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT public_holidays_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.payroll_archives_v2 (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  pay_year integer NOT NULL,
+  pay_month integer NOT NULL,
+  approved boolean NOT NULL DEFAULT false,
+  approved_at text,
+  rows jsonb NOT NULL DEFAULT '[]'::jsonb,
+  saved_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT payroll_archives_v2_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_password_resets (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamp with time zone NOT NULL,
+  used_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_password_resets_pkey PRIMARY KEY (id),
+  CONSTRAINT ariba_password_resets_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.ariba_auth_accounts(id)
+);
+CREATE TABLE public.ariba_bootstrap_recovery (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL,
+  code_hash text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  used_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_bootstrap_recovery_pkey PRIMARY KEY (id),
+  CONSTRAINT ariba_bootstrap_recovery_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.ariba_auth_accounts(id)
+);
+CREATE TABLE public.employee_termination_archive (
+  employee_id text NOT NULL,
+  source_file text NOT NULL DEFAULT 'المنتهية خدماتهم (1).xlsx'::text,
+  source_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  imported_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT employee_termination_archive_pkey PRIMARY KEY (employee_id)
+);
+CREATE TABLE public.ariba_employee_master_state (
+  id boolean NOT NULL DEFAULT true,
+  source_version text NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_employee_master_state_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.company_settings (
+  id text NOT NULL DEFAULT 'default'::text,
+  work_start time without time zone NOT NULL DEFAULT '08:00:00'::time without time zone,
+  tolerance_minutes integer NOT NULL DEFAULT 15,
+  remote_days_per_year integer NOT NULL DEFAULT 10,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  shift_duration_minutes integer NOT NULL DEFAULT 480,
+  flexible_enabled boolean NOT NULL DEFAULT false,
+  shift_hours numeric NOT NULL DEFAULT 8,
+  flex_window_start time without time zone NOT NULL DEFAULT '08:00:00'::time without time zone,
+  flex_window_end time without time zone NOT NULL DEFAULT '17:00:00'::time without time zone,
+  CONSTRAINT company_settings_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_backup_v106_duplicates (
+  employee_id text NOT NULL,
+  removed jsonb,
+  backed_up_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT ariba_backup_v106_duplicates_pkey PRIMARY KEY (employee_id)
+);
+CREATE TABLE public.ariba_backup_v116_cleanup (
+  id bigint NOT NULL DEFAULT nextval('ariba_backup_v116_cleanup_id_seq'::regclass),
+  kind text,
+  ref text,
+  before jsonb,
+  at timestamp with time zone DEFAULT now(),
+  CONSTRAINT ariba_backup_v116_cleanup_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_function_backups (
+  id bigint NOT NULL DEFAULT nextval('ariba_function_backups_id_seq'::regclass),
+  fn text NOT NULL,
+  def text NOT NULL,
+  note text,
+  saved_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_function_backups_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_app_settings (
+  key text NOT NULL,
+  value jsonb NOT NULL,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_by text,
+  CONSTRAINT ariba_app_settings_pkey PRIMARY KEY (key)
+);
+CREATE TABLE public.ariba_deleted_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  kind text NOT NULL,
+  ref_id text,
+  employee_id text,
+  snapshot jsonb NOT NULL,
+  deleted_by text,
+  deleted_by_role text,
+  deleted_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT ariba_deleted_items_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.ariba_audit_log (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  at timestamp with time zone NOT NULL DEFAULT now(),
+  actor_employee_id text,
+  actor_username text,
+  actor_name text,
+  actor_role text,
+  module text NOT NULL,
+  action text NOT NULL,
+  entity_type text,
+  entity_id text,
+  entity_name text,
+  summary text,
+  details jsonb,
+  CONSTRAINT ariba_audit_log_pkey PRIMARY KEY (id)
+);

@@ -1,0 +1,15 @@
+
+/* Keep the HR navigation completely hidden until HR authentication succeeds. */
+body.ariba-auth-locked #SB,
+body.ariba-auth-locked .sb,
+body.ariba-auth-locked #aribaGlobalSidebarToggle,
+body.ariba-auth-locked #aribaEmployeeAppLink {
+  display:none !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+}
+body.ariba-auth-locked .app {
+  margin:0 !important;
+  width:100vw !important;
+}
+#LG { z-index:2147483647 !important; }

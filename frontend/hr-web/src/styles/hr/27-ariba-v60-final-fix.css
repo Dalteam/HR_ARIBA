@@ -1,0 +1,5 @@
+/* ---- prototype style block #31 (ariba-v60-final-fix) ---- */
+#ARIBA_MASTER_LISTS{margin-top:12px}.ariba-list-box{border:1px solid var(--bd);border-radius:10px;padding:10px;background:var(--c2)}
+.ariba-list-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--bd)}
+.ariba-list-row:last-child{border-bottom:0}.ariba-list-row span{flex:1;min-width:120px;font-size:11px}
+

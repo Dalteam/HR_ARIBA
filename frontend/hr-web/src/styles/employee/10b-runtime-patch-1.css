@@ -1,0 +1,21 @@
+/* ---- runtime patches injected by the prototype (profile + salary blocks) ---- */
+.profile-hero{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;background:var(--c2);margin-bottom:12px}
+.profile-avatar{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--gr);color:#fff;font-size:30px;font-weight:800;flex:0 0 auto;overflow:hidden}
+.profile-avatar img{width:100%;height:100%;object-fit:cover}
+.profile-name{font-size:17px;font-weight:800;line-height:1.5}
+.profile-en{font-size:11px;color:var(--mu);margin-top:2px}
+.profile-job{font-size:12px;font-weight:700;margin-top:6px}
+.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.profile-info{padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--c2);min-width:0}
+.profile-info span{display:block;font-size:10px;color:var(--mu);margin-bottom:4px}
+.profile-info b{display:block;font-size:12px;overflow-wrap:anywhere}
+.hr-pay-row{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid rgba(36,48,68,.25);font-size:12px}
+.hr-pay-row span{color:var(--mu)}
+.hr-pay-row b{font-weight:700}
+.hr-pay-total{margin-top:6px;border-top:1px solid var(--bd);font-size:13px}
+.hr-pay-total b{color:var(--gr)}
+.hr-pay-ded b{color:var(--rd)}
+.hr-pay-net{border-bottom:0;margin-top:4px;padding-top:12px;font-size:16px;font-weight:800}
+.hr-pay-net b{color:var(--cy);font-size:17px}
+.hr-pay-card{overflow:hidden}
+

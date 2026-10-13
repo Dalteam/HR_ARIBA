@@ -1,0 +1,4 @@
+/* ---- prototype style block #9 (ariba-silent-refresh-v19) ---- */
+/* Keep the old employee UI visually stable during background synchronization. */
+#appContent{contain:layout style;}
+

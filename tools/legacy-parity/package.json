@@ -1,0 +1,12 @@
+{
+  "name": "ariba-legacy-parity",
+  "private": true,
+  "description": "Runs the legacy HR portal (frontend/legacy/hr-portal) in jsdom and checks the HR site's calc modules give identical results on synthetic inputs. `npm test` checks; `npm run fixtures` refreshes backend/tests_canonical/fixtures.",
+  "scripts": {
+    "test": "node run.js",
+    "fixtures": "node run.js --write-fixtures"
+  },
+  "dependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

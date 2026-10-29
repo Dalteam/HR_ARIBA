@@ -111,6 +111,13 @@ def _lookup_id(db: Session, table_name: str, value: Any) -> int | None:
         ON CONFLICT(name) DO UPDATE SET name=EXCLUDED.name RETURNING id"""), {"name": name})
 
 
+def _blank_to_none(value: Any) -> Any:
+    """Forms send "" for a cleared field; store NULL so optional foreign keys stay valid."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
 def _require_lookup(db: Session, lookup: str, value: str | None, label: str) -> None:
     columns = {"roles": "code", "leave_types": "code", "permission_types": "code", "document_types": "code",
                "workflow_request_types": "code"}
@@ -391,9 +398,12 @@ def refresh(body: dict[str, Any], db: Session = Depends(get_db)):
         raise ApiError(401, "session_expired", "Your session has expired. Please sign in again.")
     now = datetime.now(UTC)
     maximum = current["created_at"] + timedelta(hours=SESSION_MAX_HOURS)
-    expires_at = min(now + timedelta(hours=SESSION_HOURS), maximum)
-    if expires_at <= current["expires_at"] + timedelta(minutes=1):
+    if maximum <= now:
         raise ApiError(401, "session_expired", "Your session has reached its maximum lifetime")
+    expires_at = min(now + timedelta(hours=SESSION_HOURS), maximum)
+    if expires_at <= current["expires_at"]:
+        # Refreshing right after sign-in must be harmless: hand back tokens for the session as it stands.
+        return _session_tokens(db, account, uuid.UUID(str(claims["sid"])), current["expires_at"])
     db.execute(text("UPDATE public.ariba_sessions SET expires_at=:expires WHERE token=:sid"),
                {"expires": expires_at, "sid": claims["sid"]})
     result = _session_tokens(db, account, uuid.UUID(str(claims["sid"])), expires_at)
@@ -586,7 +596,7 @@ def create_employee(body: dict[str, Any], request: Request, actor: dict[str, Any
         employer_id=_lookup_id(db, "employers", top.get("employer")),
         department_id=_lookup_id(db, "departments", top.get("department")),
         job_title_id=_lookup_id(db, "job_titles", top.get("job_title")),
-        **{k: top.get(k) for k in ("name_ar", "name_en", "nationality", "iqama_no", "dob", "join_date", "manager_id")})
+        **{k: _blank_to_none(top.get(k)) for k in ("name_ar", "name_en", "nationality", "iqama_no", "dob", "join_date", "manager_id")})
     row = _row(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} WHERE d.employee_id=:id", id=emp_no)
     _write_audit(db, actor, request, "employees", "create", "employee", emp_no)
     db.commit()
@@ -610,6 +620,8 @@ def update_employee(employee_id: str, body: dict[str, Any], request: Request, ac
         column = lookup_columns.get(field, field)
         if field in lookup_columns:
             params[column] = _lookup_id(db, lookup_columns[field].removesuffix("_id") + "s", value)
+        else:
+            params[column] = _blank_to_none(value)
         sets.append(f"{column}=:{column}")
     if renewed:
         sets.append("active=true")
@@ -668,7 +680,7 @@ def salary_preview(body: dict[str, Any], actor: dict[str, Any] = Depends(current
 @router.post("/employees/{employee_id}/dependents")
 @router.patch("/dependents/{dependent_id}")
 @router.delete("/dependents/{dependent_id}")
-def dependents_unavailable(*args: Any, **kwargs: Any):
+def dependents_unavailable(employee_id: str | None = None, dependent_id: str | None = None):
     raise ApiError(501, "feature_unavailable", "Dependents are not represented in the canonical schema")
 
 
@@ -1381,16 +1393,6 @@ def _apply_forgot_punch(db: Session, item: dict[str, Any]) -> None:
     cs = _row(db, "SELECT * FROM public.company_settings WHERE id='default'") or {}
     note, eid = " | أُضيفت بطلب نسيان بصمة معتمد من الموارد البشرية", item["employee_id"]
     first = lambda: _row(db, "SELECT * FROM public.attendance WHERE employee_id=:e AND date=:d ORDER BY time_in ASC NULLS LAST, created_at ASC LIMIT 1", e=eid, d=day)  # noqa: E731
-    def refresh_last_early() -> None:
-        first_row = first()
-        last_row = _row(db, "SELECT * FROM public.attendance WHERE employee_id=:e AND date=:d ORDER BY time_in DESC NULLS LAST,created_at DESC LIMIT 1", e=eid, d=day)
-        if not first_row or not last_row:
-            return
-        early = (_punch_early(cs, first_row["time_in"], int(first_row.get("late_minutes") or 0), last_row["time_out"])
-                 if first_row.get("time_in") and last_row.get("time_out") else 0)
-        db.execute(text("UPDATE public.attendance SET early_minutes=:early WHERE id=:id"), {"early": early, "id": last_row["id"]})
-        if first_row["id"] != last_row["id"]:
-            db.execute(text("UPDATE public.attendance SET early_minutes=0 WHERE id=:id"), {"id": first_row["id"]})
     insert = """INSERT INTO public.attendance(employee_id,date,time_in,time_out,status,notes,late_minutes,early_minutes)
         VALUES(:e,:d,:t1,:t2,:st,:n,:late,:early)"""
     if kind == "in":
@@ -1402,7 +1404,6 @@ def _apply_forgot_punch(db: Session, item: dict[str, Any]) -> None:
             early = _punch_early(cs, t1, late, a["time_out"]) if a["time_out"] else a["early_minutes"]
             db.execute(text("UPDATE public.attendance SET time_in=:t,late_minutes=:late,status=:st,early_minutes=:early,notes=coalesce(notes,'')||:n WHERE id=:id"),
                        {"t": t1, "late": late, "st": "late" if late else "present", "early": early, "n": note, "id": a["id"]})
-        refresh_last_early()
     elif kind == "out":
         a = _row(db, "SELECT * FROM public.attendance WHERE employee_id=:e AND date=:d ORDER BY time_in DESC NULLS LAST, created_at DESC LIMIT 1", e=eid, d=day)
         if not a:
@@ -1412,7 +1413,6 @@ def _apply_forgot_punch(db: Session, item: dict[str, Any]) -> None:
             early = _punch_early(cs, a["time_in"], int(a["late_minutes"] or 0), t1) if a["time_in"] else 0
             db.execute(text("UPDATE public.attendance SET time_out=:t,early_minutes=:early,notes=coalesce(notes,'')||:n WHERE id=:id"),
                        {"t": t1, "early": early, "n": note, "id": a["id"]})
-        refresh_last_early()
     else:
         if not t2:
             return
@@ -1426,7 +1426,6 @@ def _apply_forgot_punch(db: Session, item: dict[str, Any]) -> None:
                 late = a["late_minutes"] if a["late_minutes"] is not None else _punch_late(cs, t1)
             db.execute(text("UPDATE public.attendance SET time_in=:t1,time_out=:t2,late_minutes=:late,status=:st,early_minutes=:early,notes=coalesce(notes,'')||:n WHERE id=:id"),
                        {"t1": t1, "t2": t2, "late": late, "st": "late" if late else "present", "early": _punch_early(cs, t1, late, t2), "n": note, "id": a["id"]})
-        refresh_last_early()
 
 
 def _override(db: Session, actor: dict[str, Any], item: dict[str, Any], reason: str | None) -> None:
@@ -1610,9 +1609,8 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
     manager = emp.get("manager_id") or None
     stages = _stages(t, bool(manager))
     stage = stages[0]
-    for configured_stage in stages:
-        if configured_stage in {"hr", "ceo"}:
-            _require_stage_approver(db, configured_stage)
+    # Legacy V115 never blocks a submission because an approver is not configured yet: it notifies whoever holds the
+    # next stage (the manager from the directory, then the configured HR/CEO accounts) and the request waits there.
     row = _row(db, """INSERT INTO public.workflow_requests(employee_id,request_type,payload,current_stage)
         VALUES(:eid,:type,CAST(:payload AS jsonb),:stage) RETURNING *""",
         eid=eid, type=t, payload=json.dumps(payload, ensure_ascii=False), stage=stage)
@@ -1631,7 +1629,7 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
             {"eid": eid, "type": t, "date": request_date, "time": payload.get("time"), "dur": payload.get("dur"),
              "notes": notes, "rid": row["id"]})
     if t == "forgot_punch":
-        for h in _require_stage_approver(db, "hr"):
+        for h in _stage_people(db, "hr"):
             _insert_notification(db, h, row["id"], "طلب نسيان بصمة", "يوجد طلب نسيان بصمة بانتظار موافقتك", "hr", "request")
     elif stage == "manager":
         _insert_notification(db, manager, row["id"], "طلب جديد", "يوجد طلب جديد من الموظف بانتظار موافقتك", "manager", "request")
@@ -1640,7 +1638,7 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
     if stage == "hr" and t != "forgot_punch":  # legacy: no manager → the employee is told it went to HR
         _insert_notification(db, eid, row["id"], "طلب جديد", "تم إرسال طلبك إلى الموارد البشرية", "hr", "request")
     if stage == "manager":  # V115: HR hears of every new request (it can approve on the manager's behalf)
-        for h in _require_stage_approver(db, "hr"):
+        for h in _stage_people(db, "hr"):
             if h not in {eid, manager}:
                 _insert_notification(db, h, row["id"], f"طلب جديد من {emp.get('name_ar') or eid}",
                                      "الطلب بانتظار المدير المباشر — تقدر تعتمده بالنيابة عنه من طلبات الموظفين", "hr", "request")
@@ -2203,13 +2201,20 @@ def _law_note(db: Session, row: dict[str, Any], f: date | None, days: int) -> st
     return None
 
 
+def _derived_status(row: dict[str, Any]) -> str:
+    """workflow_requests.status is fully determined by current_stage — it is a generated column in the normalized
+    database (docs/db-normalization/ariba_normalization.sql), so it is derived from the stage rather than re-read
+    from a row this request just moved."""
+    return {"completed": "approved", "rejected": "rejected"}.get(row.get("current_stage") or "", "pending")
+
+
 def _workflow_out(db: Session, row: dict[str, Any]) -> dict[str, Any]:
     payload = row.get("payload") or {}
     leave = _row(db, "SELECT * FROM public.leave_requests WHERE workflow_request_id=:id", id=row["id"])
     employee = _row(db, "SELECT name_ar FROM public.employee_directory WHERE employee_id=:id", id=row["employee_id"])
     rejected = _row(db, "SELECT comment FROM public.workflow_actions WHERE request_id=:id AND action='rejected' ORDER BY created_at DESC LIMIT 1", id=row["id"])
     return {"id": str(row["id"]), "employee_id": row["employee_id"], "employee_name": (employee or {}).get("name_ar", ""),
-            "type": row["request_type"], "status": row["status"], "stage": row["current_stage"],
+            "type": row["request_type"], "status": _derived_status(row), "stage": row["current_stage"],
             "from_date": (leave or {}).get("from_date") or payload.get("from"), "to_date": (leave or {}).get("to_date") or payload.get("to"),
             "days": (leave or {}).get("days") or payload.get("days"), "on_date": payload.get("date"),
             "time_from": payload.get("time"), "time_to": payload.get("time2"), "hours": payload.get("hours") or payload.get("dur"),
@@ -2347,7 +2352,7 @@ def hr_delete_request(request_id: uuid.UUID, request: Request, actor: dict[str, 
     if not row:
         raise ApiError(404, "not_found", "Request not found")
     snapshot = _row(db, """SELECT jsonb_build_object('request',to_jsonb(r),'leave',coalesce((SELECT jsonb_agg(to_jsonb(l)) FROM public.leave_requests l WHERE l.workflow_request_id=r.id),'[]'::jsonb),
-        'documents',coalesce((SELECT jsonb_agg(jsonb_build_object('id',d.id,'document_type',d.document_type,'file_name',d.file_name,'mime_type',d.mime_type,'file_size',d.file_size,'file_data',encode(d.file_data,'base64')) FROM public.ariba_documents d WHERE d.request_id=r.id),'[]'::jsonb)) AS snapshot
+        'documents',coalesce((SELECT jsonb_agg(jsonb_build_object('id',d.id,'document_type',d.document_type,'file_name',d.file_name,'mime_type',d.mime_type,'file_size',d.file_size,'file_data',encode(d.file_data,'base64'))) FROM public.ariba_documents d WHERE d.request_id=r.id),'[]'::jsonb)) AS snapshot
         FROM public.workflow_requests r WHERE r.id=:id""", id=request_id)
     db.execute(text("INSERT INTO public.ariba_deleted_items(kind,ref_id,employee_id,snapshot,deleted_by,deleted_by_role) VALUES('workflow_request',:id,:eid,CAST(:snapshot AS jsonb),:actor,:role)"),
                {"id": str(request_id), "eid": row["employee_id"], "snapshot": json.dumps(snapshot["snapshot"], default=str), "actor": actor.get("employee_id"), "role": actor["role"]})

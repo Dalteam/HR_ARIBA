@@ -35,5 +35,14 @@ supabase_*.sql
 logs/
 # Exception: schema + legacy function code (no data) for the parity tests
 !tools/legacy-parity/sql/*.sql
+# Exception: the Railway migration scripts are DDL, lookups and reference data only - no employee
+# records and no documents. run_on_railway.sh needs them to be in the repo.
+!docs/db-normalization/*.sql
+!docs/db-migrations/*.sql
 
 *.bak
+
+# Local scratch written by the rebuild / smoke / verification tooling (never commit)
+/_*.txt
+/_*.json
+/_*.log

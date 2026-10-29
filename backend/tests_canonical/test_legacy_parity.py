@@ -36,7 +36,7 @@ SQL = Path(__file__).resolve().parents[2] / "tools" / "legacy-parity" / "sql"
 
 # --------------------------------------------------------------------------- part 1: legacy HTML golden values
 def test_contract_end_matches_legacy_add_months_safe():
-    rows = json.loads((FIXTURES / "legacy_add_months_safe.json").read_text())
+    rows = json.loads((FIXTURES / "legacy_add_months_safe.json").read_text(encoding="utf-8"))
     bad = [(s, n, want) for s, n, want in rows if fixed_term_end(date.fromisoformat(s), n).isoformat() != want]
     assert not bad, f"{len(bad)}/{len(rows)} differ, e.g. {bad[:3]}"
 
@@ -51,7 +51,7 @@ def test_contract_end_on_save_follows_sEmp():
 
 
 def test_gosi_exemption_matches_legacy_kind_of():
-    rows = json.loads((FIXTURES / "legacy_ins_kind.json").read_text())
+    rows = json.loads((FIXTURES / "legacy_ins_kind.json").read_text(encoding="utf-8"))
     bad = []
     for wps, job, dep, emp, typ, cat, want in rows:
         got = exempt_kind(wps_type=WpsType(wps), job_title=job, department=dep, workplace=emp, emp_type=typ, excel_category=cat)
@@ -75,9 +75,13 @@ def test_round_half_up_is_postgres_numeric_rounding():
 
 
 # --------------------------------------------------------------------------- part 2: legacy SQL functions
-# This fixture is intentionally pre-normalization. Its SQL routines reference old columns such as
+# This fixture is intentionally pre-normalization: its SQL routines reference old columns such as
 # attendance.emp_id/location_name, workflow_requests manager/approver fields, and leave approval flags.
-# The live canonical API has Python equivalents; do not migrate this fixture to the new schema.
+# parity_bridge.sql only *adds* the normalized references our code reads (employer/department/job title ids,
+# attendance.employee_id, workflow_approvers, company_settings.shift_duration_minutes) and derives them from the
+# legacy columns, so the legacy functions stay untouched and both implementations run side by side.
+# Where the normalization replaced a column with a derivation (workflow_requests.status, the leave approval flags,
+# is_read, the hr_override_* action labels, attendance.location_name) the comparisons read the normalized form.
 _LEGACY_FUNCS = ("ariba_point_in_polygon", "ariba_employee_location_ids", "ariba_punch_late", "ariba_punch_early",
                  "ariba_attendance", "ariba_leave_calc", "ariba_submit_request", "ariba_apply_forgot_punch", "ariba_workflow_action",
                  "ariba_can", "ariba_hr_override_workflow", "ariba_hr_final_approve", "ariba_delete_request")
@@ -104,6 +108,9 @@ def legacy_db():
                             "CREATE TABLE public.parity_sessions(token uuid PRIMARY KEY, account_id uuid, employee_id text, role text);"
                             "CREATE FUNCTION public.ariba_session_row(p_token uuid) RETURNS TABLE(account_id uuid, employee_id text, role text)"
                             " LANGUAGE sql AS $$ SELECT account_id, employee_id, role FROM public.parity_sessions WHERE token=p_token $$;")
+                # The bridge that lets our code (which reads the normalized references) run on this pre-normalization
+                # fixture: the legacy text columns stay authoritative, the normalized ids/rows are derived from them.
+                cur.execute((SQL / "parity_bridge.sql").read_text())
                 for f in _LEGACY_FUNCS:
                     cur.execute((SQL / f"{f}.sql").read_text())
         yield eng
@@ -145,6 +152,17 @@ def _session(db: Session, eid: str, role: str = "employee") -> uuid.UUID:
     return tok
 
 
+def _account(db: Session, eid: str, role: str = "employee") -> str:
+    """The employee's auth account id. The normalized workflow_actions keeps the actor *account* (actor_account_id,
+    NOT NULL after the migration), so every actor our routes record needs one."""
+    found = db.execute(text("SELECT id FROM public.ariba_auth_accounts WHERE employee_id=:e"), {"e": eid}).scalar()
+    if found:
+        return str(found)
+    return str(db.execute(text("INSERT INTO public.ariba_auth_accounts(username,password_hash,role,employee_id) "
+                               "VALUES(:u,'x',:r,:e) RETURNING id"),
+                          {"u": f"acc{eid}", "r": role, "e": eid}).scalar())
+
+
 def _legacy(db: Session, sql: str, **kw: Any) -> tuple[Any, str | None]:
     """Call a legacy function inside a savepoint; (result, None) or (None, the raised message)."""
     sp = db.begin_nested()
@@ -169,6 +187,21 @@ def _ours(db: Session, fn) -> tuple[Any, str | None]:
     finally:
         s.close()
         sp.rollback()
+
+
+# The normalized database does not store a status, a per-stage approval flag or an "is_read": workflow_requests.status is a
+# generated column over current_stage, the leave approval flags come from the workflow_actions rows (see leave_requests_v in
+# docs/db-normalization/ariba_normalization.sql), 'hr_override_<stage>' labels are rewritten to '<stage>', and unread means
+# read_at IS NULL. The fixture is read the same way so both implementations are compared on the normalized shape.
+_DERIVED_STATUS = ("case current_stage when 'completed' then 'approved' when 'rejected' then 'rejected' "
+                   "else 'pending' end")
+
+
+def _stage_status(s: Session, rid: Any) -> tuple[str, str, str]:
+    """The per-stage approval (manager, hr, ceo) derived from the workflow_actions rows."""
+    latest = dict(s.execute(text("SELECT replace(stage,'hr_override_',''),action FROM public.workflow_actions "
+                                 "WHERE request_id=:r ORDER BY created_at"), {"r": rid}).all())
+    return tuple(latest.get(st, "pending") for st in ("manager", "hr", "ceo"))
 
 
 POLYGONS = [
@@ -242,6 +275,8 @@ def test_late_and_early_minutes_match_legacy(db, cs):
     _exec(db, f"INSERT INTO public.company_settings(id,{cols}) VALUES('default',{','.join(':' + k for k in cs)})", **cs)
     full = {"work_start": time(8), "tolerance_minutes": 15, "flexible_enabled": False, "shift_hours": 8,
             "flex_window_start": time(8), "flex_window_end": time(17)} | cs
+    # the normalized settings row keeps the shift as minutes (shift_hours is the legacy form of the same length)
+    full["shift_duration_minutes"] = round(float(full["shift_hours"]) * 60)
     rng = random.Random(3)
     times = [time(h, m, s) for h in range(6, 20) for m in (0, 14, 15, 16, 29, 30, 31, 59) for s in (0, 29, 30, 31)]
     bad = []
@@ -329,6 +364,7 @@ def test_new_request_notifications_match_legacy_submit_request(db):
     _employee(db, "601", manager="86")
     _employee(db, "602", manager="40")  # HR is the manager: notified once, as manager
     _employee(db, "603")  # no manager: straight to HR
+    accounts = {eid: _account(db, eid) for eid in ("601", "602", "603")}
     cases = [("sick", {"from": "2026-11-01", "to": "2026-11-02", "notes": "x"}), ("advance", {"amount": 500, "notes": "x"}),
              ("forgot_punch", {"kind": "in", "date": "2026-10-08", "time": "08:00", "notes": "x"})]
     body = lambda t, p: {"type": t, **p, "from_date": p.get("from"), "to_date": p.get("to")}  # noqa: E731
@@ -343,13 +379,14 @@ def test_new_request_notifications_match_legacy_submit_request(db):
             want = (out["current_stage"], notes(out["request_id"]))
             sp.rollback()
             def submit(s: Session, t=t, p=p, eid=eid):
-                res = c.submit_request(body(t, p), _Req(), {"employee_id": eid, "role": "employee"}, s)
+                actor = {"employee_id": eid, "role": "employee", "account_id": accounts[eid]}
+                res = c.submit_request(body(t, p), _Req(), actor, s)
                 stage = s.execute(text("SELECT current_stage FROM public.workflow_requests WHERE id=:r"), {"r": res["id"]}).scalar()
                 return stage, sorted((r[0], r[1]) for r in s.execute(
                     text("SELECT recipient_employee_id,stage FROM public.workflow_notifications WHERE request_id=:r"), {"r": res["id"]}))
             got, err = _ours(db, submit)
             if got != want:
-                bad.append((eid, t, want, got))
+                bad.append((eid, t, want, got, err))
     assert not bad, bad
 
 
@@ -361,6 +398,7 @@ def test_approval_flow_matches_legacy_workflow_action(db):
         _exec(db, "INSERT INTO public.ariba_auth_accounts(username,password_hash,role,employee_id) VALUES(:u,'x',:r,:e)", u=f"u{eid}", r=role, e=eid)
     _employee(db, "610", manager="87")
     _exec(db, "INSERT INTO public.company_settings(id) VALUES('default')")
+    accounts = {eid: _account(db, eid, role) for eid, role in (("40", "hr"), ("86", "ceo"), ("87", "manager"), ("610", "employee"))}
     payloads = {"annual": {"from": "2026-11-01", "to": "2026-11-02"}, "sick": {"from": "2026-11-01", "to": "2026-11-02"},
                 "permission": {"date": "2026-11-03", "time": "10:00", "dur": 2}, "early_leave": {"date": "2026-11-03", "time": "14:00", "dur": 1},
                 "overtime": {"date": "2026-11-03", "hours": 2}, "mission": {"from": "2026-11-04", "to": "2026-11-05"},
@@ -368,10 +406,9 @@ def test_approval_flow_matches_legacy_workflow_action(db):
     approvers = {"manager": ("87", "manager"), "hr": ("40", "hr"), "ceo": ("86", "ceo")}
 
     def state(s: Session, rid: Any) -> tuple:
-        r = s.execute(text("SELECT current_stage,status FROM public.workflow_requests WHERE id=:r"), {"r": rid}).one()
-        lr = s.execute(text("SELECT status,mgr_status,hr_status,ceo_status FROM public.leave_requests WHERE workflow_request_id=:r"), {"r": rid}).one_or_none()
+        r = s.execute(text(f"SELECT current_stage,{_DERIVED_STATUS} AS status FROM public.workflow_requests WHERE id=:r"), {"r": rid}).one()
         n = sorted((x[0], x[1]) for x in s.execute(text("SELECT recipient_employee_id,title FROM public.workflow_notifications WHERE request_id=:r"), {"r": rid}))
-        return tuple(r), tuple(lr) if lr else None, n
+        return tuple(r), _stage_status(s, rid), n
 
     bad = []
     for t, p in payloads.items():
@@ -392,7 +429,8 @@ def test_approval_flow_matches_legacy_workflow_action(db):
         sp.rollback()
 
         def ours(s: Session, t=t, p=p):
-            res = c.submit_request({"type": t, **p, "from_date": p.get("from"), "to_date": p.get("to"), "on_date": p.get("date")}, _Req(), {"employee_id": "610", "role": "employee"}, s)
+            res = c.submit_request({"type": t, **p, "from_date": p.get("from"), "to_date": p.get("to"), "on_date": p.get("date")}, _Req(),
+                                   {"employee_id": "610", "role": "employee", "account_id": accounts["610"]}, s)
             rid = res["id"]
             s.execute(text("INSERT INTO public.leave_requests(emp_id,type,from_date,to_date,days,status,workflow_request_id) SELECT '610',:t,'2026-11-01','2026-11-01',1,'pending',:r WHERE :t<>'forgot_punch' AND NOT EXISTS (SELECT 1 FROM public.leave_requests WHERE workflow_request_id=:r)"), {"t": t, "r": rid})
             steps = []
@@ -401,7 +439,7 @@ def test_approval_flow_matches_legacy_workflow_action(db):
                 if stage not in approvers:
                     break
                 who, role = approvers[stage]
-                c.decide_request(rid, {"action": "approve"}, _Req(), {"employee_id": who, "role": role, "account_id": None}, s)
+                c.decide_request(rid, {"action": "approve"}, _Req(), {"employee_id": who, "role": role, "account_id": accounts[who]}, s)
                 steps.append((stage,) + state(s, rid)[:2])
             return steps, state(s, rid)[2]
 
@@ -422,11 +460,12 @@ def _staff(db: Session) -> None:
 
 
 def _wf_state(s: Session, rid: Any) -> tuple:
-    r = s.execute(text("SELECT current_stage,status FROM public.workflow_requests WHERE id=:r"), {"r": rid}).one()
-    lr = s.execute(text("SELECT status,mgr_status,hr_status,ceo_status FROM public.leave_requests WHERE workflow_request_id=:r"), {"r": rid}).one_or_none()
-    n = sorted(tuple(x) for x in s.execute(text("SELECT recipient_employee_id,title,body,is_read FROM public.workflow_notifications WHERE request_id=:r"), {"r": rid}))
-    a = sorted((x[0], x[1]) for x in s.execute(text("SELECT stage,action FROM public.workflow_actions WHERE request_id=:r"), {"r": rid}))
-    return tuple(r), tuple(lr) if lr else None, n, a
+    r = s.execute(text(f"SELECT current_stage,{_DERIVED_STATUS} AS status FROM public.workflow_requests WHERE id=:r"), {"r": rid}).one()
+    n = sorted(tuple(x) for x in s.execute(text("SELECT recipient_employee_id,title,body,read_at IS NOT NULL "
+                                               "FROM public.workflow_notifications WHERE request_id=:r"), {"r": rid}))
+    a = sorted((x[0], x[1]) for x in s.execute(text("SELECT replace(stage,'hr_override_',''),action "
+                                                  "FROM public.workflow_actions WHERE request_id=:r"), {"r": rid}))
+    return tuple(r), _stage_status(s, rid), n, a
 
 
 _FP = {"kind": "in", "date": "2026-10-08", "time": "08:00", "notes": "x"}
@@ -438,6 +477,7 @@ def test_hr_override_and_final_approve_match_legacy(db, final):
     _staff(db)
     _exec(db, "INSERT INTO public.company_settings(id) VALUES('default')")
     hr_tok = _session(db, "40", "hr")
+    hr_acc = _account(db, "40", "hr")
     bad = []
     for t, p in (("annual", {"from": "2026-11-01", "to": "2026-11-02"}), ("permission", {"date": "2026-11-03", "time": "10:00", "dur": 2}),
                  ("advance", {"amount": 1000}), ("forgot_punch", _FP)):
@@ -452,13 +492,13 @@ def test_hr_override_and_final_approve_match_legacy(db, final):
             sp = db.begin_nested()
             db.execute(text(f"SELECT public.{fn}(:k,:r,NULL)"), {"k": hr_tok, "r": rid})
             want = _wf_state(db, rid)
-            want_att = db.execute(text("SELECT time_in,late_minutes,status,location_name FROM public.attendance WHERE emp_id='610'")).all()
+            want_att = db.execute(text("SELECT time_in,late_minutes,status FROM public.attendance WHERE emp_id='610'")).all()
             sp.rollback()
             route = c.hr_final_approve if final else c.hr_override_request
 
             def ours(s: Session, rid=rid, route=route):
-                route(rid, {}, _Req(), {"employee_id": "40", "role": "hr", "account_id": None}, s)
-                return _wf_state(s, rid), s.execute(text("SELECT time_in,late_minutes,status,location_name FROM public.attendance WHERE emp_id='610'")).all()
+                route(rid, {}, _Req(), {"employee_id": "40", "role": "hr", "account_id": hr_acc}, s)
+                return _wf_state(s, rid), s.execute(text("SELECT time_in,late_minutes,status FROM public.attendance WHERE emp_id='610'")).all()
 
             got, err = _ours(db, ours)
             if err or got != (want, want_att):
@@ -484,7 +524,7 @@ def test_forgot_punch_is_applied_like_legacy(db, flex):
     }
     asks = [("in", "07:30", None), ("in", "08:20", None), ("in", "09:10", None), ("out", "15:00", None), ("out", "17:30", None),
             ("both", "07:40", "16:00"), ("both", "08:50", "17:10")]
-    cols = "time_in,time_out,status,late_minutes,early_minutes,location_name,notes"
+    cols = "time_in,time_out,status,late_minutes,early_minutes,notes"  # no location_name: dropped by the normalization (the marker is in notes)
     bad = []
     for name, rows in existing.items():
         for kind, t1, t2 in asks:

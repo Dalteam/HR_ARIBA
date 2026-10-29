@@ -48,6 +48,9 @@ password. Then **delete `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD
   bypass RLS. Connect it as the `postgres` role of the Railway Postgres
   (`${{Postgres.DATABASE_URL}}`) — a restricted role makes the service refuse to start.
 - Backups: enable them on the Postgres service; the `/data` volume holds the uploaded files.
+- Sign-in after the move: the 110 migrated accounts keep their existing bcrypt hashes. The API verifies
+  bcrypt and rehashes the password to Argon2 on the first successful login, so nobody has to reset a
+  password.
 
 ## 5. The database (canonical schema)
 The backend does **not** create or migrate tables when it starts, so the canonical schema has to be in the
@@ -77,6 +80,11 @@ psql "$DATABASE_PUBLIC_URL" -v ON_ERROR_STOP=1 --single-transaction \
 
 # 4. sessions of the old server must not survive the move
 psql "$DATABASE_PUBLIC_URL" -c 'DELETE FROM public.ariba_sessions'
+
+# 5. optional but recommended: pgcrypto. Legacy sign-in (ariba_login) is deliberately disabled by
+#    the React-port migration, but the other legacy RPCs (admin password reset, recovery codes)
+#    hash with crypt()/gen_salt() and the dump carries no extension. It adds no tables or indexes.
+psql "$DATABASE_PUBLIC_URL" -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto'
 ```
 Expected afterwards: 58 tables, 60 foreign keys, 106 indexes, 106 employees — prove it with section 6.
 `ops.*` backup tables are **not** in the dump: they are migration leftovers holding copies of personal

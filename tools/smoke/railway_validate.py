@@ -117,6 +117,7 @@ def orphan_count(db: psycopg.Connection, fk: dict) -> int:
            f"AND NOT EXISTS (SELECT 1 FROM {fk['parent']} p WHERE {match})")
     return int(db.execute(sql).fetchone()[0])
 
+
 def snapshot(db: psycopg.Connection) -> dict:
     tables = public_tables(db)
     return {
@@ -157,7 +158,6 @@ def main() -> int:
         expected = json.loads(Path(args.expected).read_text(encoding="utf-8"))
         lines.insert(0, f"database validation against {Path(args.expected).name} "
                         f"(from {expected['generated_from']}), server {version}")
-
 
         # 1. the schema is there
         here = set(public_tables(db))

@@ -24,6 +24,7 @@ CANONICAL_TABLE_NAMES = frozenset(
         "ariba_bootstrap_recovery",
         "ariba_deleted_items",
         "ariba_documents",
+        "ariba_notif_files",
         "departments",
         "document_types",
         "employers",

@@ -1,5 +1,7 @@
 """App setup: middleware, CORS, security headers, error handlers, routers, startup."""
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -12,6 +14,7 @@ from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
 from app.routers import canonical, health
+from app.services import notify_email
 
 API_PREFIX = "/api/v1"
 
@@ -33,7 +36,23 @@ async def lifespan(_app: FastAPI):
                 "for this FastAPI-only test phase. Do not disable or rewrite production policies here."
             )
     configure_models(engine)
-    yield
+    # Notification e-mails: one pass now, then every NOTIFY_EMAIL_INTERVAL_SECONDS (0 = off). The sender
+    # needs NOTIFY_EMAIL_ENABLED=true *and* SMTP configured; until then this task costs nothing.
+    s = get_settings()
+    stop = asyncio.Event()
+    sender = None
+    if s.notify_email_interval_seconds > 0 and notify_email.enabled(s):
+        logging.getLogger("ariba.notify_email").info(
+            "notification e-mails every %ss through %s", s.notify_email_interval_seconds, s.smtp_host)
+        sender = asyncio.create_task(notify_email.run_forever(stop, s.notify_email_interval_seconds))
+    try:
+        yield
+    finally:
+        if sender is not None:
+            stop.set()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sender
+
 
 
 def create_app() -> FastAPI:

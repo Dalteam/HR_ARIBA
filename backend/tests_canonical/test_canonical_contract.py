@@ -20,7 +20,7 @@ from app.routers.canonical import _public_employee, _sign, _verify_password
 EXPECTED_TABLES = {
     "ariba_app_settings", "ariba_asset_custody_log", "ariba_assets", "ariba_audit_log",
     "ariba_audit_purge_requests", "ariba_auth_accounts", "ariba_bootstrap_recovery", "ariba_deleted_items",
-    "ariba_documents", "ariba_employee_master_state", "ariba_leave_tombstones", "ariba_login_attempts",
+    "ariba_documents", "ariba_notif_files", "ariba_employee_master_state", "ariba_leave_tombstones", "ariba_login_attempts",
     "ariba_password_resets", "ariba_preview_pages", "ariba_role_perms", "ariba_security_flags",
     "ariba_sessions", "attendance", "company_settings", "departments", "document_types", "employee_directory",
     "employee_payrolls", "employee_termination_archive", "employers", "job_titles", "leave_requests",

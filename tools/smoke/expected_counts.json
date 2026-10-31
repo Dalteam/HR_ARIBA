@@ -1,11 +1,11 @@
 {
  "generated_from": "ariba_src",
  "server_version": "17.11",
- "tables": 58,
- "foreign_keys": 60,
- "indexes": 106,
+ "tables": 59,
+ "foreign_keys": 61,
+ "indexes": 108,
  "row_counts": {
-  "ariba_app_settings": 9,
+  "ariba_app_settings": 11,
   "ariba_asset_custody_log": 0,
   "ariba_assets": 0,
   "ariba_audit_log": 388,
@@ -27,6 +27,7 @@
   "ariba_mail_accounts": 0,
   "ariba_mail_log": 0,
   "ariba_manager_perms": 0,
+  "ariba_notif_files": 0,
   "ariba_password_resets": 0,
   "ariba_payroll_status": 0,
   "ariba_preview_pages": 1,

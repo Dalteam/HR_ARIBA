@@ -14,12 +14,14 @@ import type { EmployeeListItem, Lookups } from "@/lib/api";
 import { getSalaryBasis, type SalaryBasisRow } from "@/lib/salary";
 import {
   addListItem,
+  getAppLinks,
   getAttendanceSettings,
   getCompany,
   getGosi,
   getSheet,
   GOSI_KEYS,
   listAccounts,
+  putAppLinks,
   putAttendanceSettings,
   putCompany,
   putGosi,
@@ -28,6 +30,7 @@ import {
   setPayrollExclusion,
   setRole,
   type Account,
+  type AppLinks,
   type AttendanceSettings,
   type Company,
   type GosiSettings,
@@ -77,6 +80,7 @@ export default function Page() {
   const [basis, setBasis] = useState<SalaryBasisRow[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [logo, setLogo] = useState<string | null>(null);
+  const [links, setLinks] = useState<AppLinks | null>(null);
   const [signer, setSigner] = useState<{ name_ar: string; title_ar: string; title_en: string; signature: string | null; stamp: string | null }>({
     name_ar: "عبد الله العنبر",
     title_ar: "مدير الموارد البشرية",
@@ -100,8 +104,9 @@ export default function Page() {
       listAccounts(),
       getSheet<string>("company_logo").catch(() => ({ data: null })),
       getSheet<typeof signer>("hr_signer").catch(() => ({ data: null })),
+      getAppLinks(),
     ])
-      .then(([c, a, g, l, p, b, acc, lg, sg]) => {
+      .then(([c, a, g, l, p, b, acc, lg, sg, al]) => {
         if (!alive) return;
         setCompany(c);
         setAtt(a);
@@ -111,6 +116,7 @@ export default function Page() {
         setBasis(b);
         setAccounts(acc);
         setLogo(lg.data);
+        setLinks(al);
         if (sg.data) setSigner((s) => ({ ...s, ...sg.data }));
         setError(null);
       })
@@ -222,6 +228,9 @@ export default function Page() {
         </div>
       </div>
 
+      {/* روابط الإشعارات — تُحفظ في ariba_app_settings['app_links'] وتُستخدم في إيميلات الجرس */}
+      <AppLinksCard key={JSON.stringify(links)} initial={links} run={run} />
+
       {/* V60 إدارة الأقسام وجهات العمل */}
       <ListsCard lookups={lookups} run={run} />
 
@@ -292,6 +301,52 @@ export default function Page() {
 }
 
 type Run = (fn: () => Promise<unknown>, ok: string) => Promise<void>;
+
+// روابط الإشعارات: أيميل الجرس بيوجّه الموارد البشرية لبوابة HR وباقي الموظفين لتطبيق الموظف.
+function AppLinksCard({ initial, run }: { initial: AppLinks | null; run: Run }) {
+  const [form, setForm] = useState<{ hr: string; emp: string; fallback: string }>(
+    initial ?? { hr: "", emp: "", fallback: "" },
+  );
+  return (
+    <div className="card" style={{ ...card, maxWidth: 900 }}>
+      <div className="ct" style={{ marginBottom: 12 }}>
+        <i className="ti ti-link" /> <span>روابط الإشعارات</span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>
+        الروابط التي تُرسل داخل إيميلات الإشعارات: الموارد البشرية تستلم رابط بوابة HR، وباقي الموظفين رابط تطبيق الموظف.
+        اتركها فارغة لاستخدام الرابط الافتراضي{form.fallback ? ` (${form.fallback})` : ""}.
+      </div>
+      <div className="fg">
+        <div>
+          <label>رابط بوابة الموارد البشرية</label>
+          <input
+            id="AL_HR"
+            value={form.hr}
+            placeholder={form.fallback}
+            onChange={(e) => setForm({ ...form, hr: e.target.value })}
+          />
+        </div>
+        <div>
+          <label>رابط تطبيق الموظف</label>
+          <input
+            id="AL_EMP"
+            value={form.emp}
+            placeholder={form.fallback}
+            onChange={(e) => setForm({ ...form, emp: e.target.value })}
+          />
+        </div>
+      </div>
+      <button
+        type="button"
+        className="btn bpl"
+        style={{ marginTop: 12 }}
+        onClick={() => run(() => putAppLinks({ hr: form.hr, emp: form.emp }), "تم حفظ الروابط")}
+      >
+        <i className="ti ti-check" /> <span>حفظ</span>
+      </button>
+    </div>
+  );
+}
 
 function ListsCard({ lookups, run }: { lookups: Lookups; run: Run }) {
   const [dep, setDep] = useState("");

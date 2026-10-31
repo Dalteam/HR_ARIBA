@@ -15,6 +15,9 @@ export const GOSI_KEYS = ["matchEmp", "matchEmp55", "matchEr", "matchEr55", "noM
 export type GosiPeriod = { date: string } & Record<(typeof GOSI_KEYS)[number], number | string>;
 export interface GosiSettings { wageCap: number | string; ageThreshold: number; effectiveRules: GosiPeriod[] }
 export interface Account { user_id: string; employee_id: string | null; name_ar: string; username: string; role: string; is_active: boolean; must_change_password: boolean }
+// Links written into the notification e-mails: HR staff get `hr`, everyone else `emp`.
+// Both may stay empty — the backend then uses PUBLIC_APP_URL (see NOTIFY e-mail settings).
+export interface AppLinks { hr: string; emp: string; fallback: string }
 
 export const getCompany = () => request<Company>("/settings/company");
 export const putCompany = (b: Company) => request<Company>("/settings/company", { method: "PUT", body: b });
@@ -32,3 +35,5 @@ export const setPayrollExclusion = (employee_id: string, exclude: boolean) =>
 
 export const getSheet = <T,>(key: string) => request<{ data: T | null }>(`/sheets/${key}`);
 export const putSheet = (key: string, data: unknown) => request<unknown>(`/sheets/${key}`, { method: "PUT", body: { data } });
+export const getAppLinks = () => request<AppLinks>("/settings/app-links");
+export const putAppLinks = (b: { hr: string; emp: string }) => request<AppLinks>("/settings/app-links", { method: "PUT", body: b });

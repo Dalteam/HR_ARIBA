@@ -337,12 +337,48 @@ def _resolve_location_id(db: Session, value: Any) -> str | None:
 
 
 def _insert_notification(db: Session, employee_id: str | None, request_id: uuid.UUID | None,
-                         title: str, body: str, stage: str, kind: str) -> None:
-    if employee_id:
-        db.execute(text("""INSERT INTO public.workflow_notifications
-            (recipient_employee_id,request_id,title,body,stage,kind)
-            VALUES (:employee_id,:request_id,:title,:body,:stage,:kind)"""),
-            {"employee_id": employee_id, "request_id": request_id, "title": title, "body": body, "stage": stage, "kind": kind})
+                         title: str, body: str, stage: str, kind: str) -> uuid.UUID | None:
+    """Queue one bell entry (and the matching e-mail) and return its id."""
+    if not employee_id:
+        return None
+    row = _row(db, """INSERT INTO public.workflow_notifications
+        (recipient_employee_id,request_id,title,body,stage,kind)
+        VALUES (:employee_id,:request_id,:title,:body,:stage,:kind) RETURNING id""",
+        employee_id=employee_id, request_id=request_id, title=title, body=body, stage=stage, kind=kind)
+    return (row or {}).get("id")
+
+
+# The PDF a letter/template is sent with (client migration 41): it hangs off the notification, so the
+# e-mail carries it. 13 MiB is the ceiling of ariba_notif_files_file_data_check.
+NOTIF_PDF_MAX_BYTES = 13 * 1024 * 1024
+
+
+def _notification_pdf(body: dict[str, Any], fallback_name: str) -> tuple[bytes | None, str]:
+    """(bytes, file name) of the optional `pdf_base64`/`pdf_name` in the request body."""
+    raw = str(body.get("pdf_base64") or "").strip()
+    name = str(body.get("pdf_name") or "").strip() or fallback_name
+    if not raw:
+        return None, name
+    if raw.startswith("data:"):
+        head, _, raw = raw.partition(",")
+        raw = raw.strip()
+        if "pdf" not in head.lower():
+            raise ApiError(422, "invalid_request", "The attachment must be a PDF")
+    try:
+        data = base64.b64decode("".join(raw.split()), validate=True)
+    except ValueError:  # binascii.Error is a ValueError: not base64 at all
+        raise ApiError(422, "invalid_request", "The PDF attachment is not valid base64")
+    if not data:
+        return None, name
+    if len(data) > NOTIF_PDF_MAX_BYTES:
+        raise ApiError(422, "file_too_large", "The PDF attachment is larger than 13 MB")
+    return data, name
+
+
+def _attach_to_notification(db: Session, notification_id: uuid.UUID | None, pdf: bytes | None, name: str) -> None:
+    if notification_id and pdf:
+        db.execute(text("""INSERT INTO public.ariba_notif_files(notification_id,file_name,mime_type,file_data)
+            VALUES (:nid,:name,'application/pdf',:data)"""), {"nid": notification_id, "name": name, "data": pdf})
 
 
 def _session_response(db: Session, account: dict[str, Any]) -> dict[str, Any]:
@@ -839,6 +875,42 @@ def _set_app_setting(db: Session, key: str, value: Any, actor: dict[str, Any] | 
     done = db.execute(text("UPDATE public.ariba_app_settings SET value=CAST(:v AS jsonb),updated_at=now(),updated_by=:by WHERE key=:k"), params)
     if not done.rowcount:
         db.execute(text("INSERT INTO public.ariba_app_settings(key,value,updated_at,updated_by) VALUES(:k,CAST(:v AS jsonb),now(),:by)"), params)
+
+
+# Links written into the notification e-mails (the client's migration 39): {"hr": …, "emp": …}.
+# Empty means "use PUBLIC_APP_URL", so the settings page can stay blank on a single-domain deploy.
+def _clean_app_link(value: Any, field: str) -> str:
+    link = str(value or "").strip()
+    if not link:
+        return ""
+    if not link.lower().startswith(("http://", "https://")) or any(c.isspace() for c in link):
+        raise ApiError(422, "invalid_link", f"{field} must be an http(s) URL")
+    return link.rstrip("/")
+
+
+def _app_links_row(db: Session) -> dict[str, Any]:
+    saved = _app_setting(db, "app_links")
+    saved = saved if isinstance(saved, dict) else {}
+    fallback = get_settings().public_app_url.rstrip("/")
+    return {"hr": str(saved.get("hr") or ""), "emp": str(saved.get("emp") or ""), "fallback": fallback}
+
+
+@router.get("/settings/app-links")
+def get_app_links(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """The links the notification e-mails point at, and the PUBLIC_APP_URL fallback."""
+    _require(actor, *HR_READ_ROLES)
+    return _app_links_row(db)
+
+
+@router.put("/settings/app-links")
+def update_app_links(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor),
+                     db: Session = Depends(get_db)):
+    _require(actor, *HR_ROLES)
+    value = {"hr": _clean_app_link(body.get("hr"), "hr"), "emp": _clean_app_link(body.get("emp"), "emp")}
+    _set_app_setting(db, "app_links", value, actor)
+    _write_audit(db, actor, request, "settings", "update", "ariba_app_settings", "app_links")
+    db.commit()
+    return _app_links_row(db)
 
 
 # GOSI settings in the legacy shape (getInsSettings). Stored in ariba_app_settings['ins_settings'];
@@ -1720,11 +1792,19 @@ def payslips(actor: dict[str, Any] = Depends(current_actor), db: Session = Depen
 
 @router.get("/me/notifications")
 def notifications(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    """The bell (V118): workflow_notifications for me + forms waiting for my answer, in the app's shape."""
+    """The bell (V118): workflow_notifications for me + forms waiting for my answer, in the app's shape.
+
+    HR/admin also see the entries addressed to the HR pool (`ariba_hr_pool()`: HR accounts, employee 40
+    and the HR approver of the workflows), so the bell keeps working when no account carries role='hr'.
+    """
     eid = actor.get("employee_id")
+    is_hr = actor.get("role") in HR_ROLES
     out = []
     for n in _rows(db, """SELECT n.*,r.status AS req_status,r.request_type FROM public.workflow_notifications n
-            LEFT JOIN public.workflow_requests r ON r.id=n.request_id WHERE n.recipient_employee_id=:e ORDER BY n.created_at DESC LIMIT 50""", e=eid):
+            LEFT JOIN public.workflow_requests r ON r.id=n.request_id
+            WHERE n.recipient_employee_id=:e
+               OR (:hr AND n.recipient_employee_id IN (SELECT public.ariba_hr_pool()))
+            ORDER BY n.created_at DESC LIMIT 50""", e=eid, hr=is_hr):
         if n["kind"] == "request":
             kind, target = "request", "team"
         else:
@@ -1739,10 +1819,13 @@ def notifications(actor: dict[str, Any] = Depends(current_actor), db: Session = 
 
 @router.post("/me/notifications/read", status_code=204)
 def mark_notifications_read(body: dict[str, Any] | None = None, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """Mark my entries read — for HR/admin also the ones the pool forwarded to them."""
     ids = (body or {}).get("ids")
+    params = {"e": actor.get("employee_id"), "hr": actor.get("role") in HR_ROLES}
+    pool = """recipient_employee_id=:e
+              OR (:hr AND recipient_employee_id IN (SELECT public.ariba_hr_pool()))"""
     if ids is None:
-        db.execute(text("UPDATE public.workflow_notifications SET read_at=now() WHERE recipient_employee_id=:e AND read_at IS NULL"),
-                   {"e": actor.get("employee_id")})
+        db.execute(text(f"UPDATE public.workflow_notifications SET read_at=now() WHERE ({pool}) AND read_at IS NULL"), params)
         db.commit()
         return
     if not isinstance(ids, list):
@@ -1754,9 +1837,24 @@ def mark_notifications_read(body: dict[str, Any] | None = None, actor: dict[str,
         except (ValueError, TypeError, AttributeError):
             continue
     if valid_ids:
-        db.execute(text("UPDATE public.workflow_notifications SET read_at=now() WHERE recipient_employee_id=:e AND id::text=ANY(:ids) AND read_at IS NULL"),
-                   {"e": actor.get("employee_id"), "ids": valid_ids})
+        db.execute(text(f"UPDATE public.workflow_notifications SET read_at=now() WHERE ({pool}) AND id::text=ANY(:ids) AND read_at IS NULL"),
+                   {**params, "ids": valid_ids})
         db.commit()
+
+
+@router.get("/me/notifications/{notification_id}/file")
+def my_notification_file(notification_id: uuid.UUID, actor: dict[str, Any] = Depends(current_actor),
+                         db: Session = Depends(get_db)):
+    """The PDF attached to one of my bell entries (client migration 41) — the same file the e-mail carries."""
+    row = _row(db, """SELECT f.file_name,f.mime_type,f.file_data FROM public.ariba_notif_files f
+        JOIN public.workflow_notifications n ON n.id=f.notification_id
+        WHERE f.notification_id=:id AND n.recipient_employee_id=:e
+        ORDER BY f.created_at DESC LIMIT 1""", id=notification_id, e=actor.get("employee_id"))
+    if not row:
+        raise ApiError(404, "not_found", "Attachment not found")
+    filename = quote(str(row["file_name"] or "document.pdf"))
+    return Response(content=bytes(row["file_data"]), media_type=row["mime_type"] or "application/pdf",
+                    headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"})
 
 
 @router.get("/me/letters")
@@ -2507,11 +2605,13 @@ def send_letter(body: dict[str, Any], request: Request, actor: dict[str, Any] = 
                {"rid": req["id"], "account": actor["account_id"], "comment": title})
     raw = content.encode("utf-8")
     doc = _row(db, "INSERT INTO public.ariba_documents(employee_id,request_id,document_type,file_name,mime_type,file_data,uploaded_by) VALUES(:eid,:rid,:type,:name,'text/html',:data,:uploader) RETURNING id", eid=employee_id, rid=req["id"], type="letter", name=title+".html", data=raw, uploader=actor.get("employee_id"))
-    _insert_notification(db, employee_id, req["id"], "A letter is waiting for your response", title, "employee", "template")
+    pdf, pdf_name = _notification_pdf(body, title + ".pdf")
+    notification_id = _insert_notification(db, employee_id, req["id"], "A letter is waiting for your response", title, "employee", "template")
+    _attach_to_notification(db, notification_id, pdf, pdf_name)
     _write_audit(db, actor, request, "letters", "send", "workflow_request", req["id"])
     db.commit()
     emp = _row(db, "SELECT name_ar FROM public.employee_directory WHERE employee_id=:eid", eid=employee_id)
-    return {"id": req["id"], "employee_id": employee_id, "employee_name": (emp or {}).get("name_ar", ""), "type": body.get("type", "custom"), "title": title, "status": "pending", "rejection_reason": None, "created_at": req["created_at"], "responded_at": None, "document_id": doc["id"]}
+    return {"id": req["id"], "employee_id": employee_id, "employee_name": (emp or {}).get("name_ar", ""), "type": body.get("type", "custom"), "title": title, "status": "pending", "rejection_reason": None, "created_at": req["created_at"], "responded_at": None, "document_id": doc["id"], "notification_id": notification_id, "attachment": pdf_name if pdf else None}
 
 
 @router.delete("/letters/{letter_id}", status_code=204)

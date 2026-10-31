@@ -1,5 +1,9 @@
-// الراتب — legacy payroll/019 renderPay (الراتب الحالي، بيانات البنك) + 031 V119 payslip (قسيمة الراتب، الرواتب الشهرية المعتمدة).
-import { useState } from "react";
+// الراتب — legacy payroll/019 renderPay (الراتب الحالي، بيانات البنك) + 031 V119 payslip (قسيمة الراتب، الرواتب الشهرية المعتمدة)
+// + their Pay.jsx «تحميل PDF» for each payslip.
+import { useEffect, useState } from "react";
+import { Btn, useToast } from "@/components/ui";
+import { brandInfo } from "@/lib/port";
+import { sharePayslip } from "@/lib/payslip-pdf";
 import { Pressable, View } from "react-native";
 import { Icon } from "@/components/icons";
 import { sar } from "@/components/shared";
@@ -39,6 +43,10 @@ export default function Salary() {
   const t = useTheme();
   const { employee, payslips, refresh } = useData();
   const [open, setOpen] = useState<number | null>(null);
+  const [co, setCo] = useState<{ nameAr?: string; logo?: string | null }>({});
+  const toast = useToast();
+  useEffect(() => { brandInfo().then((b) => setCo({ nameAr: b.names.coAr, logo: b.logo })).catch(() => {}); }, []);
+  const pdf = (p: Payslip) => sharePayslip(p, employee, co).catch(() => toast("تعذر إنشاء ملف PDF", "err"));
   const s = employee?.salary;
   const ic = (name: "cash" | "invoice" | "history" | "bank") => <Icon name={name} size={18} color={t.tx} />;
   return (
@@ -62,6 +70,7 @@ export default function Salary() {
         <Card>
           <CardTitle icon={ic("invoice")}>{`قسيمة الراتب — ${MONTHS[payslips[0].month]} ${payslips[0].year}`}</CardTitle>
           <SlipRows p={payslips[0]} />
+          <Btn title="📄 تحميل PDF" onPress={() => pdf(payslips[0])} style={{ marginTop: 10 }} />
         </Card>
       ) : null}
       {payslips.length > 1 ? (
@@ -73,7 +82,7 @@ export default function Salary() {
                 <T weight={800}>{`قسيمة الراتب — ${MONTHS[p.month]} ${p.year}`}</T>
                 <T color={t.gr} weight={700}>{sar(p.data.netSAR ?? p.data.net)}</T>
               </Pressable>
-              {open === i ? <View style={{ marginTop: 6 }}><SlipRows p={p} /></View> : null}
+              {open === i ? <View style={{ marginTop: 6 }}><SlipRows p={p} /><Btn title="📄 تحميل PDF" onPress={() => pdf(p)} style={{ marginTop: 8 }} /></View> : null}
             </View>
           ))}
         </Card>

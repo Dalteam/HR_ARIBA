@@ -1,5 +1,6 @@
 // الحضور — legacy main/08 (att-big, loc-badge) + V117 028 (حالة الحضور اليوم، رجوع للعمل، سجل آخر 31 يوم)
 // + V122b 034 (location text) + 022 (استعلام عن حضور بفترة محددة).
+import { dateLocale } from "@/i18n";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { ForgotPunchSheet, todayISO } from "@/components/shared";
@@ -50,8 +51,8 @@ export default function Attendance() {
   const [found, setFound] = useState<MySession[] | null>(null);
   const [searching, setSearching] = useState(false);
 
-  const time = now.toLocaleTimeString("ar-SA-u-nu-latn", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const date = now.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const time = now.toLocaleTimeString(dateLocale(), { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const date = now.toLocaleDateString(dateLocale(), { timeZone: "Asia/Riyadh", weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const badge = (() => {
     switch (loc.kind) {
       case "inside": return { icon: "pin" as const, dot: t.gr, text: loc.name, color: t.gr };

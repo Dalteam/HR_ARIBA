@@ -1,5 +1,6 @@
 // Line icons of the legacy employee app (V118 inline SVGs, tabler-style: 24×24, round caps).
 import Svg, { Circle, Path, Polygon, Rect } from "react-native-svg";
+import { getLang } from "@/i18n";
 
 type P = { size?: number; color: string; stroke?: number };
 
@@ -45,11 +46,16 @@ const paths: Record<string, string[]> = {
   clipboard: ["M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2", "M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z", "M9 12h6", "M9 16h6"],
   login: ["M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2", "M21 12H9", "M12 9l-3 3 3 3"],
   info: ["M12 9h.01", "M11 12h1v4h1"],
+  more: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+  // their «أهدافي وتقييمي» tab (tabler ti-target)
+  star: ["M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0", "M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0", "M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"],
 };
 
 export type IconName = keyof typeof paths;
 
-export function Icon({ name, size = 22, color, stroke = 1.9 }: P & { name: keyof typeof paths | "clockFace" }) {
+export function Icon({ name: given, size = 22, color, stroke = 1.9 }: P & { name: keyof typeof paths | "clockFace" }) {
+  // the chevrons point the way the reading direction goes: swapped in English
+  const name = getLang() === "en" && given === "chevronLeft" ? "chevronRight" : getLang() === "en" && given === "chevronRight" ? "chevronLeft" : given;
   const common = { stroke: color, strokeWidth: stroke, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">

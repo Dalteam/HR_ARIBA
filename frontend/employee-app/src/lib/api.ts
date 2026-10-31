@@ -34,10 +34,17 @@ export class ApiError extends Error {
   }
 }
 
+let onRefresh: ((refreshToken: string) => void) | null = null;
+/** Called with every new refresh token (the biometric copy follows it). */
+export const setRefreshListener = (f: ((refreshToken: string) => void) | null) => { onRefresh = f; };
+
 export async function saveSession(s: Session) {
   await store.set(ACCESS, s.access_token);
   await store.set(REFRESH, s.refresh_token);
+  onRefresh?.(s.refresh_token);
 }
+
+export const getRefreshToken = () => store.get(REFRESH);
 
 export async function clearSession() {
   await store.del(ACCESS);
@@ -97,13 +104,15 @@ export const auth = {
     api<Session>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   changePassword: (old_password: string, new_password: string) =>
     api<Session>("/auth/change-password", { method: "POST", body: JSON.stringify({ old_password, new_password }) }),
-  logout: async () => {
+  logout: async (keepServerSession = false) => {
     try {
-      await api<void>("/auth/logout", { method: "POST" });
+      // with biometric sign-in on, the session stays valid on the server (its token is kept behind Face ID / fingerprint)
+      if (!keepServerSession) await api<void>("/auth/logout", { method: "POST" });
     } finally {
       await clearSession();
     }
   },
+  refreshWith: (refresh_token: string) => api<Session>("/auth/refresh", { method: "POST", body: JSON.stringify({ refresh_token }) }),
   me: () => api<{ user: User }>("/me"),
 };
 
@@ -208,7 +217,9 @@ export const attendance = {
 
 export type RequestType =
   | "annual" | "sick" | "emergency" | "death" | "marriage" | "maternity" | "paternity" | "umrah" | "hajj" | "remote"
-  | "permission" | "maternity_permission" | "early_leave" | "advance" | "mission" | "forgot_punch" | "overtime";
+  | "permission" | "maternity_permission" | "early_leave" | "advance" | "mission" | "forgot_punch" | "overtime"
+  // their new request types (sql/10)
+  | "unpaid" | "salary_advance" | "iban_change" | "profile_edit" | "document";
 
 export type MyRequest = {
   id: string;
@@ -228,9 +239,10 @@ export type MyRequest = {
   punch_kind: "in" | "out" | "both" | null;
   notes: string | null;
   rejection_reason: string | null;
-  /** Labour-law reminder on a pending leave (sick tiers, statutory days of special leave, hajj). */
-  law_note?: string | null;
   created_at: string;
+  /** Their request payload (amount, IBAN, changes, on-behalf name, escalation, HR's return note). */
+  payload?: Record<string, any>;
+  attachments?: { id: string; document_type: string; file_name: string }[];
 };
 
 export type NewRequest = Partial<Omit<MyRequest, "id" | "employee_id" | "employee_name" | "status" | "stage" | "days" | "rejection_reason" | "created_at">> & {
@@ -272,6 +284,8 @@ export type Letter = {
   type: string;
   title: string;
   status: "pending" | "approved" | "rejected";
+  /** employee = waiting for my answer; manager = my manager signs; hr = HR approves; completed / rejected */
+  stage?: string;
   rejection_reason: string | null;
   created_at: string;
   responded_at: string | null;
@@ -288,11 +302,11 @@ export const letters = {
 
 export type Notification = {
   id: string;
-  kind: "template" | "request" | "ok" | "no";
+  kind: "template" | "request" | "ok" | "no" | "announcement" | "greeting";
   title: string;
   body: string | null;
   at: string;
-  target: "documents" | "leaves" | "team";
+  target: "documents" | "leaves" | "team" | "index";
   is_read: boolean;
 };
 
@@ -300,3 +314,8 @@ export const notifications = {
   mine: () => api<Notification[]>("/me/notifications"),
   markAllRead: () => api<void>("/me/notifications/read", { method: "POST" }),
 };
+
+export type Announcement = { id: string; kind: "announcement" | "greeting"; occasion: string | null; title: string; body: string; pinned: boolean; created_at: string };
+
+/** Running announcements (pinned, or the last 14 days) and greetings of the last day for me (22/10 update; the greeting hides itself after 24 hours). */
+export const announcements = { mine: () => api<{ ok: boolean; items: Announcement[] }>("/me/announcements").then((r) => r.items) };

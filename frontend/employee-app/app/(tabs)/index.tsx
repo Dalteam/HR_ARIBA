@@ -1,20 +1,31 @@
 // الرئيسية — legacy V118 home (js/core-ui/030 hero + tiles + quick actions) over 018.renderHome (بياناتي، آخر راتب معتمد)
 // and V122 «جهة العمل ومواقع العمل».
-import { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { dateLocale } from "@/i18n";
+import { memo, useEffect, useRef, useState } from "react";
+import { Animated, Image, Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
-import Svg, { Circle, Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
-import { AribaMark, Icon } from "@/components/icons";
+import Svg, { Circle, Defs, LinearGradient, Polygon, Rect, Stop } from "react-native-svg";
+import { Icon, type IconName } from "@/components/icons";
+import { useComposer } from "@/components/composer";
 import { ForgotPunchSheet, LocationsCard, sar } from "@/components/shared";
 import { Card, Page, T } from "@/components/ui";
+import { RequestItem } from "@/components/request-item";
+import { AnnouncementsCard } from "@/components/announcements";
+import { LeaveIcon } from "@/components/leave-icon";
 import { useData } from "@/lib/data";
+import { useAuth } from "@/lib/auth";
+import { useTileWidth } from "@/lib/grid";
+import { useLayout } from "@/lib/responsive";
+import { diagOff } from "@/lib/diag";
 import { distanceText } from "@/lib/geo";
 import { riyadhParts, todaySessions, usePunch, workedMinutes } from "@/lib/punch";
-import { useTheme } from "@/theme";
+import { useAppBrand, useTheme } from "@/theme";
+import { shadow } from "@/lib/shadow";
 
 function useNow() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
+    if (diagOff("clock")) return;
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
@@ -28,51 +39,76 @@ function shortName(full: string) {
   return `${first} ${w[w.length - 1]}`;
 }
 
-const DIAL = 184;
-const R = 82;
+const DIAL = 176;
+const R = 80;
 
-function Dial({ state, progress, onPress, busy }: { state: "in" | "out" | "done"; progress: number; onPress: () => void; busy: boolean }) {
-  const t = useTheme();
+// The one bright action of the screen: a lime key (sand once you are in, quiet once the day is done) in a ring that fills with the worked hours.
+function Dial({ state, progress, onPress, busy, watermark }: { state: "in" | "out" | "done"; progress: number; onPress: () => void; busy: boolean; watermark?: string }) {
   const pulse = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+  const scan = useRef(new Animated.Value(0)).current;
+  // «سجّل حضورك»: a ring that pulses outward invites the first tap
   useEffect(() => {
-    if (state === "done" || busy) return;
+    if (state !== "in" || busy) return;
     const loop = Animated.loop(Animated.timing(pulse, { toValue: 1, duration: 2200, useNativeDriver: true }));
     loop.start();
     return () => loop.stop();
   }, [state, busy, pulse]);
-  const grad = { in: ["#4bdc86", "#29B35E", "#1d9a4c"], out: ["#dc7777", "#B54A4A", "#9a3b3b"], done: ["#7fb3a3", "#4f8c7a", "#3f7565"] }[state];
+  // while the work day is open (from the check-in until the check-out) a soft glow breathes around the dial; it stops once checked out
+  useEffect(() => {
+    if (state !== "out") { glow.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: 1, duration: 2600, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 0, duration: 2600, useNativeDriver: true }),
+    ]));
+    loop.start();
+    return () => loop.stop();
+  }, [state, glow]);
+  // while the punch is being verified (location, server) the fingerprint is scanned top to bottom
+  useEffect(() => {
+    if (!busy) { scan.setValue(0); return; }
+    const loop = Animated.loop(Animated.timing(scan, { toValue: 1, duration: 1100, useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [busy, scan]);
+  const fill = { in: "#29B35E", out: "#E4E4BC", done: "rgba(255,255,255,.22)" }[state];
+  const ink = state === "in" ? "#012A21" : state === "out" ? "#231F20" : "#E8F2ED";
   const label = { in: "سجّل حضورك", out: "سجّل انصرافك", done: "تم الانصراف" }[state];
-  const icon = { in: "fingerprint", out: "exit", done: "checkCircle" }[state] as "fingerprint" | "exit" | "checkCircle";
+  const icon = { in: "fingerprint", out: "fingerprint", done: "checkCircle" }[state] as IconName;
   const c = 2 * Math.PI * R;
   const inner = DIAL - 32;
   return (
-    <View style={{ width: DIAL, height: DIAL, alignSelf: "center", marginTop: 10, marginBottom: 4, alignItems: "center", justifyContent: "center" }}>
+    <View style={{ width: DIAL, height: DIAL, alignSelf: "center", marginTop: 12, marginBottom: 4, alignItems: "center", justifyContent: "center" }}>
+      {watermark ? <Image source={{ uri: watermark }} resizeMode="contain" style={{ pointerEvents: "none", position: "absolute", width: DIAL + 34, height: DIAL + 34, opacity: 0.16 }} /> : null}
+      {state === "out" ? (
+        <Animated.View style={{ pointerEvents: "none", position: "absolute", width: DIAL + 30, height: DIAL + 30, borderRadius: (DIAL + 30) / 2, backgroundColor: "rgba(41,179,94,.30)",
+          opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.75] }), transform: [{ scale: glow.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1.05] }) }] }} />
+      ) : null}
       <Svg width={DIAL} height={DIAL} style={StyleSheet.absoluteFill}>
-        <Circle cx={DIAL / 2} cy={DIAL / 2} r={R} stroke={t.dark ? "rgba(228,228,188,.18)" : "rgba(1,77,61,.14)"} strokeWidth={6} fill="none" />
+        <Circle cx={DIAL / 2} cy={DIAL / 2} r={R} stroke="rgba(255,255,255,.16)" strokeWidth={6} fill="none" />
         <Circle cx={DIAL / 2} cy={DIAL / 2} r={R} stroke="#29B35E" strokeWidth={6} fill="none" strokeLinecap="round"
           strokeDasharray={`${c * Math.min(1, progress)} ${c}`} transform={`rotate(-90 ${DIAL / 2} ${DIAL / 2})`} />
       </Svg>
-      {state !== "done" && !busy ? (
-        <Animated.View pointerEvents="none" style={{ position: "absolute", width: inner, height: inner, borderRadius: inner / 2, borderWidth: 3, borderColor: grad[1],
-          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] }) }] }} />
+      {state === "in" && !busy ? (
+        <Animated.View style={{ pointerEvents: "none", position: "absolute", width: inner, height: inner, borderRadius: inner / 2, borderWidth: 2, borderColor: fill,
+          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.22] }) }] }} />
       ) : null}
-      <Pressable onPress={onPress} disabled={busy || state === "done"} style={({ pressed }) => [{ width: inner, height: inner, borderRadius: inner / 2, overflow: "hidden",
-        alignItems: "center", justifyContent: "center", transform: [{ scale: pressed ? 0.96 : 1 }],
-        shadowColor: "#014D3D", shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 12 }, elevation: 8 }]}>
-        <Svg width={inner} height={inner} style={StyleSheet.absoluteFill}>
-          <Defs>
-            <RadialGradient id="dialFill" cx="30%" cy="24%" r="90%">
-              <Stop offset="0" stopColor={grad[0]} />
-              <Stop offset="0.58" stopColor={grad[1]} />
-              <Stop offset="1" stopColor={grad[2]} />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={inner / 2} cy={inner / 2} r={inner / 2} fill="url(#dialFill)" />
-        </Svg>
-        {busy ? <T size={14} weight={800} color="#fff">...</T> : (
-          <View style={{ alignItems: "center", zIndex: 1 }}>
-            <Icon name={icon} size={46} color="#fff" stroke={1.8} />
-            <T size={14} weight={800} color="#fff" style={{ marginTop: 4 }}>{label}</T>
+      <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={busy || state === "done"}
+        style={({ pressed }) => ({ width: inner, height: inner, borderRadius: inner / 2, backgroundColor: fill, alignItems: "center", justifyContent: "center",
+          transform: [{ scale: pressed ? 0.95 : 1 }], opacity: busy ? 0.7 : 1, ...shadow("#000", 0.35, 14, 0, 12, 8) })}>
+        {busy ? (
+          <View style={{ alignItems: "center" }}>
+            <View style={{ width: 54, height: 54, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+              <Icon name="fingerprint" size={52} color={ink} stroke={1.8} />
+              <Animated.View style={{ pointerEvents: "none", position: "absolute", left: 4, right: 4, height: 3, borderRadius: 2, backgroundColor: ink, opacity: 0.55,
+                transform: [{ translateY: scan.interpolate({ inputRange: [0, 1], outputRange: [-24, 24] }) }] }} />
+            </View>
+            <T size={14} weight={800} color={ink} style={{ marginTop: 4 }}>جارٍ التحقق…</T>
+          </View>
+        ) : (
+          <View style={{ alignItems: "center" }}>
+            <Icon name={icon} size={state === "done" ? 46 : 54} color={ink} stroke={1.8} />
+            <T size={15} weight={800} color={ink} style={{ marginTop: 4 }}>{label}</T>
           </View>
         )}
       </Pressable>
@@ -81,21 +117,40 @@ function Dial({ state, progress, onPress, busy }: { state: "in" | "out" | "done"
 }
 
 function Chip({ text, tone, icon }: { text: string; tone?: "ok" | "bad"; icon: "pin" | "flag" | "clock" }) {
-  const t = useTheme();
-  const bg = tone === "ok" ? "rgba(41,179,94,.12)" : tone === "bad" ? "rgba(214,107,107,.12)" : t.dark ? "rgba(228,228,188,.10)" : "rgba(1,77,61,.07)";
-  const border = tone === "ok" ? "rgba(41,179,94,.35)" : tone === "bad" ? "rgba(214,107,107,.35)" : t.dark ? "rgba(228,228,188,.2)" : "rgba(1,77,61,.16)";
-  const color = tone === "bad" ? (t.dark ? "#F07A7A" : "#8f3636") : t.dark ? "#E4E4BC" : "#014D3D";
+  const color = tone === "bad" ? "#FFB4AA" : "#fff";
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 11, backgroundColor: bg, borderWidth: 1, borderColor: border }}>
-      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tone === "ok" ? "#29B35E" : tone === "bad" ? "#d96b6b" : "#c9a24a" }} />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,.12)" }}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tone === "bad" ? "#FF8A7E" : "#29B35E" }} />
       <Icon name={icon} size={13} color={color} stroke={2} />
-      <T size={11.5} weight={700} color={color}>{text}</T>
+      <T size={12} weight={600} color={color}>{text}</T>
     </View>
   );
 }
 
+// Memoised: the card re-renders every second for the clock, and redrawing a gradient with ribbons that often made the page stutter on phones.
+const HeroArt = memo(function HeroArt({ w, h, c }: { w: number; h: number; c: { a: string; b: string; c: string; band1: string; band2: string } | null }) {
+  const k = c ?? { a: "#01392D", b: "#014D3D", c: "#0B6B4F", band1: "#29B35E", band2: "#E4E4BC" };   // null = the original colours
+  return (
+    <Svg style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+          <Defs>
+            <LinearGradient id="heroBg" x1="0.2" y1="0" x2="0.8" y2="1">
+              <Stop offset="0" stopColor={k.a} />
+              <Stop offset="0.55" stopColor={k.b} />
+              <Stop offset="1" stopColor={k.c} />
+            </LinearGradient>
+            <LinearGradient id="band1" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor={k.band1} stopOpacity="0" /><Stop offset="1" stopColor={k.band1} stopOpacity="0.4" /></LinearGradient>
+            <LinearGradient id="band2" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor={k.band2} stopOpacity="0" /><Stop offset="1" stopColor={k.band2} stopOpacity="0.2" /></LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width={w} height={h} fill="url(#heroBg)" />
+          <Polygon points={`0,${h * 0.26} ${w},${h * 0.04} ${w},${h * 0.17} 0,${h * 0.39}`} fill="url(#band1)" />
+          <Polygon points={`0,${h * 0.84} ${w},${h * 0.66} ${w},${h * 0.74} 0,${h * 0.92}`} fill="url(#band2)" />
+        </Svg>
+  );
+});
+
 function Hero({ onForgot }: { onForgot: () => void }) {
-  const t = useTheme();
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const ab = useAppBrand();
   const now = useNow();
   const { employee, att } = useData();
   const { loc, punch, busy } = usePunch();
@@ -104,10 +159,10 @@ function Hero({ onForgot }: { onForgot: () => void }) {
   const state = !rows.length ? "in" : open ? "out" : "done";
   const worked = workedMinutes(rows, r.minutes);
   const shift = (att?.shift_hours ?? 8) * 60;
-  const fg = t.dark ? "#E4E4BC" : "#014D3D";
+  const fg = "#fff";
   const h12 = r.h % 12 || 12;
   const pad = (n: number) => String(n).padStart(2, "0");
-  const date = now.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh", weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const date = now.toLocaleDateString(dateLocale(), { timeZone: "Asia/Riyadh", weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const name = employee?.name_ar ?? "";
   const locChip = (() => {
     switch (loc.kind) {
@@ -122,34 +177,30 @@ function Hero({ onForgot }: { onForgot: () => void }) {
   })();
 
   return (
-    <View style={[styles.hero, t.dark ? { backgroundColor: "#075444", borderColor: "rgba(228,228,188,.16)" } : { backgroundColor: "#F6F2E4", borderColor: "rgba(1,77,61,.12)" }]}>
-      <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
-        <Defs>
-          <LinearGradient id="hero" x1="0.35" y1="0" x2="0.65" y2="1">
-            <Stop offset="0" stopColor={t.dark ? "#075444" : "#FBF8EF"} />
-            <Stop offset="1" stopColor={t.dark ? "#013D31" : "#F0EAD8"} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#hero)" />
-      </Svg>
-      <View pointerEvents="none" style={{ position: "absolute", alignSelf: "center", top: 120 }}>
-        <AribaMark width={250} height={262} top={t.dark ? "#E4E4BC" : "#014D3D"} bottom={t.dark ? "#E4E4BC" : "#29B35E"} opacity={t.dark ? 0.15 : 0.22} />
-      </View>
+    <View style={styles.hero} onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+      {/* the artwork (gradient + slanted ribbons) is the only green: drawn at the card's measured size (not "100%") so it covers the whole card and all its text, however tall the content grows */}
+      {ab.heroBg ? (
+        <>
+          <Image source={{ uri: ab.heroBg }} resizeMode="cover" style={[StyleSheet.absoluteFill, { pointerEvents: "none" }]} />
+          <View style={[StyleSheet.absoluteFill, { pointerEvents: "none", backgroundColor: "rgba(0,0,0,.32)" }]} />
+        </>
+      ) : box.w > 0 ? <HeroArt w={box.w} h={box.h} c={ab.hero} /> : null}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
-        <View style={[styles.avatar, { backgroundColor: t.dark ? "rgba(228,228,188,.14)" : "#014D3D" }]}>
-          <T size={18} weight={800} color={t.dark ? "#E4E4BC" : "#fff"}>{name.charAt(0)}</T>
+        <View style={styles.avatar}>
+          <T size={19} weight={800} color="#E4E4BC">{name.charAt(0)}</T>
         </View>
         <View style={{ flex: 1 }}>
-          <T size={12} color={fg} style={{ opacity: 0.78 }}>{r.h < 12 ? "صباح الخير" : "مساء الخير"}</T>
-          <T size={17} weight={800} color={fg} numberOfLines={1}>{shortName(name)}</T>
+          <T size={12.5} color={fg} style={{ opacity: 0.78 }}>{r.h < 12 ? "صباح الخير" : "مساء الخير"}</T>
+          <T size={18} weight={800} color={fg} numberOfLines={1} style={{ letterSpacing: -0.3 }}>{shortName(name)}</T>
         </View>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "center", marginTop: 12, gap: 6 }}>
-        <T size={36} weight={800} color={t.dark ? "#fff" : "#014D3D"} style={{ letterSpacing: 1.5 }}>{`${pad(h12)}:${pad(r.m)}:${pad(r.s)}`}</T>
-        <T size={14} weight={700} color={t.dark ? "#fff" : "#014D3D"} style={{ opacity: 0.75 }}>{r.h < 12 ? "ص" : "م"}</T>
+      <View style={{ flexDirection: "row", direction: "ltr", alignItems: "baseline", justifyContent: "center", marginTop: 14, gap: 6 }}>
+        <T size={52} weight={300} color={fg} style={{ letterSpacing: -2 }}>{`${pad(h12)}:${pad(r.m)}`}</T>
+        <T size={20} weight={300} color={fg} style={{ opacity: 0.7 }}>{`\u200E:${pad(r.s)}`}</T>
+        <T size={14} weight={700} color={fg} style={{ opacity: 0.75 }}>{r.h < 12 ? "ص" : "م"}</T>
       </View>
-      <T size={12} color={fg} center style={{ opacity: 0.78 }}>{date}</T>
-      <Dial state={state} progress={worked / shift} busy={busy} onPress={() => punch(state === "in" ? "in" : "out")} />
+      <T size={12.5} color={fg} center style={{ opacity: 0.78 }}>{date}</T>
+      <Dial state={state} progress={worked / shift} busy={busy} watermark={ab.punch} onPress={() => punch(state === "in" ? "in" : "out")} />
       <View style={styles.chips}>
         <Chip icon="pin" text={locChip.text} tone={locChip.tone} />
         {open && att?.flexible_enabled && att.expected_checkout ? <Chip icon="flag" text={`الانصراف المتوقع ${att.expected_checkout}`} /> : null}
@@ -158,7 +209,7 @@ function Hero({ onForgot }: { onForgot: () => void }) {
       {rows.length ? (
         <View style={[styles.chips, { marginTop: 8 }]}>
           {rows.map((s, i) => (
-            <View key={i} style={{ backgroundColor: t.dark ? "rgba(228,228,188,.1)" : "rgba(1,77,61,.08)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+            <View key={i} style={{ backgroundColor: "rgba(255,255,255,.12)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
               <T size={11.5} weight={700} color={fg}>{`${s.time_in} → ${s.time_out ?? "…"}`}</T>
             </View>
           ))}
@@ -171,30 +222,35 @@ function Hero({ onForgot }: { onForgot: () => void }) {
         </Pressable>
       ) : null}
       {lastOut && open && rows.length > 1 ? <T size={11} color={fg} center style={{ marginTop: 6, opacity: 0.8 }}>رجعت للعمل بعد انصراف الساعة {lastOut}</T> : null}
-      <Pressable onPress={onForgot} style={{ alignSelf: "center", marginTop: 8 }}><T size={11} color={fg} style={{ opacity: 0.7 }}>نسيت البصمة؟</T></Pressable>
+      <Pressable onPress={onForgot} style={{ alignSelf: "center", marginTop: 8 }}><T size={12} weight={600} color={fg} style={{ opacity: 0.8 }}>نسيت البصمة؟</T></Pressable>
     </View>
   );
 }
 
-function Tile({ value, label, icon }: { value: string; label: string; icon: "building" | "calendar" | "wallet" }) {
+function Ledger({ items }: { items: [string, string, string][] }) {
   const t = useTheme();
   return (
-    <View style={[styles.tile, { backgroundColor: t.c }]}>
-      <View style={styles.tileIcon}><Icon name={icon} size={18} color="#29B35E" /></View>
-      <T size={22} weight={800}>{value}</T>
-      <T size={10.5} color={t.mu} center>{label}</T>
+    <View style={[styles.ledger, { backgroundColor: t.c }]}>
+      {items.map(([v, l, ic], i) => (
+        <View key={l} style={[styles.ledgerCell, i > 0 && { borderStartWidth: StyleSheet.hairlineWidth, borderStartColor: t.bd }]}>
+          <LeaveIcon type={ic} size={34} color={t.dark ? "#29B35E" : "#014D3D"} />
+          <T size={26} weight={300} style={{ letterSpacing: -0.8 }}>{v}</T>
+          <T size={12} color={t.mu} center>{l}</T>
+        </View>
+      ))}
     </View>
   );
 }
 
-function Quick({ label, icon, onPress }: { label: string; icon: "calendar" | "fingerprint" | "stopwatch" | "file"; onPress: () => void }) {
+// Every screen of the app is one tap from here (the dock keeps only five places).
+function Service({ label, icon, onPress, badge, wide, width }: { label: string; icon: IconName; onPress: () => void; badge?: number; wide?: boolean; width?: number }) {
   const t = useTheme();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.qa, { backgroundColor: t.c, transform: [{ scale: pressed ? 0.96 : 1 }] }]}>
-      <View style={[styles.qaIcon, { backgroundColor: t.dark ? "rgba(41,179,94,.18)" : "rgba(1,77,61,.09)" }]}>
-        <Icon name={icon} size={20} color={t.dark ? "#29B35E" : "#014D3D"} />
-      </View>
-      <T size={11} weight={800} center>{label}</T>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
+      style={({ pressed }) => [styles.svc, width ? { width } : null, wide && styles.svcWide, { backgroundColor: t.c, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+      <View style={[styles.svcIc, { backgroundColor: t.c2 }]}><Icon name={icon} size={21} color={t.dark ? "#29B35E" : "#014D3D"} /></View>
+      <T size={12} weight={700} center numberOfLines={2}>{label}</T>
+      {badge ? <View style={styles.svcBadge}><T size={10} weight={800} color="#fff">{badge}</T></View> : null}
     </Pressable>
   );
 }
@@ -211,25 +267,50 @@ function Mini({ label, value }: { label: string; value?: string | null }) {
 
 export default function Home() {
   const t = useTheme();
-  const { employee, leave, att, payslips, refresh } = useData();
+  const { open } = useComposer();
+  const { user } = useAuth();
+  const { employee, leave, att, payslips, letters, approvals, requests, refresh } = useData();
   const [forgot, setForgot] = useState(false);
   const last = payslips[0];
   const fmt = (n: number | undefined) => (n == null ? "—" : String(Math.round(n * 100) / 100));
+  const go = (p: string) => router.navigate(p as never);
+  const isApprover = ["manager", "hr", "ceo", "admin", "admin_manager", "chairman"].includes(user?.role ?? "");
+  const pendingDocs = letters.filter((l) => l.status === "pending").length;
+  const services: { icon: IconName; label: string; onPress: () => void; badge?: number }[] = [
+    { icon: "calendar", label: "طلب إجازة", onPress: () => open("annual") },
+    { icon: "clock", label: "استئذان", onPress: () => open("permission") },
+    { icon: "cash", label: "سلفة", onPress: () => open("advance") },
+    { icon: "stopwatch", label: "عمل إضافي", onPress: () => go("/(tabs)/overtime") },
+    { icon: "fingerprint", label: "نسيت بصمة", onPress: () => setForgot(true) },
+    { icon: "file", label: "مستنداتي", onPress: () => go("/(tabs)/documents"), badge: pendingDocs },
+    { icon: "history", label: "سجل الحضور", onPress: () => go("/(tabs)/attendance") },
+    { icon: "star", label: "أهدافي", onPress: () => go("/(tabs)/goals") },
+    { icon: "users", label: "فريقي", onPress: () => go("/(tabs)/team") },
+    ...(isApprover ? [{ icon: "checks" as IconName, label: "الموافقات", onPress: () => go("/(tabs)/approvals"), badge: approvals.length }] : []),
+  ];
+  const L = useLayout();
+  const grid = useTileWidth(L.cols, 10);
+  const running = requests.filter((r) => r.status === "pending").slice(0, 2);
   return (
     <Page onRefresh={refresh}>
       <Hero onForgot={() => setForgot(true)} />
-      <View style={styles.tiles}>
-        <Tile icon="building" value={fmt(leave?.current)} label="رصيد الإجازة (يوم)" />
-        <Tile icon="calendar" value={fmt(leave?.year_end)} label="رصيد نهاية العام" />
-        <Tile icon="wallet" value={att ? String(Math.max(0, att.remote_limit - att.remote_used)) : "—"} label="عن بعد المتبقي" />
+      <Ledger items={[[fmt(leave?.current), "رصيد الإجازة (يوم)", "annual"], [fmt(leave?.year_end), "رصيد نهاية العام", "year_end"], [att ? String(Math.max(0, att.remote_limit - att.remote_used)) : "—", "عن بعد المتبقي", "remote"]]} />
+
+      <AnnouncementsCard />
+
+      <T size={16} weight={800} style={styles.sec}>ماذا تحتاج اليوم؟</T>
+      <View style={styles.svcGrid} onLayout={grid.onLayout}>
+        {services.map((x, i) => <Service key={x.label} {...x} width={grid.tile} wide={services.length % L.cols === 1 && i === services.length - 1} />)}
       </View>
-      <View style={styles.tiles}>
-        <Quick icon="calendar" label="طلب إجازة" onPress={() => router.navigate("/(tabs)/leaves" as never)} />
-        <Quick icon="fingerprint" label="نسيت بصمة" onPress={() => setForgot(true)} />
-        <Quick icon="stopwatch" label="عمل إضافي" onPress={() => router.navigate("/(tabs)/overtime" as never)} />
-        <Quick icon="file" label="مستنداتي" onPress={() => router.navigate("/(tabs)/documents" as never)} />
-      </View>
-      <T size={12} weight={800} color={t.mu} style={{ marginBottom: 8, marginTop: 2 }}>بياناتي</T>
+
+      {running.length ? (
+        <>
+          <T size={16} weight={800} style={styles.sec}>طلباتك الجارية</T>
+          <Card>{running.map((r) => <RequestItem key={r.id} r={r} />)}</Card>
+        </>
+      ) : null}
+
+      <T size={16} weight={800} style={styles.sec}>بياناتي</T>
       <Card>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           <Mini label="جهة العمل" value={employee?.workplace?.name_ar} />
@@ -254,16 +335,16 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  hero: { borderRadius: 30, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 18, overflow: "hidden", borderWidth: 1, marginBottom: 14,
-    shadowColor: "#014D3D", shadowOpacity: 0.12, shadowRadius: 17, shadowOffset: { width: 0, height: 14 }, elevation: 3 },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  hero: { borderRadius: 30, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 18, overflow: "hidden", marginBottom: 14, ...shadow("#014D3D", 0.3, 16, 0, 14, 6) },
+  avatar: { width: 46, height: 46, backgroundColor: "rgba(255,255,255,.14)", borderRadius: 16, alignItems: "center", justifyContent: "center", transform: [{ skewX: "-8deg" }] },
   chips: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 7, marginTop: 6 },
-  back: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "center", marginTop: 10, borderWidth: 1.5, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 14 },
-  tiles: { flexDirection: "row", gap: 10, marginBottom: 14 },
-  tile: { flex: 1, borderRadius: 20, paddingVertical: 12, paddingHorizontal: 8, alignItems: "center", gap: 4,
-    shadowColor: "#014D3D", shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
-  tileIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: "rgba(41,179,94,.14)", alignItems: "center", justifyContent: "center" },
-  qa: { flex: 1, borderRadius: 20, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 4, alignItems: "center", gap: 6,
-    shadowColor: "#014D3D", shadowOpacity: 0.07, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
-  qaIcon: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  back: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "center", marginTop: 10, borderWidth: 1.5, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14, borderColor: "#fff" },
+  ledger: { flexDirection: "row", borderRadius: 22, overflow: "hidden", marginBottom: 6, ...shadow("#014D3D", 0.08, 8, 0, 4, 2) },
+  ledgerCell: { flex: 1, alignItems: "center", paddingVertical: 14, paddingHorizontal: 6, gap: 2 },
+  sec: { marginTop: 18, marginBottom: 10, marginHorizontal: 2, letterSpacing: -0.3 },
+  svcGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  svc: { width: "31.6%", alignItems: "center", gap: 8, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 3, borderRadius: 18, minHeight: 92, ...shadow("#014D3D", 0.08, 8, 0, 4, 2) },
+  svcWide: { width: "100%", flexDirection: "row", minHeight: 64, justifyContent: "flex-start", gap: 12, paddingHorizontal: 16, paddingTop: 10 },
+  svcIc: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  svcBadge: { position: "absolute", top: 6, right: 8, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#B3342B", alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
 });

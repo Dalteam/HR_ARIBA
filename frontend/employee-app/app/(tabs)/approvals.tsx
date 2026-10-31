@@ -1,11 +1,13 @@
-// الموافقات — legacy requests/004 renderApprovals (manager / hr / ceo): طلبات بانتظار موافقتك + مسار الطلب.
+// الموافقات — their Approvals.jsx: requests awaiting me (on-behalf / returned-by-HR notes, the attachments to open),
+// approve / reject with a reason, and the approval path.
 import { useState } from "react";
 import { View } from "react-native";
 import { NAME } from "@/components/request-item";
 import { Badge, Btn, Card, CardTitle, Empty, Input, Page, T, useToast } from "@/components/ui";
 import { ApiError, requests, type MyRequest } from "@/lib/api";
 import { useData } from "@/lib/data";
-import { requestDetail } from "@/lib/labels";
+import { docLabel, requestDetail } from "@/lib/labels";
+import { openDocument } from "@/lib/open-doc";
 import { useTheme } from "@/theme";
 
 function Item({ r, onDone }: { r: MyRequest; onDone: () => Promise<void> }) {
@@ -34,7 +36,15 @@ function Item({ r, onDone }: { r: MyRequest; onDone: () => Promise<void> }) {
         <Badge text={NAME[r.type] ?? r.type} tone="ba" />
       </View>
       <T size={11} color={t.mu} style={{ marginTop: 4 }}>{requestDetail(r)}</T>
+      {r.payload?.submitted_by_manager ? <T size={11} color={t.bl} style={{ marginTop: 2 }}>👤 قدّمه المدير بالنيابة: {r.payload.submitted_by_name ?? ""}</T> : null}
+      {r.payload?.returned ? <T size={11} color={t.am} style={{ marginTop: 2 }}>↩ أعادته الموارد البشرية: {r.payload.return_note ?? ""}</T> : null}
       {r.notes ? <T size={11} color={t.dm} style={{ marginTop: 2 }}>{r.notes}</T> : null}
+      {(r.attachments ?? []).map((a) => (
+        <View key={a.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 5 }}>
+          <T size={11} style={{ flex: 1 }}>{`${docLabel(a.document_type)} — ${a.file_name}`}</T>
+          <Btn kind="ghost" title="⬇ فتح" onPress={() => openDocument(a.id, a.file_name).catch(() => toast("تعذر فتح المرفق", "err"))} style={{ marginTop: 0, paddingVertical: 4 }} />
+        </View>
+      ))}
       {rejecting ? <Input value={reason} onChangeText={setReason} placeholder="سبب الرفض:" /> : null}
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Btn kind="success" title="موافقة" icon="check" onPress={() => decide("approve")} busy={busy} style={{ flex: 1 }} />

@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "sa.ariba.employee",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "نحتاج موقعك لتسجيل الحضور داخل نطاق موقع العمل."
+        "NSLocationWhenInUseUsageDescription": "نحتاج موقعك لتسجيل الحضور داخل نطاق موقع العمل.",
+        "NSFaceIDUsageDescription": "نستخدم Face ID لتسجيل دخولك بسرعة وأمان."
       }
     },
     "android": {
@@ -37,7 +38,7 @@
       [
         "expo-localization",
         {
-          "forcesRTL": true
+          "forcesRTL": false
         }
       ],
       [
@@ -46,7 +47,14 @@
           "locationWhenInUsePermission": "نحتاج موقعك لتسجيل الحضور داخل نطاق موقع العمل."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-notifications",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "نستخدم Face ID لتسجيل دخولك بسرعة وأمان."
+        }
+      ]
     ],
     "scheme": "ariba",
     "experiments": {

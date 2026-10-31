@@ -1,50 +1,56 @@
 // App shell of the legacy employee app (V118 js/core-ui/030 + 012/016/026/032): sticky header (page title, bell, key,
 // logout, day/night, manual refresh) and the floating bottom nav. Approvals only for manager / hr / ceo / admin.
-import { useState } from "react";
-import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useEffect, useState } from "react";
+import { Alert, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { getRefreshToken } from "@/lib/api";
+import { biometricAvailable, biometricEnabled, enableBiometric, remembered, setNudged, wasNudged } from "@/lib/biometric";
+import { useInsets } from "@/lib/insets";
 import { router, Tabs } from "expo-router";
 import { Icon } from "@/components/icons";
-import { PasswordSheet } from "@/components/password-sheet";
+import { ComposerProvider } from "@/components/composer";
 import { T, useToast } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
-import { DataProvider, useData } from "@/lib/data";
+import { useData } from "@/lib/data";
 import { useBell } from "@/lib/notifications";
 import { PunchProvider } from "@/lib/punch";
-import { brand, useTheme, useThemeMode } from "@/theme";
+import { useTheme } from "@/theme";
+import { shadow } from "@/lib/shadow";
+import { select, tap } from "@/lib/haptics";
+import { useLayout } from "@/lib/responsive";
 
 const TABS: { name: string; title: string; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
   { name: "index", title: "الرئيسية", label: "الرئيسية", icon: "home" },
   { name: "attendance", title: "الحضور", label: "الحضور", icon: "clock" },
-  { name: "leaves", title: "الإجازات", label: "الإجازات", icon: "calendar" },
+  { name: "leaves", title: "طلباتي", label: "طلباتي", icon: "calendar" },
   { name: "salary", title: "الراتب", label: "الراتب", icon: "cash" },
   { name: "team", title: "فريقي", label: "فريقي", icon: "users" },
   { name: "profile", title: "ملفي", label: "ملفي", icon: "user" },
+  { name: "goals", title: "أهدافي وتقييمي", label: "أهدافي", icon: "star" },
   { name: "overtime", title: "عمل إضافي", label: "عمل إضافي", icon: "stopwatch" },
   { name: "documents", title: "المستندات", label: "مستندات", icon: "file" },
   { name: "approvals", title: "الموافقات", label: "الموافقات", icon: "checks" },
+  { name: "more", title: "المزيد", label: "المزيد", icon: "more" },
 ];
 const APPROVERS = ["manager", "hr", "ceo", "admin", "admin_manager", "chairman"];
 
 function IconBtn({ children, onPress, label }: { children: React.ReactNode; onPress: () => void; label: string }) {
   const t = useTheme();
   return (
-    <Pressable accessibilityLabel={label} onPress={onPress}
-      style={({ pressed }) => [styles.ib, { borderColor: t.bd, backgroundColor: t.c2, transform: [{ scale: pressed ? 0.92 : 1 }] }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { tap(); onPress(); }}
+      style={({ pressed }) => [styles.ib, { backgroundColor: t.c, transform: [{ scale: pressed ? 0.94 : 1 }] }]}>
       {children}
     </Pressable>
   );
 }
 
-function Header({ title }: { title: string }) {
+const FROM_MORE = ["attendance", "team", "goals", "overtime", "documents", "approvals", "profile"];
+
+function Header({ title, route }: { title: string; route: string }) {
   const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const { mode, toggle } = useThemeMode();
-  const { signOut } = useAuth();
+  const insets = useInsets();
   const { refresh } = useData();
   const bell = useBell();
   const toast = useToast();
-  const [pw, setPw] = useState(false);
   const [panel, setPanel] = useState(false);
   const [busy, setBusy] = useState(false);
   const spin = useState(() => new Animated.Value(0))[0];
@@ -65,38 +71,40 @@ function Header({ title }: { title: string }) {
     }
   }
 
+  // large title on the page's own background (no bar, no divider): where am I is the first thing read
   return (
-    <View style={[styles.hdr, { paddingTop: insets.top + 10, backgroundColor: t.c, borderBottomColor: "rgba(1,77,61,.10)" }]}>
-      <T size={17} weight={800} style={{ letterSpacing: 0.2, flexShrink: 1 }} numberOfLines={1}>{title}</T>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <IconBtn label="الإشعارات" onPress={() => { setPanel(true); bell.refresh(); }}>
-          <Icon name="bell" size={19} color={t.tx} stroke={2} />
+    <View style={[styles.hdr, { paddingTop: insets.top + 12, backgroundColor: t.bg }]}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }}>
+        {FROM_MORE.includes(route) ? (
+          <IconBtn label="إغلاق والعودة إلى المزيد" onPress={() => router.navigate("/(tabs)/more" as never)}><Icon name="x" size={20} color={t.tx} stroke={2.2} /></IconBtn>
+        ) : null}
+        <T size={FROM_MORE.includes(route) ? 24 : 28} weight={800} style={{ flexShrink: 1, letterSpacing: -0.6, lineHeight: 36 }} numberOfLines={1}>{title}</T>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <IconBtn label="تحديث البيانات" onPress={manualRefresh}>
+          <Animated.View style={{ transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}>
+            <Icon name="refresh" size={20} color={t.tx} stroke={2} />
+          </Animated.View>
+        </IconBtn>
+        <IconBtn label={bell.unread > 0 ? `الإشعارات، ${bell.unread} جديدة` : "الإشعارات"} onPress={() => { setPanel(true); bell.refresh(); }}>
+          <Icon name="bell" size={21} color={t.tx} stroke={2} />
           {bell.unread > 0 ? (
             <View style={[styles.badge, { borderColor: t.c }]}><T size={10} weight={800} color="#fff">{bell.unread > 99 ? "99+" : bell.unread}</T></View>
           ) : null}
         </IconBtn>
-        <IconBtn label="تغيير كلمة المرور" onPress={() => setPw(true)}><Icon name="key" size={18} color={t.tx} stroke={2} /></IconBtn>
-        <IconBtn label="خروج" onPress={signOut}><Icon name="logout" size={18} color={t.tx} stroke={2} /></IconBtn>
-        <Pressable onPress={toggle} style={[styles.mode, { backgroundColor: brand.beige, borderColor: brand.beige }]}>
-          <T size={11} weight={800} color={t.dark ? "#FFFFFF" : "#014D3D"}>{mode === "dark" ? "نهاري" : "ليلي"}</T>
-        </Pressable>
-        <Pressable onPress={manualRefresh} style={[styles.refresh, { backgroundColor: t.dark ? "#29B35E" : "#014D3D" }]}>
-          <Animated.View style={{ transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}>
-            <Icon name="refresh" size={18} color={t.dark ? "#013D31" : "#fff"} stroke={2} />
-          </Animated.View>
-        </Pressable>
       </View>
-      <PasswordSheet visible={pw} onClose={() => setPw(false)} onDone={() => toast("تم تغيير كلمة المرور", "ok")} />
-      <BellPanel visible={panel} onClose={() => setPanel(false)} top={insets.top + 58} />
+      <BellPanel visible={panel} onClose={() => setPanel(false)} top={insets.top + 64} />
     </View>
   );
 }
 
 const KIND = {
-  template: { bg: "rgba(66,133,244,.14)", fg: "#3b7ddd", icon: "file" },
-  request: { bg: "rgba(214,158,46,.17)", fg: "#b9811a", icon: "clock" },
+  template: { bg: "rgba(66,133,244,.14)", fg: "#014D3D", icon: "file" },
+  request: { bg: "rgba(214,158,46,.17)", fg: "#231F20", icon: "clock" },
   ok: { bg: "rgba(41,179,94,.17)", fg: "#1F8D49", icon: "checkCircle" },
   no: { bg: "rgba(181,74,74,.15)", fg: "#B54A4A", icon: "xCircle" },
+  announcement: { bg: "rgba(1,77,61,.14)", fg: "#014D3D", icon: "bell" },
+  greeting: { bg: "rgba(228,228,188,.55)", fg: "#231F20", icon: "star" },
 } as const;
 
 function ago(ts: string) {
@@ -151,64 +159,90 @@ function BellPanel({ visible, onClose, top }: { visible: boolean; onClose: () =>
 }
 
 type NavRoute = { key: string; name: string };
-type BottomTabBarProps = { state: { index: number; routes: NavRoute[] }; navigation: { navigate: (name: string) => void } };
+// SDK 58 no longer hands a `navigation` object to a custom tab bar, so the dock navigates through the router.
+type BottomTabBarProps = { state: { index: number; routes: NavRoute[] } };
 
-function BottomNav({ state, navigation }: BottomTabBarProps) {
+const DOCK: { name: string; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
+  { name: "index", label: "الرئيسية", icon: "home" },
+  { name: "leaves", label: "طلباتي", icon: "clipboard" },
+  { name: "salary", label: "الراتب", icon: "wallet" },
+  { name: "more", label: "المزيد", icon: "more" },
+];
+
+function BottomNav({ state }: BottomTabBarProps) {
   const t = useTheme();
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const { letters, approvals } = useData();
-  const pendingDocs = letters.filter((l) => l.status === "pending").length;
-  const visible = TABS.filter((x) => x.name !== "approvals" || APPROVERS.includes(user?.role ?? ""));
+  const insets = useInsets();
+  const { width, gutter, dockMax } = useLayout();
+  const dockW = Math.min(dockMax, width - gutter * 2); // tablets: a dock of phone width, centred
+  const { approvals, letters } = useData();
+  const current = state.routes[state.index]?.name;
+  const badge = (name: string) => (name === "more" ? letters.filter((l) => l.status === "pending").length + approvals.length : 0);
+  const item = (d: (typeof DOCK)[number]) => {
+    const on = current === d.name || (d.name === "more" && !!current && !["index", "leaves", "salary"].includes(current));
+    const color = on ? (t.dark ? "#29B35E" : "#014D3D") : t.mu;
+    const n = badge(d.name);
+    return (
+      <Pressable key={d.name} accessibilityRole="tab" accessibilityLabel={d.label} accessibilityState={{ selected: on }}
+        onPress={() => { select(); router.navigate((d.name === "index" ? "/(tabs)" : `/(tabs)/${d.name}`) as never); }} style={({ pressed }) => [styles.tab, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}>
+        <View style={{ transform: [{ translateY: on ? -2 : 0 }] }}><Icon name={d.icon} size={23} color={color} stroke={on ? 2.1 : 1.8} /></View>
+        <T size={11.5} weight={on ? 800 : 600} color={color} numberOfLines={1}>{d.label}</T>
+        <View style={[styles.tabLine, { backgroundColor: "#29B35E", opacity: on ? 1 : 0, transform: [{ skewX: "-30deg" }, { scaleX: on ? 1 : 0.2 }] }]} />
+        {n > 0 ? <View style={[styles.navBadge, { backgroundColor: "#B3342B" }]}><T size={10} weight={800} color="#fff">{n}</T></View> : null}
+      </Pressable>
+    );
+  };
   return (
-    <View style={[styles.bnav, { bottom: 10 + insets.bottom / 2, backgroundColor: t.c, borderColor: "rgba(1,77,61,.10)" }]}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 2, paddingHorizontal: 4 }}>
-        {visible.map((tab) => {
-          const route = state.routes.find((r) => r.name === tab.name);
-          const on = route && state.routes[state.index]?.key === route.key;
-          const color = on ? (t.dark ? "#29B35E" : "#014D3D") : t.mu;
-          const count = tab.name === "documents" ? pendingDocs : tab.name === "approvals" ? approvals.length : 0;
-          return (
-            <Pressable key={tab.name} onPress={() => route && navigation.navigate(route.name)}
-              style={[styles.bni, on && { backgroundColor: t.dark ? "rgba(41,179,94,.20)" : "rgba(1,77,61,.10)" }]}>
-              <View style={on ? { transform: [{ translateY: -1 }, { scale: 1.08 }] } : undefined}><Icon name={tab.icon} size={22} color={color} /></View>
-              <T size={10} weight={700} color={color} numberOfLines={1}>{tab.label}</T>
-              {count > 0 ? <View style={[styles.navBadge, { backgroundColor: tab.name === "approvals" ? t.rd : "#B54A4A" }]}><T size={9} weight={700} color="#fff">{count}</T></View> : null}
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+    <View style={[styles.bnav, { left: (width - dockW) / 2, right: (width - dockW) / 2, bottom: Math.max(14, insets.bottom), backgroundColor: t.dark ? "rgba(1,61,49,.94)" : "rgba(255,255,255,.94)", borderColor: t.bd }]}>
+      {item(DOCK[0])}{item(DOCK[1])}
+      {item(DOCK[2])}{item(DOCK[3])}
     </View>
   );
 }
 
+/** Their BioAsk: once, after signing in with «تذكرني», offer Face ID / fingerprint sign-in on this device. */
+function BioAsk() {
+  const toast = useToast();
+  useEffect(() => {
+    (async () => {
+      if (!(await remembered()) || !(await biometricAvailable()) || (await biometricEnabled()) || (await wasNudged())) return;
+      await setNudged();
+      Alert.alert("تفعيل الدخول بالبصمة؟", "بدل كتابة كلمة المرور كل مرة، تدخل بالبصمة أو Face ID على هذا الجهاز.", [
+        { text: "ليس الآن", style: "cancel" },
+        { text: "تفعيل", onPress: async () => { const rt = await getRefreshToken(); if (!rt) return; const r = await enableBiometric(rt); toast(r.msg, r.ok ? "ok" : "err"); } },
+      ]);
+    })();
+  }, [toast]);
+  return null;
+}
+
 export default function TabsLayout() {
   return (
-    <DataProvider>
-      <PunchProvider>
-        <Tabs tabBar={(p) => <BottomNav {...(p as unknown as BottomTabBarProps)} />} screenOptions={({ route }) => ({
-          header: () => <Header title={TABS.find((x) => x.name === route.name)?.title ?? ""} />,
-        })}>
-          {TABS.map((x) => <Tabs.Screen key={x.name} name={x.name} options={{ title: x.title }} />)}
-        </Tabs>
-      </PunchProvider>
-    </DataProvider>
+    <PunchProvider>
+      <ComposerProvider>
+      <BioAsk />
+      <Tabs tabBar={(p) => <BottomNav {...(p as unknown as BottomTabBarProps)} />} screenOptions={({ route }) => ({
+        header: () => <Header title={TABS.find((x) => x.name === route.name)?.title ?? ""} route={route.name} />,
+      })}>
+        {TABS.map((x) => <Tabs.Screen key={x.name} name={x.name} options={{ title: x.title }} />)}
+      </Tabs>
+      </ComposerProvider>
+    </PunchProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  hdr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: 1,
-    shadowColor: "#014D3D", shadowOpacity: 0.06, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 2, zIndex: 10 },
-  ib: { width: 36, height: 36, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  hdr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 18, paddingBottom: 8, zIndex: 10 },
+  ib: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center", ...shadow("#014D3D", 0.1, 5, 0, 2, 1) },
   badge: { position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#B54A4A", alignItems: "center", justifyContent: "center", paddingHorizontal: 4, borderWidth: 2 },
   mode: { height: 36, minWidth: 36, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   refresh: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  bnav: { position: "absolute", left: 10, right: 10, borderRadius: 24, borderWidth: 1, paddingVertical: 6,
-    shadowColor: "#014D3D", shadowOpacity: 0.18, shadowRadius: 17, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
-  bni: { minWidth: 62, alignItems: "center", gap: 3, paddingTop: 7, paddingBottom: 6, paddingHorizontal: 4, borderRadius: 18 },
-  navBadge: { position: "absolute", top: 2, right: 12, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
+  bnav: { position: "absolute", left: 14, right: 14, height: 68, borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", paddingHorizontal: 6,
+    ...shadow("#014D3D", 0.22, 16, 0, 12, 10) },
+  tab: { flex: 1, height: 68, alignItems: "center", justifyContent: "center", gap: 2 },
+  tabLine: { position: "absolute", bottom: 6, width: 16, height: 3, borderRadius: 2 },
+  navBadge: { position: "absolute", top: 8, right: "22%", minWidth: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   panel: { position: "absolute", left: 8, right: 8, maxHeight: "76%", borderWidth: 1, borderRadius: 18, overflow: "hidden",
-    shadowColor: "#000", shadowOpacity: 0.28, shadowRadius: 25, shadowOffset: { width: 0, height: 18 }, elevation: 10 },
+    ...shadow("#000", 0.28, 25, 0, 18, 10) },
   panelHead: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1 },
   newPill: { backgroundColor: "rgba(214,69,69,.13)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
   item: { flexDirection: "row", gap: 10, paddingVertical: 11, paddingHorizontal: 14, borderBottomWidth: 1, alignItems: "flex-start" },

@@ -1,11 +1,13 @@
 // GPS state + punch action shared by the home hero and the attendance tab (legacy V118 home dial, V122b location badge,
 // V126 short toasts). The server re-checks the geofence on every punch.
+import { success, error as hapticError, warning } from "@/lib/haptics";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
 import { ApiError, attendance } from "./api";
 import { useData } from "./data";
 import { currentFix, evaluate, type Fix, type LocState } from "./geo";
 import { useToast } from "@/components/ui";
+import { diagOff } from "./diag";
 
 type Punch = { loc: LocState; fix: Fix | null; busy: boolean; locate: () => Promise<Fix | null>; punch: (action: "in" | "out") => Promise<void> };
 const Ctx = createContext<Punch | null>(null);
@@ -33,6 +35,7 @@ export function PunchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (diagOff("gps")) return;
     locate();
     const id = setInterval(locate, 15000);
     const sub = AppState.addEventListener("change", (s) => s === "active" && locate());
@@ -52,15 +55,18 @@ export function PunchProvider({ children }: { children: ReactNode }) {
     try {
       const f = await locate();
       if (!f) {
+        warning();
         toast("فعّل صلاحية الموقع", "err");
         return;
       }
       const s = await attendance.punch(action, f.lat, f.lng);
+      success();
       if (action === "in") toast(`تم تسجيل الحضور${s.late_minutes > 0 ? ` — تأخير ${s.late_minutes} دقيقة` : ""}`, "ok");
       else toast(`تم تسجيل الانصراف${s.early_minutes > 0 ? ` — قبل الموعد المتوقع بـ ${s.early_minutes} دقيقة` : ""}`, "ok");
       await refreshAtt();
     } catch (e) {
       const code = e instanceof ApiError ? e.code : "";
+      hapticError();
       toast(code === "outside_geofence" ? "خارج نطاق العمل" : e instanceof ApiError ? e.message : "تعذر الاتصال بالإنترنت", "err");
     } finally {
       setTimeout(() => setBusy(false), 1500); // legacy V117: block double taps

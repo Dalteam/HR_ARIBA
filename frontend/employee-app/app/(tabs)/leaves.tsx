@@ -1,62 +1,42 @@
-// الإجازات — legacy requests/004 (second renderLv / changeRequestType / submitLv) + 027 (نسيان بصمة) + 035 (حذف).
-// Order as in the prototype: «📋 طلباتي» then «إرسال طلب جديد» with the 4-column type grid.
-import { useState } from "react";
-import { Alert, Pressable, View } from "react-native";
-import { ForgotPunchSheet, todayISO } from "@/components/shared";
-import { Btn, Card, CardTitle, Empty, Input, Page, PickerField, T, useToast } from "@/components/ui";
+// طلباتي — their Leaves.jsx «📋 طلباتي» and the delegation card. Sending a request is the «+» in the dock (components/composer.tsx),
+// which holds every type, rule and attachment that used to be the inline form here.
+import { dateLocale } from "@/i18n";
+import { Alert, View } from "react-native";
+import { Btn, Card, CardTitle, Empty, Page, T, useToast } from "@/components/ui";
 import { Icon } from "@/components/icons";
-import { ApiError, requests, type MyRequest, type RequestType } from "@/lib/api";
-import { HOURLY, RequestItem, TYPES } from "@/components/request-item";
+import { useComposer } from "@/components/composer";
+import { ApiError, requests, type MyRequest } from "@/lib/api";
+import { DelegationCard } from "@/components/delegation";
+import { RequestItem } from "@/components/request-item";
 import { useData } from "@/lib/data";
 import { useTheme } from "@/theme";
+
+const DAY = 86400000;
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** Requests grouped by the day they were sent, newest day first. */
+function byDay(list: MyRequest[]): [string, MyRequest[]][] {
+  const m = new Map<string, MyRequest[]>();
+  for (const r of [...list].sort((a, b) => b.created_at.localeCompare(a.created_at))) {
+    const k = ymd(new Date(r.created_at));
+    m.set(k, [...(m.get(k) ?? []), r]);
+  }
+  return [...m.entries()];
+}
+function dayLabel(k: string) {
+  const now = new Date();
+  if (k === ymd(now)) return "اليوم";
+  if (k === ymd(new Date(now.getTime() - DAY))) return "أمس";
+  const [y, mo, d] = k.split("-").map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString(dateLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
 
 export default function Leaves() {
   const t = useTheme();
   const toast = useToast();
-  const { requests: list, leave, refresh } = useData();
-  const [type, setType] = useState<RequestType>("annual");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [date, setDate] = useState(todayISO());
-  const [time, setTime] = useState("");
-  const [dur, setDur] = useState("1");
-  const [amount, setAmount] = useState("");
-  const [notes, setNotes] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [forgot, setForgot] = useState(false);
+  const { open } = useComposer();
+  const { requests: list, refresh } = useData();
   const mine = list.filter((r) => r.type !== "overtime");
-
-  function pick(k: RequestType) {
-    if (k === "forgot_punch") return setForgot(true);
-    setType(k);
-  }
-
-  async function submit() {
-    const n = notes.trim() || undefined;
-    let body: Parameters<typeof requests.submit>[0];
-    if (type === "advance") {
-      if (!(Number(amount) > 0)) return toast("أدخل مبلغ السلفة", "err");
-      body = { type, amount: String(Number(amount)), notes: n };
-    } else if (HOURLY.includes(type)) {
-      if (!date || !time) return toast("حدد التاريخ والوقت", "err");
-      body = { type, on_date: date, time_from: time, hours: String(Number(dur) || 1), notes: n };
-    } else {
-      if (!from || !to || to < from) return toast("حدد الفترة بشكل صحيح", "err");
-      if (type === "annual" && leave && leave.current <= 0) return toast("يتجاوز الرصيد المتاح", "err");
-      body = { type, from_date: from, to_date: to, notes: n };
-    }
-    setBusy(true);
-    try {
-      await requests.submit(body);
-      toast("تم إرسال الطلب", "ok");
-      setFrom(""); setTo(""); setTime(""); setAmount(""); setNotes("");
-      await refresh();
-    } catch (e) {
-      toast(e instanceof ApiError ? e.message : "تعذر إرسال الطلب", "err");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const pending = mine.filter((r) => r.status === "pending").length;
 
   function remove(r: MyRequest) {
     Alert.alert("حذف الطلب", "هل تريد حذف هذا الطلب؟", [
@@ -69,44 +49,25 @@ export default function Leaves() {
 
   return (
     <Page onRefresh={refresh}>
+      <Btn kind="primary" title="طلب جديد" icon={<Icon name="send" size={16} color="#012A21" />} onPress={() => open()} style={{ marginTop: 0, marginBottom: 14 }} />
       <Card>
         <CardTitle icon="clipboard">طلباتي</CardTitle>
+        {pending ? <View style={{ marginBottom: 6 }}><T size={12} color={t.mu}>{`${pending} طلب بانتظار الاعتماد`}</T></View> : null}
         {!mine.length ? <Empty text="لا توجد طلبات" /> : null}
-        {mine.map((r) => <RequestItem key={r.id} r={r} onDelete={remove} />)}
-      </Card>
-
-      <Card>
-        <CardTitle>إرسال طلب جديد</CardTitle>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {TYPES.map(([k, label]) => {
-            const on = k === type;
-            return (
-              <Pressable key={k} onPress={() => pick(k)}
-                style={{ width: "23.3%", borderWidth: 2, borderColor: on ? t.bl : t.bd, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 4, backgroundColor: t.c2 }}>
-                <T size={11} center weight={on ? 700 : 500}>{label}</T>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {type === "advance" ? (
-          <Input label="مبلغ السلفة" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" />
-        ) : HOURLY.includes(type) ? (
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <PickerField label="التاريخ" value={date} onChange={setDate} mode="date" />
-            <PickerField label="الوقت" value={time} onChange={setTime} mode="time" />
-            <Input label="المدة (س)" value={dur} onChangeText={setDur} keyboardType="decimal-pad" />
+        {byDay(mine).map(([day, rows]) => (
+          <View key={day}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14, marginBottom: 2 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: t.bd }} />
+              <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, backgroundColor: t.bg, borderWidth: 1, borderColor: t.bd }}>
+                <T size={11.5} weight={800} color={t.mu}>{dayLabel(day)}</T>
+              </View>
+              <View style={{ flex: 1, height: 1, backgroundColor: t.bd }} />
+            </View>
+            {rows.map((r) => <RequestItem key={r.id} r={r} onDelete={remove} />)}
           </View>
-        ) : (
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <PickerField label="من تاريخ" value={from} onChange={setFrom} mode="date" />
-            <PickerField label="إلى تاريخ" value={to} onChange={setTo} mode="date" />
-          </View>
-        )}
-        <Input label="ملاحظات" value={notes} onChangeText={setNotes} placeholder="اختياري" multiline />
-        <Btn kind="primary" title="إرسال الطلب" icon={<Icon name="send" size={16} color={t.dark ? "#013D31" : "#fff"} />} onPress={submit} busy={busy} />
+        ))}
       </Card>
-      <ForgotPunchSheet visible={forgot} onClose={() => setForgot(false)} />
+      <DelegationCard />
     </Page>
   );
 }

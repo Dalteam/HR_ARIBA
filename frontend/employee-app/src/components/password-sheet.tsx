@@ -2,6 +2,7 @@
 // rules: ≥ 8 chars, letters and digits, repeat must match, different from the old one.
 import { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
+import { inputAlign, tr } from "@/i18n";
 import { Btn, Sheet, T } from "./ui";
 import { Icon } from "./icons";
 import { ApiError } from "@/lib/api";
@@ -15,8 +16,8 @@ function PwInput({ value, onChange, placeholder }: { value: string; onChange: (v
       <Pressable onPress={() => setShow((s) => !s)} style={{ width: 34, alignItems: "center" }}>
         <Icon name="eye" size={18} color={show ? "#29B35E" : "#8a94a0"} />
       </Pressable>
-      <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor="#999" secureTextEntry={!show}
-        autoCapitalize="none" style={{ flex: 1, padding: 10, fontSize: 14, color: "#111", fontFamily: fonts.medium, textAlign: "right" }} />
+      <TextInput value={value} onChangeText={onChange} placeholder={tr(placeholder)} placeholderTextColor="#999" secureTextEntry={!show}
+        autoCapitalize="none" style={{ flex: 1, padding: 10, fontSize: 14, color: "#111", fontFamily: fonts.medium, textAlign: inputAlign() }} />
     </View>
   );
 }
@@ -32,9 +33,9 @@ export function PasswordSheet({ visible, forced, onClose, onDone }: { visible: b
   async function save() {
     setErr(null);
     if (!oldPw) return setErr("اكتب كلمة المرور الحالية");
-    if (pw.length < 8 || !/[A-Za-z؀-ۿ]/.test(pw) || !/\d/.test(pw)) return setErr("كلمة المرور لازم تكون 8 أحرف على الأقل وفيها حروف وأرقام");
+    if (pw.length < 8 || !/[A-Za-z؀-ۿ]/.test(pw) || !/\d/.test(pw)) return setErr("يجب أن تكون كلمة المرور 8 أحرف على الأقل وتتضمن حروفًا وأرقامًا");
     if (pw !== pw2) return setErr("كلمتا المرور غير متطابقتين");
-    if (pw === oldPw) return setErr("كلمة المرور الجديدة لازم تختلف عن الحالية");
+    if (pw === oldPw) return setErr("يجب أن تختلف كلمة المرور الجديدة عن الحالية");
     setBusy(true);
     try {
       await changePassword(oldPw, pw);

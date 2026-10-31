@@ -1,4 +1,4 @@
-// Everything the tabs show, loaded together and refreshed on demand (legacy refreshAribaContext / ariba_employee_context).
+// Everything the screens show (mounted at the root: the tabs and the screens pushed over them), loaded together and refreshed on demand (legacy refreshAribaContext / ariba_employee_context).
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
 import {
@@ -23,15 +23,16 @@ export type AppData = {
 
 const Ctx = createContext<AppData | null>(null);
 const keep = <T,>(p: Promise<T>, fallback: T) => p.catch(() => fallback);
+const EMPTY: Omit<AppData, "refresh" | "refreshAtt"> = {
+  employee: null, att: null, leave: null, requests: [], payslips: [], letters: [], team: [], approvals: [], loaded: false,
+};
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [s, setS] = useState<Omit<AppData, "refresh" | "refreshAtt">>({
-    employee: null, att: null, leave: null, requests: [], payslips: [], letters: [], team: [], approvals: [], loaded: false,
-  });
+  const [s, setS] = useState<Omit<AppData, "refresh" | "refreshAtt">>(EMPTY);
 
   const refresh = useCallback(async () => {
-    if (!user || user.must_change_password) return;
+    if (!user || user.must_change_password) { setS(EMPTY); return; } // signed out: never show the previous user's data
     const [employee, att, leave, reqs, slips, lets, team, approvals] = await Promise.all([
       keep(me.employee(), null), keep(attendance.mine(), null), keep(requests.leave(), null), keep(requests.mine(), []),
       keep(payslips.mine(), []), keep(letters.mine(), []), keep(requests.team(), []), keep(requests.approvals(), []),

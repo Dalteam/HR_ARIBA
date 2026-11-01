@@ -19,14 +19,19 @@ from app.routers.canonical import _public_employee, _sign, _verify_password
 
 EXPECTED_TABLES = {
     "ariba_app_settings", "ariba_asset_custody_log", "ariba_assets", "ariba_audit_log",
-    "ariba_audit_purge_requests", "ariba_auth_accounts", "ariba_bootstrap_recovery", "ariba_deleted_items",
-    "ariba_documents", "ariba_notif_files", "ariba_employee_master_state", "ariba_leave_tombstones", "ariba_login_attempts",
-    "ariba_password_resets", "ariba_preview_pages", "ariba_role_perms", "ariba_security_flags",
-    "ariba_sessions", "attendance", "company_settings", "departments", "document_types", "employee_directory",
+    "ariba_audit_purge_requests", "ariba_auth_accounts", "ariba_bootstrap_recovery",
+    "ariba_candidate_files", "ariba_candidate_invites", "ariba_candidates", "ariba_delegations",
+    "ariba_deleted_items", "ariba_doc_signing", "ariba_documents", "ariba_employee_master_state",
+    "ariba_evaluations", "ariba_leave_files", "ariba_leave_tombstones", "ariba_login_attempts",
+    "ariba_mail_accounts", "ariba_mail_log", "ariba_manager_perms", "ariba_notif_files",
+    "ariba_password_resets", "ariba_preview_pages", "ariba_push_tokens", "ariba_role_perms",
+    "ariba_security_flags", "ariba_sessions", "ariba_targets", "ariba_tasks", "ariba_webauthn_credentials",
+    "attendance", "company_settings", "departments", "document_types", "employee_directory",
     "employee_payrolls", "employee_termination_archive", "employers", "job_titles", "leave_requests",
-    "leave_types", "payroll_archives_v2", "payroll_components", "payroll_lines", "payroll_periods", "permissions", "permission_types",
-    "public_holidays", "roles", "work_locations", "workflow_actions", "workflow_approvers",
-    "workflow_notifications", "workflow_request_types", "workflow_requests", "workflow_stages",
+    "leave_types", "payroll_archives_v2", "payroll_components", "payroll_lines", "payroll_periods",
+    "permissions", "permission_types", "public_holidays", "roles", "work_locations", "workflow_actions",
+    "workflow_approvers", "workflow_notifications", "workflow_request_types", "workflow_requests",
+    "workflow_stages",
 }
 
 RETIRED_TABLES = {

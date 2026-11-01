@@ -31,7 +31,10 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 2 | The **bell title of a sent letter is English** in the Arabic UI | The title comes from the send-template path, not from the app's i18n. Decide whether the title should follow the recipient's language and change it where the notification is created | backend | Open |
 | 11 | Does **store Expo Go open the SDK 58 app**? | Not verified. The store build was SDK 58 when the project was SDK 57; the project is now SDK 58 too, but nobody has scanned the QR with a store build | me | Open (verify) |
 | 19 | The app's **hard-coded default API URL is the old production Railway host** (`src/lib/api.ts`, `.env.example`, `tests/sw.test.mjs`) | Without a local `.env` the app talks to **production**. It must point at the new Railway backend **before any build or release** — as a separate commit, not folded into the port. Consider also making the app refuse to start without an explicit `EXPO_PUBLIC_API_URL` | employee-app | Open (before release) |
-| 22 | The new UI needs backend work the API does not have yet | About 16 endpoints (goals, targets, evaluations, delegation, manager permissions, team requests, tasks, meetings, availability, sign, document content, push token, announcements, public brand, password recovery) plus the `{type, payload, attachment}` request shape, while `/me/requests` accepts the flat `MyRequestIn`. The `port_*.py` reference routers are guide-only | backend | In progress (research) |
+| 22 | The new UI needs backend work the API does not have yet | **Stage 1 done in code:** `POST /me/requests` accepts the `{type, payload, attachment}` envelope as well as the flat body (per-type validation, ownership, upload limits in `services/request_envelope.py`), and approvals now route through `workflow_config.final_by_type`. Still missing: about 16 endpoints (goals, targets, evaluations, delegation, manager permissions, team requests, tasks, meetings, availability, sign, document content, push token, announcements, public brand, password recovery). The `port_*.py` reference routers stay guide-only | backend | In progress |
+| 23 | **Who signs last is now data, not code** | Each type ends at the stage `ariba_app_settings['workflow_config'].final_by_type` names (`hr` or `ceo`); the migrated setting already maps `unpaid`, `salary_advance`, `iban_change`, `profile_edit`, `document` to HR and everything else falls back to the CEO, exactly as before. So HR can move a type's last signature without a deploy — but the five names are a business rule nobody has confirmed. Also: any value other than `hr`/`ceo` is ignored (code default wins), so whatever screen edits `workflow_config` must accept only those two | client | Needs decision |
+| 24 | The new **team screen expects `salary_total` per member** | `port.ts` (`TeamMember`) reads it, and the API already hides salary behind the `view_team_salary` permission (`may_view_salary` in `employee_out`). The team endpoint itself is part of #22; when it is ported, gate the salary column on that permission and settle whether a manager sees it by default | backend / client | Open (with #22) |
+| 25 | **`models.py` allowlist grew by the 14 migration-001 tables** | `ariba_candidate*`, `ariba_delegations`, `ariba_doc_signing`, `ariba_evaluations`, `ariba_leave_files`, `ariba_mail_accounts`, `ariba_mail_log`, `ariba_manager_perms`, `ariba_push_tokens`, `ariba_targets`, `ariba_tasks`, `ariba_webauthn_credentials` are now reflectable so the Stage 2 screens can use them, and `EXPECTED_TABLES` in `tests_canonical/test_canonical_contract.py` matches. Side effect: `configure_models()` now refuses to start against a database **without** `001_react_port.sql` — every database we run (`ariba_src` and every copy of it) already has all 14 | backend | Recorded |
 
 ## 3. Verification and documentation
 
@@ -74,5 +77,43 @@ When an item closes, change its **Status** and add the date; do not delete the r
 
 Order matters: `railway_validate` and `verify_002` must run **before** `api_smoke`, which mutates the
 database (see #17).
+
+## Stage 1 re-run, same procedure, fresh copy (1 Nov 2026)
+
+The request-envelope stage changed `POST /me/requests` and the approval routing only, so the database
+checks have nothing new to prove — they were re-run anyway, each on its own fresh copy
+(`smoke_setup.py --src ariba_src --dst ariba_verify_stage1`, dropped afterwards), and are unchanged:
+
+| Check | Command | Result |
+|---|---|---|
+| Unit tests | `python -m pytest -q` (cwd `backend`) | **88 passed, 16 skipped** — the baseline's 56 + the 32 new tests in `tests_canonical/test_new_ui_requests.py` |
+| Unit tests against a database | `CANONICAL_TEST_DATABASE_URL=postgresql+psycopg://…/ariba_verify_stage1 pytest tests_canonical -q` | **89 passed, 15 skipped** — the reflection test now runs and matches the 58-table allowlist (the URL needs `+psycopg`: a bare `postgresql://` makes SQLAlchemy look for `psycopg2`, which is not installed) |
+| Database validation | `...railway_validate.py --url ...ariba_verify_stage1` | **checks=13 failed=0**, `RESULT: OK` |
+| Migration 002 | `psql ... -f docs\db-migrations\verify_002.sql` | **27 rows, 0 FAIL** |
+| HTTP surface | `...api_smoke.py --base http://127.0.0.1:8001` (same copy) | **PASS=157 RULE=3 STUB=1 FAIL=0**, `RESULT: OK` |
+
+The envelope itself was also exercised end to end against that copy (uvicorn on :8001, one throwaway
+script, 25 checks, all PASS): unpaid leave and `iban_change` submitted as `{type, payload, attachment}`
+land at the manager, go to HR on the manager's approval, and complete on HR's signature without ever
+touching the CEO; the certificate is filed as `iban_certificate`; the legacy flat overtime body still
+starts at the manager; `salaryTotal` inside `changes` is refused; a body naming another employee is
+403; an executable file is 415; a file over 12 MB is 413.
+
+### Nothing old moved: HEAD vs the working copy, side by side
+
+The same throwaway copy was used to answer the review's question directly: a detached `git worktree` of
+`afd2b38` (the code before this stage) ran as a second uvicorn on **:8002** against its own copy of
+`ariba_src` (`ariba_old`), the working copy ran on **:8001** against `ariba_new`, and both read the same
+`workflow_config` row.
+
+| Check | Result |
+|---|---|
+| Final stage of every request type, old code vs new code | 24 types: **19 identical**. The 5 that differ — `unpaid`, `salary_advance`, `iban_change`, `profile_edit`, `document` — are the ones the old endpoint **refused outright** (`422 نوع طلب غير مدعوم`); they now end at HR because the migrated `final_by_type` says so. Every type that existed before (10 leave types, `mission`, the 5 hourly permissions, `advance`, `overtime`) still ends at the CEO, and `forgot_punch` is still HR-only |
+| The old flat body, old server vs new server (13 bodies: the 8 existing families + the 5 new types) | Status **and** response body identical for all 8 existing bodies (annual/sick/mission, permission/early_leave, advance, overtime, forgot_punch); the 5 new ones are 422 on the old server and 201 now. The `workflow_requests` payloads both servers wrote are identical too — `hours`, `dur`, `amount` and `days` included |
+| Callers of `POST /me/requests` in the repo | `src/lib/port.ts:12` (envelope — `composer.tsx`, `overtime.tsx` with a file, `iban-change.tsx`, `profile-edit.tsx`, `upload-document.tsx`), `src/lib/api.ts:264` (flat — `composer.tsx`, `overtime.tsx` without a file, `shared.tsx` forgot-punch) and `tools/smoke/api_smoke.py`. hr-web has no caller. All of them are pinned by `tests_canonical/test_new_ui_requests.py`, which now also stores the flat body of each existing type in its own parametrised case |
+
+Gap this closed: nothing in the repo pinned the flat body of the **existing** types (only overtime and
+unpaid were covered), so a change to the shared parsing could have moved them silently. The eight cases
+above are tests now, not a one-off script.
 
 

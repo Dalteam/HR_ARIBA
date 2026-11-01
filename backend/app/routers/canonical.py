@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import re
 import secrets
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
@@ -31,6 +32,7 @@ from app.database import get_db
 from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
+from app.services.request_envelope import Attachment, RequestInput
 
 router = APIRouter()
 _hasher = PasswordHasher()
@@ -1390,20 +1392,71 @@ def punch(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depend
 
 # --------------------------------------------------------------------------- workflow (legacy ariba_submit_request / ariba_workflow_action)
 LEAVE_TYPES = {"annual", "sick", "emergency", "death", "marriage", "maternity", "paternity", "umrah", "hajj", "remote"}
+# Types that carry a from/to period and get a leave_requests row (mission is legacy, unpaid is new).
+LEAVE_FORM_TYPES = LEAVE_TYPES | {"mission", "unpaid"}
 HOURLY_TYPES = {"permission", "maternity_permission", "early_leave", "perm", "perm_mat"}
 
+# The final approver of the types the new screens submit, as the migrated data already stores it in
+# `ariba_app_settings['workflow_config'].final_by_type`. This default only applies when that setting is
+# missing: the setting wins, so the chain is data, not code (docs/FOLLOW_UPS.md #23).
+DEFAULT_FINAL_BY_TYPE = {"unpaid": "hr", "salary_advance": "hr", "iban_change": "hr",
+                         "profile_edit": "hr", "document": "hr"}
+FINAL_STAGES = {"hr", "ceo"}
+# The fields a «تعديل بياناتي» request may change (the rest of the employee record stays HR-only).
+PROFILE_FIELDS = {"mobile", "email", "address", "city", "nameEn", "emergencyName", "emergencyPhone",
+                  "nationalAddress", "maritalStatus"}
+# The IBAN letter the app renders inline (letterhead + signature image) is a few dozen KB.
+LETTER_HTML_MAX_CHARS = 200_000
 
-def _stages(req_type: str, has_manager: bool = True) -> list[str]:
-    """Approval stages (legacy ariba_workflow_action, as decided with the business owner): every type goes
-    manager → HR → CEO; forgot-punch goes to HR only."""
+
+def _workflow_config(db: Session) -> dict[str, Any]:
+    """`ariba_app_settings['workflow_config']`: manager_wait_days, ceo_wait_days, final_by_type,
+    advance_max_percent, extra_hr_emails."""
+    row = _row(db, "SELECT value FROM public.ariba_app_settings WHERE key='workflow_config' LIMIT 1")
+    value = (row or {}).get("value")
+    return value if isinstance(value, dict) else {}
+
+
+def _final_stage(db: Session, req_type: str) -> str:
+    """The last stage of a request type: the setting first, the code default second.
+
+    `final_by_type` is the setting the legacy system already carries (unpaid, salary_advance,
+    iban_change, profile_edit and document finish at HR; the older types still go on to the CEO), so HR
+    can change who signs last without a deploy.
+    """
+    configured = _workflow_config(db).get("final_by_type")
+    stage = str(configured.get(req_type) or "").strip() if isinstance(configured, dict) else ""
+    if stage not in FINAL_STAGES:
+        stage = DEFAULT_FINAL_BY_TYPE.get(req_type, "ceo")
+    return stage
+
+
+def _chain(db: Session, req_type: str, has_manager: bool = True, with_stage: str | None = None) -> list[str]:
+    """manager (when the employee has one) → HR → the type's final stage.
+
+    `with_stage` keeps a stage the request already sits on in the chain, so a manager row that
+    disappeared after submission can never make an approval skip HR.
+    """
+    final = _final_stage(db, req_type)
+    has_mgr = has_manager or with_stage == "manager"
+    return (["manager"] if has_mgr else []) + ([] if final == "hr" else ["hr"]) + [final]
+
+
+def _stages(db: Session, req_type: str, has_manager: bool = True) -> list[str]:
+    """The approval stages of a new request (legacy ariba_workflow_action): manager (when the employee
+    has one) → HR → the type's final stage (`_final_stage`: HR for the new screens' types, the CEO for
+    the rest). Forgot-punch goes to HR only."""
     if req_type == "forgot_punch":
         return ["hr"]
-    return (["manager"] if has_manager else []) + ["hr", "ceo"]
+    return _chain(db, req_type, has_manager)
 
 
-def _next_stage(req_type: str, stage: str, has_manager: bool = True) -> str:
-    st = _stages(req_type, has_manager)
-    return st[st.index(stage) + 1] if stage in st and st.index(stage) + 1 < len(st) else "completed"
+def _next_stage(db: Session, req_type: str, stage: str, has_manager: bool = True) -> str:
+    if req_type == "forgot_punch" or stage in {"completed", "rejected"}:
+        return "completed"
+    order = _chain(db, req_type, has_manager, with_stage=stage)
+    idx = order.index(stage) if stage in order else -1
+    return order[idx + 1] if 0 <= idx < len(order) - 1 else "completed"
 
 
 def _role_employees(db: Session, *roles: str) -> list[str]:
@@ -1507,8 +1560,9 @@ def _override(db: Session, actor: dict[str, Any], item: dict[str, Any], reason: 
     if stage not in {"manager", "hr", "ceo"}:
         raise ApiError(409, "not_overrideable", "REQUEST_STAGE_NOT_OVERRIDEABLE")
     t = item["request_type"]
-    next_stage = "hr" if stage == "manager" else "ceo" if stage == "hr" else None
-    next_people = _require_stage_approver(db, next_stage) if t != "forgot_punch" and next_stage else []
+    manager = _row(db, "SELECT manager_id FROM public.employee_directory WHERE employee_id=:e", e=item["employee_id"])
+    next_stage = _next_stage(db, t, stage, has_manager=bool((manager or {}).get("manager_id")))
+    next_people = _require_stage_approver(db, next_stage) if t != "forgot_punch" and next_stage != "completed" else []
     db.execute(text("INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment) VALUES(:r,:a,:s,'approved',:c)"),
                {"r": rid, "a": actor["account_id"], "s": stage,
                 "c": reason or "اعتماد الموارد البشرية نيابة عن المسؤول في هذه المرحلة"})
@@ -1519,7 +1573,7 @@ def _override(db: Session, actor: dict[str, Any], item: dict[str, Any], reason: 
         db.execute(text(done), {"r": rid})
         _insert_notification(db, item["employee_id"], rid, "تمت الموافقة على نسيان البصمة", "تمت الموافقة على طلبك وتم تسجيل الحضور/الانصراف", "employee", "decision")
         return
-    if stage in {"manager", "hr"}:
+    if next_stage != "completed":  # this type goes on (workflow_config.final_by_type decides who signs last)
         nxt = next_stage
         db.execute(text("UPDATE public.workflow_requests SET current_stage=:n,updated_at=now() WHERE id=:r"), {"r": rid, "n": nxt})
         title, body = (("طلب بانتظار موافقة الموارد البشرية", "تم اعتماد الطلب نيابة عن المدير المباشر") if nxt == "hr"
@@ -1539,7 +1593,7 @@ def _advance(db: Session, actor: dict[str, Any], item: dict[str, Any], action: s
     next_stage = None
     if action == "approve":
         manager = _row(db, "SELECT manager_id FROM public.employee_directory WHERE employee_id=:e", e=item["employee_id"])
-        next_stage = _next_stage(item["request_type"], stage, has_manager=bool((manager or {}).get("manager_id")))
+        next_stage = _next_stage(db, item["request_type"], stage, has_manager=bool((manager or {}).get("manager_id")))
         if next_stage in {"hr", "ceo"}:
             _require_stage_approver(db, next_stage)
     db.execute(text("INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment) VALUES(:r,:a,:s,:act,:c)"),
@@ -1613,23 +1667,57 @@ def approvals(actor: dict[str, Any] = Depends(current_actor), db: Session = Depe
     return _me_requests_out(db, [r for r in rows if _can_act(db, actor, r)])
 
 
+def _attachment_doc_type(req_type: str, payload: dict[str, Any]) -> str:
+    """The `ariba_documents.document_type` a request's attachment is filed under."""
+    if req_type == "document":
+        return str(payload.get("doc_type") or "employee_upload")
+    return {"iban_change": "iban_certificate", "profile_edit": "profile_edit"}.get(req_type, "employee_upload")
+
+
+def _save_request_document(db: Session, employee_id: str, request_id: Any, doc_type: str, att: Attachment) -> None:
+    """Store a request's attachment in `ariba_documents`, owned by the employee who owns the request.
+
+    Size, mime and magic bytes were checked by `RequestInput`; the row is written under the
+    signed-in employee (never a body value) and linked to the request, so `/documents`,
+    `/documents/{id}/file` and the HR document screens find it with the usual ownership rules.
+    """
+    owner = _row(db, "SELECT employee_id FROM public.workflow_requests WHERE id=:r", r=request_id)
+    if not owner or str(owner["employee_id"]) != str(employee_id):
+        raise ApiError(403, "forbidden", "The request does not belong to this employee")
+    db.execute(text("""INSERT INTO public.ariba_documents(employee_id,request_id,document_type,file_name,mime_type,file_data,uploaded_by)
+        VALUES(:eid,:rid,:dtype,:name,:mime,:data,:eid)"""),
+               {"eid": employee_id, "rid": request_id, "dtype": doc_type, "name": att.name,
+                "mime": att.mime, "data": att.data})
+
+
 @router.post("/me/requests", status_code=201)
 def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """Submit a request for the signed-in employee.
+
+    The new employee app posts `{type, payload, attachment}` (src/lib/port.ts) and the original screens
+    post the same fields flat; `RequestInput` reads both (app.services.request_envelope) and its
+    attachment policy — 12 MB, PDF/Word/JPG/PNG, magic-byte checked, filed under the request's own
+    employee — applies to every type. Nothing is written until the whole body validates, and the
+    response shape stays exactly what `/me/requests` already returns.
+    """
     eid = actor.get("employee_id")
     if not eid:
         raise ApiError(404, "not_found", "Employee not found")
     emp = _employee_scope(db, actor, eid)
-    t = str(body.get("type") or "")
+    form = RequestInput(body, owner=eid)  # also refuses a body that names another employee
+    t = form.type
     _require_lookup(db, "workflow_request_types", t, "request type")
-    notes = str(body.get("notes") or "").strip()
+    notes = form.notes
     today = today_riyadh()
     bad = lambda m: ApiError(422, "invalid_request", m)  # noqa: E731
     payload: dict[str, Any] = {"notes": notes}
-    if t in LEAVE_TYPES or t == "mission":
+    if t in LEAVE_FORM_TYPES:
         _require_lookup(db, "leave_types", t, "leave type")
-        f, to = cdata._d(body.get("from_date") or body.get("from")), cdata._d(body.get("to_date") or body.get("to"))
+        f, to = cdata._d(form.text("from_date", "from")), cdata._d(form.text("to_date", "to"))
         if not f or not to or to < f:
             raise bad("حدد الفترة بشكل صحيح")
+        if t == "unpaid" and not notes:  # the composer marks the reason mandatory for unpaid leave
+            raise bad("اكتب سبب الإجازة بدون راتب")
         emps = cdata.employees(db, employee_id=eid)
         book = cdata.leave_book(db, today, emps)
         days = book.count_workdays(f, to) if t == "annual" else (to - f).days + 1
@@ -1638,48 +1726,86 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
         payload.update({"from": f.isoformat(), "to": to.isoformat(), "days": days})
     elif t in HOURLY_TYPES:
         _require_lookup(db, "permission_types", t, "permission type")
-        d, tm = cdata._d(body.get("on_date") or body.get("date")), body.get("time_from") or body.get("time")
+        d, tm = cdata._d(form.text("on_date", "date")), form.text("time_from", "time")
         if not d or not tm:
             raise bad("حدد التاريخ والوقت")
-        payload.update({"date": d.isoformat(), "time": str(tm)[:5], "dur": float(body.get("hours") or 1)})
-    elif t == "advance":
-        try:
-            amount = float(body.get("amount") or 0)
-        except (TypeError, ValueError):
-            amount = 0
+        payload.update({"date": d.isoformat(), "time": tm[:5], "dur": form.number("hours", "dur") or 1.0})
+    elif t in {"advance", "salary_advance"}:
+        amount = form.number("amount")
         if amount <= 0:
             raise bad("أدخل مبلغ السلفة")
+        if t == "salary_advance" and not notes:  # the composer marks the reason mandatory for a salary advance
+            raise bad("اكتب سبب طلب الراتب المقدم")
         payload["amount"] = amount
+        if form.number("days") > 0:  # the app offers an optional number of days to advance
+            payload["days"] = int(form.number("days"))
     elif t == "overtime":
-        d = cdata._d(body.get("on_date") or body.get("date"))
-        hours = float(body.get("hours") or 0)
+        d, hours = cdata._d(form.text("on_date", "date")), form.number("hours", "dur")
         if not d or hours < 0.5:
             raise bad("حدد التاريخ والساعات (0.5 على الأقل)")
         payload.update({"date": d.isoformat(), "hours": hours})
     elif t == "forgot_punch":
-        kind = body.get("punch_kind") or body.get("kind")
-        d = cdata._d(body.get("on_date") or body.get("date"))
-        t1, t2 = body.get("time_from") or body.get("time"), body.get("time_to") or body.get("time2")
+        kind = form.text("punch_kind", "kind")
+        d = cdata._d(form.text("on_date", "date"))
+        t1, t2 = form.text("time_from", "time"), form.text("time_to", "time2")
         if kind not in {"in", "out", "both"} or not d:
             raise bad("حدد نوع البصمة والتاريخ")
         if d > today:
             raise bad("لا يمكن اختيار تاريخ في المستقبل")
         if not t1:
             raise bad("اختر الوقت")
-        if kind == "both" and (not t2 or str(t2)[:5] <= str(t1)[:5]):
+        if kind == "both" and (not t2 or t2[:5] <= t1[:5]):
             raise bad("وقت الخروج لازم يكون بعد وقت الدخول")
         if not notes:
             raise bad("اكتب سبب نسيان البصمة")
         if _row(db, "SELECT id FROM public.workflow_requests WHERE employee_id=:e AND request_type='forgot_punch' AND status='pending' AND payload->>'date'=:d AND payload->>'kind'=:k", e=eid, d=d.isoformat(), k=kind):
             raise bad("يوجد طلب نسيان بصمة معلق لنفس اليوم")
-        payload.update({"kind": kind, "date": d.isoformat(), "time": str(t1)[:5]})
+        payload.update({"kind": kind, "date": d.isoformat(), "time": t1[:5]})
         if kind == "both":
-            payload["time2"] = str(t2)[:5]
+            payload["time2"] = t2[:5]
+    elif t == "iban_change":
+        # The app sends the IBAN, the bank, the account number, the rendered letter and the bank's
+        # certificate; HR re-reads all of it before it reaches payroll.
+        iban = re.sub(r"[\s-]+", "", form.text("iban")).upper()
+        bank, account = form.text("bank"), form.text("account_no", "account")
+        letter = form.text("letter_html")
+        if not re.fullmatch(r"[A-Z]{2}[0-9A-Z]{13,30}", iban):
+            raise bad("رقم الآيبان غير صحيح")
+        if not bank or not account:
+            raise bad("اكتب اسم البنك ورقم الحساب")
+        if len(letter) > LETTER_HTML_MAX_CHARS:
+            raise bad("نموذج الخطاب طويل جدًا")
+        if not form.attachment:
+            raise bad("أرفق شهادة الآيبان")
+        payload.update({"iban": iban, "bank": bank, "account_no": account})
+        if letter:
+            payload["letter_html"] = letter
+    elif t == "profile_edit":
+        # Only the fields an employee may correct themselves; anything else stays an HR edit.
+        changes = form.get("changes")
+        source = changes if isinstance(changes, dict) else {f: form.get(f) for f in PROFILE_FIELDS if form.get(f) is not None}
+        clean: dict[str, str] = {}
+        for key, value in source.items():
+            if str(key) not in PROFILE_FIELDS:
+                raise bad(f"حقل غير قابل للتعديل: {key}")
+            text_value = str(value if value is not None else "").strip()[:300]
+            if text_value:
+                clean[str(key)] = text_value
+        if not clean:
+            raise bad("لم تغيّر أي بيان")
+        payload["changes"] = clean
+    elif t == "document":
+        doc_type = form.text("doc_type") or "employee_upload"
+        _require_lookup(db, "document_types", doc_type, "document type")
+        if not form.attachment:
+            raise bad("أرفق الملف المطلوب")
+        payload.update({"doc_type": doc_type, "doc_label": form.text("doc_label", "title")[:120]})
     else:
         raise bad("نوع طلب غير مدعوم")
+
     payload.update({"submitted_from": "employee_app", "submitted_at": datetime.now(UTC).isoformat()})
     manager = emp.get("manager_id") or None
-    stages = _stages(t, bool(manager))
+    stages = _stages(db, t, bool(manager))
     stage = stages[0]
     # Legacy V115 never blocks a submission because an approver is not configured yet: it notifies whoever holds the
     # next stage (the manager from the directory, then the configured HR/CEO accounts) and the request waits there.
@@ -1688,7 +1814,7 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
         eid=eid, type=t, payload=json.dumps(payload, ensure_ascii=False), stage=stage)
     db.execute(text("INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment) VALUES(:rid,:account,'employee','submitted',:comment)"),
                {"rid": row["id"], "account": actor["account_id"], "comment": notes or None})
-    if t in LEAVE_TYPES or t == "mission":
+    if t in LEAVE_FORM_TYPES:
         f = cdata._d(payload.get("from") or payload.get("date"))
         to = cdata._d(payload.get("to")) or f
         db.execute(text("""INSERT INTO public.leave_requests(employee_id,leave_type,from_date,to_date,days,notes,workflow_request_id)
@@ -1714,6 +1840,8 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
             if h not in {eid, manager}:
                 _insert_notification(db, h, row["id"], f"طلب جديد من {emp.get('name_ar') or eid}",
                                      "الطلب بانتظار المدير المباشر — تقدر تعتمده بالنيابة عنه من طلبات الموظفين", "hr", "request")
+    if form.attachment:  # stored only after the request row exists (ariba_documents.request_id)
+        _save_request_document(db, eid, row["id"], _attachment_doc_type(t, payload), form.attachment)
     _write_audit(db, actor, request, "workflow", "submit", "workflow_request", row["id"], details={"type": t})
     db.commit()
     return _me_requests_out(db, [row])[0]

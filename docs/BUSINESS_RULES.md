@@ -129,6 +129,13 @@ Stages come from `workflow_rules` (seeded, editable later):
 Rejection needs a reason. HR may approve on behalf of the manager (override with a reason) and can give the
 final approval. Every step is kept in `request_steps`.
 
+**The last stage is data.** `routers/canonical.py` builds each chain from
+`ariba_app_settings['workflow_config'].final_by_type`: the migrated setting ends `unpaid`, `salary_advance`,
+`iban_change`, `profile_edit` and `document` at **HR**, and every type it does not name at the **CEO**
+(`DEFAULT_FINAL_BY_TYPE` is the same map, used only when the setting is missing). A value other than `hr`
+or `ceo` is ignored, so a bad setting can never invent a stage. Which types end at HR is still a client
+decision — see [FOLLOW_UPS.md](FOLLOW_UPS.md) #23.
+
 ## Open questions from the prototypes (to settle in their phases)
 1. **2024 leave opening rule**: where do the first 10 days of the 2023 close go? (see Leave)
 2. **Late minutes**: from work start, or from work start + tolerance (see Attendance)?

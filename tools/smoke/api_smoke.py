@@ -321,6 +321,27 @@ def main() -> int:
     call((200,), "GET", "/employees", "ceo_approver")
     call((200,), "GET", f"/employees/{emp_id}", "ceo_approver")
 
+    # ------------------------------------------------------------------ goals, targets and evaluations
+    call((200,), "GET", "/me/goals", "requester")
+    call((200,), "GET", f"/targets?employee_id={emp_id}&year={today.year}", "requester")
+    call((403,), "GET", f"/targets?employee_id={plain_id}&year={today.year}", "requester", allow={403})
+    call((403,), "GET", f"/evaluations/{emp_id}/annual/{today.year}", "requester", allow={403})
+    _, goal_target = call((200,), "POST", "/targets", "hr_approver",
+                          {"target": {"employee_id": emp_id, "period_type": "annual",
+                                      "period_key": str(today.year), "title": "هدف اختبار الدخان",
+                                      "target_value": 10, "actual_value": 4, "weight": 1}})
+    goal_target_id = str(((goal_target or {}).get("target") or {}).get("id") or "")
+    call((403,), "POST", "/targets", "requester",
+         {"target": {"employee_id": emp_id, "period_type": "annual",
+                     "period_key": str(today.year), "title": "هدف من موظف"}}, allow={403})
+    call((403,), "PUT", f"/evaluations/{emp_id}/annual/{today.year}", "hr_approver",
+         {"items": [{"title": "بند", "score": 50, "weight": 1}], "submit": True}, allow={403})
+    call((200,), "GET", f"/targets?employee_id={emp_id}&year={today.year}", "hr_approver")
+    if goal_target_id:
+        call((200,), "DELETE", f"/targets/{goal_target_id}", "hr_approver")
+        call((404,), "DELETE", f"/targets/{goal_target_id}", "hr_approver", allow={404})
+    call((404,), "DELETE", f"/targets/{uuid.uuid4()}", "hr_approver", allow={404})
+
     # ------------------------------------------------------------------ punch journey (employee app, then HR cleanup)
     _, attendance = call((200,), "GET", "/me/attendance", "requester")
     before_ids = {str(row.get("id")) for row in ((attendance or {}).get("today") or [])}

@@ -8,6 +8,10 @@ It creates a manager with three reports (one delegated to him, one not, one with
 report who belongs to somebody else, an HR login, the manager's permissions, the `manager_team_salary`
 setting (off, so the salary is hidden until HR turns it on) and three team requests to look at.
 
+For Stage 3 it also seeds a **goal cycle**: targets for two reports, one approved evaluation (the one
+the employee sees), one pending (waiting for HR, hidden from the employee) and one draft (only the
+manager sees it), plus a second manager with his own report so "another team's manager" can be tried.
+
 **It is a sandbox tool, not a deployment step.** It refuses `ariba_src`, `postgres` and the
 template databases, and it refuses any host that is not this machine: a Railway or Supabase
 database is never a place to invent employees in. `docs/FOLLOW_UPS.md` #18 is the same rule for
@@ -34,7 +38,10 @@ MANAGER = "DEMO-MGR"
 REPORTS = ("DEMO-EMP1", "DEMO-EMP2", "DEMO-EMP3")
 OUTSIDER = "DEMO-OUT"
 HR_EMPLOYEE = "DEMO-HR"
-DEMO_IDS = (MANAGER, *REPORTS, OUTSIDER, HR_EMPLOYEE)
+#: A second manager and his report: the "another team's manager" refusal needs a real second team.
+MANAGER2 = "DEMO-MGR2"
+REPORT4 = "DEMO-EMP4"
+DEMO_IDS = (MANAGER, *REPORTS, OUTSIDER, HR_EMPLOYEE, MANAGER2, REPORT4)
 
 #: Databases this script must never write to.
 REFUSE_DATABASES = {"ariba_src", "postgres", "template0", "template1"}
@@ -132,6 +139,10 @@ def _clear(db) -> None:
     db.execute("DELETE FROM public.ariba_delegations "
                "WHERE employee_id = ANY(%(ids)s) OR manager_id = ANY(%(ids)s)", params)
     db.execute("DELETE FROM public.ariba_manager_perms WHERE manager_id = ANY(%(ids)s)", params)
+    db.execute("DELETE FROM public.ariba_targets "
+               "WHERE employee_id = ANY(%(ids)s) OR created_by = ANY(%(ids)s)", params)
+    db.execute("DELETE FROM public.ariba_evaluations WHERE employee_id = ANY(%(ids)s) "
+               "OR evaluator_id = ANY(%(ids)s) OR approved_by = ANY(%(ids)s)", params)
     _clear_references(db, params)  # attendance, targets, tasks, … whatever else names them
     db.execute("UPDATE public.employee_directory SET manager_id = NULL WHERE manager_id = ANY(%(ids)s)", params)
     db.execute("DELETE FROM public.ariba_auth_accounts WHERE employee_id = ANY(%(ids)s)", params)
@@ -147,7 +158,7 @@ def _employee(db, employee_id: str, name_ar: str, name_en: str, *, job: str, man
             "mobile": "0550000000", "email": f"{employee_id.lower()}@example.com",
             "contractEnd": "2027-06-30", "iqamaExpiry": "2027-05-01",
             "leaveDaysContract": 21, "join_date": JOIN_DATE.isoformat(), "isTerminated": False}
-    job_id = job_ids["manager" if employee_id == MANAGER else "employee"]
+    job_id = job_ids["manager" if employee_id in (MANAGER, MANAGER2) else "employee"]
     db.execute("""INSERT INTO public.employee_directory
         (employee_id,name_ar,name_en,nationality,join_date,manager_id,active,data,department_id,job_title_id)
         VALUES (%s,%s,%s,%s,%s,%s,true,%s::jsonb,%s,%s)""",
@@ -195,10 +206,15 @@ def seed(db) -> dict:
               salary=9500, department_id=department_id, job_ids=job_ids)
     _employee(db, HR_EMPLOYEE, "موارد بشرية (تجريبي)", "Demo HR", job=JOBS["employee"], manager_id=None,
               salary=15000, department_id=department_id, job_ids=job_ids)
+    _employee(db, MANAGER2, "مدير فريق آخر", "Second Demo Manager", job=JOBS["manager"], manager_id=None,
+              salary=21000, department_id=department_id, job_ids=job_ids)
+    _employee(db, REPORT4, "موظف الفريق الآخر", "Other Team Employee", job=JOBS["employee"],
+              manager_id=MANAGER2, salary=8800, department_id=department_id, job_ids=job_ids)
 
     accounts = [("demo_mgr", MANAGER, "employee"), ("demo_emp1", REPORTS[0], "employee"),
                 ("demo_emp2", REPORTS[1], "employee"), ("demo_emp3", REPORTS[2], "employee"),
-                ("demo_out", OUTSIDER, "employee"), ("demo_hr", HR_EMPLOYEE, "admin")]
+                ("demo_out", OUTSIDER, "employee"), ("demo_hr", HR_EMPLOYEE, "admin"),
+                ("demo_mgr2", MANAGER2, "employee"), ("demo_emp4", REPORT4, "employee")]
     for username, employee_id, role in accounts:
         db.execute("""INSERT INTO public.ariba_auth_accounts(username,password_hash,role,employee_id,active,must_change)
             VALUES (%s,%s,%s,%s,true,false)""", (username, hashed, role, employee_id))
@@ -233,9 +249,108 @@ def seed(db) -> dict:
     return {"accounts": [{"username": u, "employee_id": e, "role": r} for u, e, r in accounts],
             "manager": {"employee_id": MANAGER, "reports": list(REPORTS), "outsider": OUTSIDER,
                         "hr": HR_EMPLOYEE},
+            "second_manager": {"employee_id": MANAGER2, "report": REPORT4},
             "delegated": [REPORTS[0]], "not_delegated": [REPORTS[1]],
             "requests": {"approved_leave": str(approved), "pending_leave": str(pending),
-                         "rejected_advance": str(rejected)}}
+                         "rejected_advance": str(rejected)},
+            "goals": _goals(db)}
+
+
+def _target(db, employee_id: str, period_type: str, period_key: str, title: str, *,
+            target_value: float, actual_value: float, unit: str | None = None, weight: float = 1,
+            status: str = "active", created_by: str = MANAGER) -> str:
+    """One target row; `created_by` is the manager who set it."""
+    row = db.execute(
+        "INSERT INTO public.ariba_targets "
+        "(employee_id,period_type,period_key,title,target_value,actual_value,weight,unit,status,created_by) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (employee_id, period_type, period_key, title, target_value, actual_value, weight, unit,
+         status, created_by)).fetchone()
+    return str(row[0])
+
+
+def _item(target_id: str, title: str, target: float, actual: float, score: float, *,
+          weight: float = 1, unit: str | None = None, comment: str = "",
+          manual: bool = False) -> dict:
+    """One evaluation item in the shape `port.ts` `EvalItem` declares."""
+    return {"target_id": target_id, "title": title, "target": target, "unit": unit,
+            "actual": actual, "weight": weight, "score": score, "comment": comment,
+            "manual": manual}
+
+
+def _evaluation(db, employee_id: str, period_type: str, period_key: str, items: list[dict],
+                *, status: str, comments: str | None, overall: float, rating: str) -> str:
+    """One evaluation in its state - `draft`, `pending` (waiting for HR) or `approved`."""
+    row = db.execute(
+        "INSERT INTO public.ariba_evaluations "
+        "(employee_id,period_type,period_key,items,comments,overall,rating,status,evaluator_id,"
+        " submitted_at,approved_by,approved_at) "
+        "VALUES (%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,"
+        "        CASE WHEN %s <> 'draft' THEN now() END,"
+        "        CASE WHEN %s = 'approved' THEN %s END,"
+        "        CASE WHEN %s = 'approved' THEN now() END) RETURNING id",
+        (employee_id, period_type, period_key, json.dumps(items, ensure_ascii=False), comments,
+         overall, rating, status, MANAGER, status, status, HR_EMPLOYEE, status)).fetchone()
+    return str(row[0])
+
+
+def _goals(db) -> dict:
+    """The Stage 3 demo: the goal cycle, three evaluation states and the approver setting.
+
+    The monthly evaluation is **approved** (the employee sees it on their goals tab), the quarterly
+    one is **pending** (the employee must not see it; HR signs it in the walk-through) and the annual
+    one is a **draft** (only the manager sees it). The second manager gets one approved evaluation of
+    his own report, so nothing of the first team is reachable from him.
+    """
+    year = str(date.today().year)
+    month = f"{year}-{date.today().month:02d}"
+    quarter = f"{year}-Q{(date.today().month - 1) // 3 + 1}"
+
+    sales = _target(db, REPORTS[0], "annual", year, "زيادة المبيعات", target_value=200,
+                    actual_value=150, unit="صفقة")
+    satisfaction = _target(db, REPORTS[0], "annual", year, "رضا العملاء", target_value=90,
+                           actual_value=82, unit="درجة")
+    response = _target(db, REPORTS[0], "annual", year, "زمن الرد على الطلبات", target_value=24,
+                       actual_value=20, unit="ساعة", status="done")
+    project = _target(db, REPORTS[0], "quarterly", quarter, "مشروع الربع", target_value=100,
+                      actual_value=40, unit="%")
+    _target(db, REPORTS[1], "annual", year, "تقارير المشاريع", target_value=12, actual_value=7,
+            unit="تقرير")
+    other = _target(db, REPORT4, "annual", year, "مهام الفريق الآخر", target_value=50,
+                    actual_value=25, unit="%", created_by=MANAGER2)
+
+    approved = _evaluation(db, REPORTS[0], "monthly", month, [
+        _item(sales, "زيادة المبيعات", 200, 150, 75, weight=2, unit="صفقة", comment="أداء ثابت"),
+        _item(satisfaction, "رضا العملاء", 90, 82, 91, unit="درجة"),
+        _item(response, "زمن الرد على الطلبات", 24, 20, 83, unit="ساعة")],
+        status="approved", comments="شهر جيد، واصل بنفس الوتيرة.", overall=81.0, rating="جيد جداً")
+    pending = _evaluation(db, REPORTS[0], "quarterly", quarter, [
+        _item(project, "مشروع الربع", 100, 40, 70, unit="%",
+              comment="التقدّم أبطأ من الخطة، لكن الجودة جيدة.")],
+        status="pending", comments="بانتظار اعتماد الموارد البشرية.", overall=70.0, rating="جيد")
+    draft = _evaluation(db, REPORTS[0], "annual", year, [
+        _item(sales, "زيادة المبيعات", 200, 150, 75, unit="صفقة"),
+        _item(satisfaction, "رضا العملاء", 90, 82, 90, unit="درجة"),
+        _item(response, "زمن الرد على الطلبات", 24, 20, 85, unit="ساعة")],
+        status="draft", comments=None, overall=83.3, rating="جيد جداً")
+    _evaluation(db, REPORT4, "annual", year, [
+        _item(other, "مهام الفريق الآخر", 50, 25, 50, unit="%")],
+        status="approved", comments="يحتاج متابعة.", overall=50.0, rating="مقبول")
+
+    # HR signs evaluations by default; the setting is explicit so the demo shows where it lives.
+    db.execute("""INSERT INTO public.ariba_app_settings(key,value,updated_by,updated_at)
+        VALUES ('goals_config','{"evaluation_approver": "hr"}'::jsonb,'manager_demo_seed',now())
+        ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,
+        updated_at=now()""")
+    # The second manager may evaluate his own team - and still must not reach the first team.
+    db.execute("""INSERT INTO public.ariba_manager_perms(manager_id,perms,updated_by,updated_at)
+        VALUES (%s,%s::jsonb,'manager_demo_seed',now())""",
+        (MANAGER2, json.dumps({"view_team": True, "view_team_data": True, "manage_targets": True,
+                               "evaluate_team": True})))
+    return {"periods": {"year": year, "quarter": quarter, "month": month},
+            "evaluations": {"approved_monthly": approved, "pending_quarterly": pending,
+                            "draft_annual": draft},
+            "targets": {"annual": 3, "quarterly": 1, "second_team": 1}}
 
 
 def main() -> int:
@@ -267,6 +382,18 @@ def main() -> int:
         print(f"  {account['username']:<10} employee={account['employee_id']:<10} role={account['role']}")
     print("\n  manager screen: sign in as demo_mgr, open the team tab")
     print("  salary is hidden ({'visible': false}) until PUT /settings/team-salary turns it on")
+
+    periods = info["goals"]["periods"]
+    print("\n  goals and evaluations (Stage 3):")
+    print("  demo_mgr  -> team tab -> the first demo employee -> goals: 4 targets for "
+          + periods["year"])
+    print("             -> evaluation: " + periods["month"] + " approved, " + periods["quarter"]
+          + " awaiting approval, " + periods["year"] + " draft (manager only)")
+    print("  demo_hr   -> signs the pending quarterly evaluation "
+          "(POST /evaluations/{id}/approve)")
+    print("  demo_emp1 -> goals tab: the " + periods["month"]
+          + " result is there, the " + periods["quarter"] + " one is not")
+    print("  demo_mgr2 -> team-goals for DEMO-EMP1 is refused (403 for targets, 404 for a row)")
     return 0
 
 

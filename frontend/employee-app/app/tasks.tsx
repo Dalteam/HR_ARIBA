@@ -33,7 +33,7 @@ function stateOf(e: Availability["items"][number], day: string) {
   const n = nxt as Span | null;
   return { cur: cur as Span | null, nxt: n, st: cur ? "leave" : n && n.from <= addD(day, 14) ? "soon" : "avail" };
 }
-const LT: Record<string, string> = { annual: "سنوية", sick: "مرضية", emergency: "طارئة", death: "وفاة", marriage: "زواج", maternity: "وضع", paternity: "أبوة", umrah: "عمرة", hajj: "حج", remote: "عمل عن بعد" };
+const LT: Record<string, string> = { annual: "سنوية", private: "إجازة", sick: "مرضية", emergency: "طارئة", death: "وفاة", marriage: "زواج", maternity: "وضع", paternity: "أبوة", umrah: "عمرة", hajj: "حج", remote: "عمل عن بعد" };
 const ST: Record<Task["status"], [string, "ba" | "bg" | "br" | "bk"]> = { open: ["مفتوحة", "ba"], done: ["تم", "bg"], accepted: ["مقبول", "bg"], declined: ["اعتذار", "br"], cancelled: ["ملغاة", "bk"] };
 
 export default function TasksScreen() {

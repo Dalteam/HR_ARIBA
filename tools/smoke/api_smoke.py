@@ -342,6 +342,49 @@ def main() -> int:
         call((404,), "DELETE", f"/targets/{goal_target_id}", "hr_approver", allow={404})
     call((404,), "DELETE", f"/targets/{uuid.uuid4()}", "hr_approver", allow={404})
 
+    # ------------------------------------------------------------------ tasks, meetings and availability
+    call((200,), "GET", "/team/availability", "requester")
+    call((200,), "GET", "/tasks?box=inbox", "requester")
+    call((200,), "GET", "/tasks?box=sent", "requester")
+    call((422,), "GET", "/tasks?box=archive", "requester")
+    call((403,), "POST", "/tasks", "requester",
+         {"to": [plain_id], "title": "مهمة من موظف"}, allow={403})
+    call((422,), "POST", "/tasks", "hr_approver", {"to": [], "title": "بلا مستلمين"})
+    _, task_sent = call((200,), "POST", "/tasks", "hr_approver",
+                        {"to": [emp_id], "kind": "task", "title": f"مهمة دخان {today.isoformat()}",
+                         "details": "من سكربت الدخان", "due": (today + timedelta(days=5)).isoformat()})
+    if (task_sent or {}).get("sent"):
+        _, inbox = call((200,), "GET", "/tasks?box=inbox", "requester")
+        task_id = str(next((row.get("id") for row in (inbox or {}).get("items", [])
+                            if str(row.get("title") or "").startswith("مهمة دخان")), "") or "")
+        if task_id:
+            call((200,), "POST", f"/tasks/{task_id}/update", "requester", {"status": "done"})
+            call((409,), "POST", f"/tasks/{task_id}/update", "requester",
+                 {"status": "done"}, allow={409})
+        else:
+            notes.append("the task the HR account sent is not in the requester's inbox: "
+                         "the answer path was skipped")
+    _, meeting_sent = call((200,), "POST", "/tasks", "hr_approver",
+                           {"to": [emp_id], "kind": "meeting",
+                            "title": f"اجتماع دخان {today.isoformat()}",
+                            "start": f"{today.isoformat()}T10:00:00+03:00",
+                            "end": f"{today.isoformat()}T11:00:00+03:00", "location": "قاعة 1"})
+    if (meeting_sent or {}).get("sent"):
+        _, sent_box = call((200,), "GET", "/tasks?box=sent", "hr_approver")
+        meeting_id = str(next((row.get("id") for row in (sent_box or {}).get("items", [])
+                               if str(row.get("title") or "").startswith("اجتماع دخان")), "") or "")
+        if meeting_id:
+            call((422,), "POST", f"/tasks/{meeting_id}/update", "hr_approver", {"status": "done"})
+            call((200,), "POST", f"/tasks/{meeting_id}/update", "hr_approver",
+                 {"status": "cancelled"})
+            call((409,), "POST", f"/tasks/{meeting_id}/update", "hr_approver",
+                 {"status": "cancelled"}, allow={409})
+        else:
+            notes.append("the meeting the HR account sent is not in its sent box: "
+                         "the cancel path was skipped")
+    call((404,), "POST", f"/tasks/{uuid.uuid4()}/update", "requester", {"status": "done"},
+         allow={404})
+
     # ------------------------------------------------------------------ punch journey (employee app, then HR cleanup)
     _, attendance = call((200,), "GET", "/me/attendance", "requester")
     before_ids = {str(row.get("id")) for row in ((attendance or {}).get("today") or [])}

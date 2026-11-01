@@ -277,6 +277,91 @@ sent by the client are ignored.
 Not confirmed by hand: the manual **approve/lock** steps (they are covered by the automated tests and
 not by a browser run) — [FOLLOW_UPS.md](FOLLOW_UPS.md) § Stage 3 checks records exactly what was run.
 
+## Tasks, meetings and team availability — ✅ Stage 4 (`services/tasks.py`)
+
+The screen is `app/tasks.tsx` (their `pages/team/index.jsx`): the team's availability with a task and
+an invitation button, the inbox and what was sent. The team tab also counts the open inbox rows for
+its badge. **Four calls, exactly the ones `src/lib/port.ts` makes** — there is no endpoint for editing
+a task, deleting one, listing a whole batch or reminding anybody, because the app calls none of them.
+
+| Method | Path | Answer | Who |
+|---|---|---|---|
+| GET | `/team/availability` | `{items: [{id, name, job, dept, leaves: [{from, to, days, type}]}], today, allowed}` — `type` is `annual`, `remote` or `private` (see P7) | their manager with `view_team` **and** `view_team_leaves`; HR/`admin`/`admin_manager`/`ceo` (everyone active) |
+| GET | `/tasks?box=inbox\|sent` | `{items}` — the `Task` shape below, both names joined | any signed-in employee, their own rows |
+| POST | `/tasks` | `{sent, batch_id}` — body `{to[], kind, title, details?, due?, start?, end?, location?}` | the same audience as the availability list |
+| POST | `/tasks/{id}/update` | `{ok, status}` — body `{status, note?}` | the assignee (`done`/`accepted`/`declined`), the sender (`cancelled`) |
+
+`Task` is one row of `ariba_tasks`: `id`, `batch_id`, `kind` (`task`/`meeting`), `title`, `details`,
+`due_date`, `start_at`, `end_at`, `location`, `status` (`open`/`done`/`accepted`/`declined`/
+`cancelled`), `response_note`, `from_id`/`from_name`, `to_id`/`to_name`, `created_at`.
+
+**P1 — You can only write to people you can already see.** The availability list and the recipient
+list are one set, because the screen picks recipients from that list. HR (`hr`/`admin`/`admin_manager`)
+and the CEO see every active employee; a direct manager sees their own reports and needs **both**
+`view_team` and `view_team_leaves` (the second is what makes a leave visible, so a manager without it
+gets no list and therefore nobody to write to). Everybody else gets `allowed: false`, an empty list
+and a `403` if they try to send — not even a count of their colleagues is returned.
+
+**P2 — One row per recipient, one batch.** `ariba_tasks` keeps one assignee per row, so a task to
+three people is three rows with one `batch_id`; the audit row records the batch and the recipients,
+and a name repeated in `to` collapses to one row (one person cannot receive the same task twice).
+
+**P3 — The recipient answers, the sender cancels.** `done`/`accepted`/`declined` belong to the
+assignee and `cancelled` to the creator; nobody may move a row that is no longer `open` (`409
+not_open`), and the sender cannot call a task done on somebody's behalf. The screen offers exactly
+these answers: «تم الإنجاز» for a task and «قبول»/«اعتذار» for an invitation in the inbox, «إلغاء» in
+the sent box.
+
+**P4 — A refusal does not confirm that a row exists.** A *person* outside the audience is `403`
+(«ليست لديك صلاحية على هذا الموظف», the Stage 2 sentence) and the whole request is refused before a
+single row is written, so a batch is never half-delivered. A *row* that is not the caller's — another
+employee's inbox, another team's manager — is `404`, the same answer as an id that does not exist.
+
+**P5 — `kind` decides which fields matter.** A meeting must carry `start` and may carry `end`
+(never before the start) and `location`; a task carries `due`. The field that does not belong to the
+kind is dropped rather than stored, because the form cannot send both. `title` is trimmed, required,
+and refused above 200 characters (their `ariba_send_task` truncated silently instead).
+
+**P6 — The bell rings for whoever has to act next.** A send queues «مهمة جديدة: …» or «دعوة اجتماع: …»
+to each recipient with the sender's name and the time; an answer queues «أُنجزت المهمة» /
+«قُبلت دعوة الاجتماع» / «اعتذار عن الاجتماع» / «أُلغيت المهمة» to the other side, with the reason when
+there is one. Every write appends `ariba_audit_log` (`task_create` with the batch, then
+`task_<status>` with the row); **reads are not audited** — these are a team's own tasks, not somebody's
+signature (unlike `evaluation_read` in Stage 3).
+
+**P7 — A leave is "away", not "why".** The availability tab answers *who is not at work and when they
+are back*, so a leave reaches a manager as its dates and its length plus a **name only when the type can
+safely be named**: `annual` and `remote` (the second because the screen must know that remote work is
+work, not an absence). Sickness, maternity, paternity, death, marriage, umrah, hajj, emergency — and any
+type added later — all arrive as `private` and the screen prints «إجازة»; the reason/notes column is
+**never selected** from `leave_requests`, so there is nothing to leak. It is an allow-list, not a
+block-list: a new type is silent until somebody deliberately adds it. HR gets the same redacted row in
+this tab — the real type belongs to the leave screens, which is where a leave is a leave.
+
+`422 invalid_request` for: no recipient, a list of blanks, a `kind` other than the two, an empty
+`title`, a title over 200 characters, a `due` that is not `YYYY-MM-DD`, a meeting without `start`, a
+meeting whose `end` is before its `start`, a time that is not ISO, and a status the caller does not
+own.
+
+### The refusals the negative tests pin
+
+| # | Who → what | Expected |
+|---|---|---|
+| T1 | employee → `GET /team/availability` | 200, `allowed: false`, `items: []` — no names, no leaves |
+| T2 | manager with `view_team` but not `view_team_leaves` → availability | 200, `allowed: false`, no team query |
+| T3 | manager → availability | their direct reports only, `approved` leaves only, `to_date ≥ today − 60` |
+| T4 | manager → `POST /tasks` naming someone outside their team | 403 `forbidden`, and not even the valid names are written |
+| T5 | employee → `POST /tasks` | 403 `forbidden` |
+| T6 | the recipient → `cancelled` | 422 `invalid_request` |
+| T7 | the sender → `done`/`accepted`/`declined` | 422 `invalid_request`, nothing updated |
+| T8 | anybody → `POST /tasks/{id}/update` for a row that is not theirs | 404 `not_found` |
+| T9 | the owner → any answer once the row left `open` | 409 `not_open` |
+| T10 | manager → availability of a report on **sick** leave | one row with dates and `days`, `type: "private"`; the JSON contains no type name (`sick`/`مرضية`) and no reason/notes field at all |
+
+Not confirmed by hand: the browser pass over this screen is **pending** and will be run together with
+the signing stage (one seeded database serves both) — see [FOLLOW_UPS.md](FOLLOW_UPS.md) § Stage 4
+checks for exactly what was run.
+
 ## Open questions from the prototypes (to settle in their phases)
 1. **2024 leave opening rule**: where do the first 10 days of the 2023 close go? (see Leave)
 2. **Late minutes**: from work start, or from work start + tolerance (see Attendance)?

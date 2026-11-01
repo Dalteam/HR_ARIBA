@@ -244,6 +244,12 @@ def seed(db) -> dict:
     pending = _request(db, REPORTS[0], "annual",
                        {"from": (today + timedelta(days=3)).isoformat(),
                         "to": (today + timedelta(days=4)).isoformat(), "days": 2}, "hr", 1, notes="سفر")
+    # A sick leave that is running now: the manager must see "away until", never "sick" and never this
+    # note - the availability tab answers who is away, not why (BUSINESS_RULES P7).
+    sick = _request(db, REPORTS[1], "sick",
+                    {"from": (today - timedelta(days=1)).isoformat(),
+                     "to": (today + timedelta(days=1)).isoformat(), "days": 3}, "completed", 2,
+                    notes="تقرير طبي - عملية جراحية")
     rejected = _request(db, REPORTS[1], "salary_advance", {"amount": 3000, "notes": "ظرف طارئ"}, "rejected", 12,
                         notes="ظرف طارئ")
     return {"accounts": [{"username": u, "employee_id": e, "role": r} for u, e, r in accounts],
@@ -252,8 +258,8 @@ def seed(db) -> dict:
             "second_manager": {"employee_id": MANAGER2, "report": REPORT4},
             "delegated": [REPORTS[0]], "not_delegated": [REPORTS[1]],
             "requests": {"approved_leave": str(approved), "pending_leave": str(pending),
-                         "rejected_advance": str(rejected)},
-            "goals": _goals(db)}
+                         "sick_leave": str(sick), "rejected_advance": str(rejected)},
+            "goals": _goals(db), "tasks": _tasks(db)}
 
 
 def _target(db, employee_id: str, period_type: str, period_key: str, title: str, *,
@@ -345,12 +351,54 @@ def _goals(db) -> dict:
     # The second manager may evaluate his own team - and still must not reach the first team.
     db.execute("""INSERT INTO public.ariba_manager_perms(manager_id,perms,updated_by,updated_at)
         VALUES (%s,%s::jsonb,'manager_demo_seed',now())""",
-        (MANAGER2, json.dumps({"view_team": True, "view_team_data": True, "manage_targets": True,
-                               "evaluate_team": True})))
+        (MANAGER2, json.dumps({"view_team": True, "view_team_data": True, "view_team_leaves": True,
+                               "manage_targets": True, "evaluate_team": True})))
     return {"periods": {"year": year, "quarter": quarter, "month": month},
             "evaluations": {"approved_monthly": approved, "pending_quarterly": pending,
                             "draft_annual": draft},
             "targets": {"annual": 3, "quarterly": 1, "second_team": 1}}
+
+
+def _task(db, batch_id: str, kind: str, title: str, *, to: str, details: str | None = None,
+          due: str | None = None, start: str | None = None, end: str | None = None,
+          location: str | None = None, status: str = "open", note: str | None = None,
+          created_by: str = MANAGER) -> str:
+    """One row of `ariba_tasks` - the table keeps an assignee per row, so a batch is several rows."""
+    row = db.execute(
+        "INSERT INTO public.ariba_tasks "
+        "(batch_id,kind,title,details,due_date,start_at,end_at,location,created_by,assignee_id,"
+        " status,response_note) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+        (batch_id, kind, title, details, due, start, end, location, created_by, to, status,
+         note)).fetchone()
+    return str(row[0])
+
+
+def _tasks(db) -> dict:
+    """The Stage 4 demo: one open task, one open meeting, one finished task, one cancelled meeting.
+
+    The first demo employee's inbox therefore holds a task to finish *and* an invitation to accept or
+    decline; the manager's sent box shows what he handed out. Every date is in the future, so the
+    screen never has to explain a deadline that has already gone by.
+    """
+    today = date.today()
+    task_batch = str(uuid.uuid4())
+    open_task = _task(db, task_batch, "task", "إعداد تقرير الأداء الشهري", to=REPORTS[0],
+                      details="الملف بصيغة PDF قبل نهاية الأسبوع.",
+                      due=(today + timedelta(days=5)).isoformat())
+    meeting_batch = str(uuid.uuid4())
+    day = (today + timedelta(days=2)).isoformat()
+    for report in (REPORTS[0], REPORTS[1]):
+        _task(db, meeting_batch, "meeting", "اجتماع مراجعة الربع", to=report,
+              details="مراجعة نتائج الربع وخطة الشهر القادم.", start=f"{day}T10:00:00+03:00",
+              end=f"{day}T11:00:00+03:00", location="قاعة الاجتماعات 2")
+    _task(db, str(uuid.uuid4()), "task", "تحديث بيانات العملاء", to=REPORTS[1],
+          details="قائمة العملاء في الملف المشترك.", status="done",
+          due=(today - timedelta(days=2)).isoformat())
+    _task(db, str(uuid.uuid4()), "meeting", "ورشة داخلية", to=REPORTS[2],
+          start=f"{(today + timedelta(days=4)).isoformat()}T09:00:00+03:00", status="cancelled")
+    return {"open_task": open_task, "task_batch": task_batch, "meeting_batch": meeting_batch,
+            "counts": {"sent": 5, "inbox_open_for_emp1": 2}}
 
 
 def main() -> int:
@@ -394,6 +442,14 @@ def main() -> int:
     print("  demo_emp1 -> goals tab: the " + periods["month"]
           + " result is there, the " + periods["quarter"] + " one is not")
     print("  demo_mgr2 -> team-goals for DEMO-EMP1 is refused (403 for targets, 404 for a row)")
+
+    print("\n  tasks, meetings and availability (Stage 4):")
+    print("  demo_mgr  -> team tab -> tasks: his three reports with their leaves, an open task and an")
+    print("             invitation he sent (sent box: 5 rows, one finished and one cancelled)")
+    print("             DEMO-EMP1 is away (annual), DEMO-EMP2 is away — «إجازة», no type, no reason")
+    print("  demo_emp1 -> tasks: one open task to finish and one open invitation to accept or decline")
+    print("  demo_hr   -> availability lists every active employee")
+    print("  demo_mgr2 -> availability lists only DEMO-EMP4")
     return 0
 
 

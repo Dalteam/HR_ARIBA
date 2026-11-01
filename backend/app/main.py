@@ -13,7 +13,7 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import canonical, goals, health, manager
+from app.routers import canonical, goals, health, manager, tasks
 from app.services import notify_email
 
 API_PREFIX = "/api/v1"
@@ -88,6 +88,9 @@ def create_app() -> FastAPI:
     # Goals, targets and evaluations (Stage 3): the goals tab and the team-goals screen
     # (/me/goals, /targets, /evaluations/…), with the approver taken from goals_config.
     app.include_router(goals.router, prefix=API_PREFIX)
+    # Tasks, meetings and the team's availability (Stage 4): /team/availability and /tasks
+    # (/tasks, /tasks/{id}/update), scoped to the people the caller may already see.
+    app.include_router(tasks.router, prefix=API_PREFIX)
     return app
 
 

@@ -139,6 +139,7 @@ HR_ARIBA/
 - بصمة الجوال: `POST /me/attendance/punch` (GPS، أقرب موقع، النطاق — الحفظ يفرض 1000م لغير «عن بعد» حسب V38، مواقع الموظف V121 أو مواقع جهة عمله، الساعات المرنة والانصراف المتوقع، التأخير والخروج المبكر)، وسجلي `GET /me/attendance`.
 - طلباتي: `POST /me/requests` (إجازة بأنواعها، استئذان، سلفة، إضافي، نسيان بصمة → يذهب لـ HR مباشرة) + `GET /me/requests` + رصيدي `GET /me/leave`.
 - فريقي وموافقات المدير: `GET /me/team`, `GET /me/approvals`, `POST /me/approvals/{id}`.
+- ✅ **سطح المدير المباشر (المرحلة 2، 2026-11-01):** `GET /me/manager-perms` (هل هو مدير + الصلاحيات العشر)، `GET /me/team` (الفريق بحدود صلاحيات HR: البيانات والإجازات والرصيد؛ والراتب مخفي حتى تُفعّل صلاحية `view_team_salary` **و** إعداد `manager_team_salary`)، `GET /me/team/requests`، `POST /me/team/{id}/requests` (بالنيابة: تابع مباشر + صلاحية `submit_for_team` + تفويض الموظف، ويُسجَّل مقدّم الطلب الحقيقي لا قيمة `payload.type`)، `GET/PUT /me/delegation`، وللموارد البشرية `GET/PUT /settings/manager-perms` و`GET/PUT /settings/team-salary`. الكود: `routers/manager.py` + `services/team_scope.py`؛ الاختبارات: `tests_canonical/test_manager_surface.py`؛ بيانات عرض: `tools/smoke/manager_demo_seed.py`.
 - كشوف رواتبي من المسيرات المعتمدة: `GET /me/payslips`.
 - الإشعارات.
 

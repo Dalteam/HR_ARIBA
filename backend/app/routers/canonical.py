@@ -32,6 +32,7 @@ from app.database import get_db
 from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
+from app.services import team_scope
 from app.services.request_envelope import Attachment, RequestInput
 
 router = APIRouter()
@@ -1657,8 +1658,15 @@ def my_requests(actor: dict[str, Any] = Depends(current_actor), db: Session = De
 
 @router.get("/me/team")
 def my_team(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} WHERE d.manager_id=:eid AND d.active ORDER BY d.name_ar", eid=actor.get("employee_id"))
-    return [{"id": e["employee_id"], "emp_no": e["emp_no"], "name_ar": e["name_ar"], "job_title": e["job_title"]} for e in map(_employee_dict, rows)]
+    """My direct reports, as far as HR lets me see them (`services/team_scope.py`).
+
+    `id`, `emp_no`, `name_ar`, `job_title` are always there, so the older app (`api.ts` `TeamMember`)
+    reads the same response; the manager screen's extra fields (contract data, leave balance and
+    leaves, salary) appear only with the matching permission — and the salary only when the
+    `manager_team_salary` setting is on as well. Someone who manages nobody gets `[]`.
+    """
+    return team_scope.team_members(db, actor.get("employee_id"))
+
 
 
 @router.get("/me/approvals")

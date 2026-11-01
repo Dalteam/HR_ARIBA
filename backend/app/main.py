@@ -13,7 +13,7 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import canonical, health
+from app.routers import canonical, health, manager
 from app.services import notify_email
 
 API_PREFIX = "/api/v1"
@@ -82,6 +82,9 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(canonical.router, prefix=API_PREFIX)
+    # The direct manager's surface (Stage 2): /me/manager-perms, /me/team/requests,
+    # /me/team/{id}/requests, /me/delegation and the HR settings behind them.
+    app.include_router(manager.router, prefix=API_PREFIX)
     return app
 
 

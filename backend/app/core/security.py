@@ -34,7 +34,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # render). A route that sets one keeps it; everything else gets the blanket policy.
             if "content-security-policy" not in h:
                 h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
-            h["Cache-Control"] = "no-store"
+            # Same rule for caching: `no-store` everywhere, except the one answer that is the same for
+            # everybody and expensive to rebuild (`GET /public/brand`, which asks for five minutes).
+            if "cache-control" not in h:
+                h["Cache-Control"] = "no-store"
         if get_settings().env == "production":
             h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
         return response

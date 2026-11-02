@@ -42,7 +42,8 @@ class Api:
 
     # ------------------------------------------------------------------ transport
     def call(self, method: str, path: str, body: Any = None, token: str | None = None,
-             raw: bytes | None = None, content_type: str | None = None) -> tuple[int, Any, bytes]:
+             raw: bytes | None = None, content_type: str | None = None,
+             extra_headers: dict[str, str] | None = None) -> tuple[int, Any, bytes]:
         url = path if path.startswith("http") else self.api + path
         data: bytes | None = None
         headers: dict[str, str] = {"Accept": "application/json"}
@@ -54,15 +55,20 @@ class Api:
             headers["Content-Type"] = "application/json"
         if token:
             headers["Authorization"] = "Bearer " + token
+        if extra_headers:
+            headers.update(extra_headers)       # `If-None-Match` and the like (the brand cache check)
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         started = time.perf_counter()
+        received: dict[str, str] = {}
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
                 payload = response.read()
                 status = response.status
+                received = dict(response.headers)
         except urllib.error.HTTPError as exc:
             payload = exc.read()
             status = exc.code
+            received = dict(exc.headers or {})
         except Exception as exc:  # connection refused, timeout, DNS …
             RESULTS.append({"method": method, "path": path, "status": 0, "verdict": "FAIL",
                             "ms": int((time.perf_counter() - started) * 1000), "detail": f"{type(exc).__name__}: {exc}"})
@@ -75,7 +81,7 @@ class Api:
                 parsed = None
         RESULTS.append({"method": method, "path": path, "status": status, "verdict": "",
                         "ms": int((time.perf_counter() - started) * 1000), "detail": "", "data": parsed,
-                        "bytes": len(payload)})
+                        "bytes": len(payload), "headers": {k.lower(): v for k, v in received.items()}})
         return status, parsed, payload
 
     @staticmethod
@@ -92,9 +98,9 @@ class Api:
 
     def check(self, expect: int | tuple[int, ...], method: str, path: str, body: Any = None,
               token: str | None = None, raw: bytes | None = None, content_type: str | None = None,
-              allow: set[int] | None = None) -> tuple[int, Any]:
+              allow: set[int] | None = None, extra_headers: dict[str, str] | None = None) -> tuple[int, Any]:
         """Call and grade the result. `allow` lists extra statuses that are legitimate here."""
-        status, data, _ = self.call(method, path, body, token, raw, content_type)
+        status, data, _ = self.call(method, path, body, token, raw, content_type, extra_headers)
         expected = (expect,) if isinstance(expect, int) else expect
         entry = RESULTS[-1]
         if status in expected:
@@ -192,6 +198,13 @@ def _cleanup(database: str, employee_id: str, account_id: str, host: str, port: 
         ("DELETE FROM public.employee_payrolls WHERE pay_year=2099 AND pay_month=1", ()),
         ("DELETE FROM public.payroll_archives_v2 WHERE pay_year=2099 AND pay_month=1", ()),
     ]
+    # Stage 6 writes device tokens and the switch itself; both are removed so a fresh copy stays
+    # fresh. `strpos` rather than `LIKE`: the statement carries no parameters, so a bare `%` would
+    # still have to be quoted around psycopg's placeholder syntax.
+    statements += [
+        ("DELETE FROM public.ariba_push_tokens WHERE strpos(token, '[smoke') > 0", ()),
+        ("DELETE FROM public.ariba_app_settings WHERE key='push_config'", ()),
+    ]
     problems = []
     dsn = url or f"host={host} port={port} user={user} dbname={database}"
     try:
@@ -262,9 +275,10 @@ def main() -> int:
 
     def call(expect, method: str, path: str, who: str | None = None, body: Any = None,
              allow: set[int] | None = None, raw: bytes | None = None,
-             content_type: str | None = None) -> tuple[int, Any]:
+             content_type: str | None = None,
+             extra_headers: dict[str, str] | None = None) -> tuple[int, Any]:
         return api.check(expect, method, path, body, api.tokens.get(who) if who else None,
-                         raw, content_type, allow)
+                         raw, content_type, allow, extra_headers)
 
     def grade(ok: bool, method: str, path: str, detail: str = "") -> bool:
         """One check that is not a status code: the chain's next step, or what got stored (S12).
@@ -639,6 +653,74 @@ def main() -> int:
         call((409,), "POST", f"/letters/{third_id}/approve", "hr_approver", allow={409})         # D21
         call((204,), "DELETE", f"/letters/{third_id}", "hr_approver")
     call((200,), "PUT", "/settings/doc-sign", "hr_approver", {"hr_closes": False, "manager_types": []})
+
+    # ------------------------------------------------------------------ public brand (no token at all)
+    _, brand = call((200,), "GET", "/public/brand")     # no bearer: this is the login screen's own call
+    brand_headers = RESULTS[-1].get("headers", {})
+    grade(isinstance(brand, dict) and set(brand) == {"brand", "names", "logo", "appLogo"},
+          "GET", "/public/brand (B1 envelope)",
+          f"keys were {sorted(brand) if isinstance(brand, dict) else brand!r}")
+    brand_dump = json.dumps(brand, ensure_ascii=False)
+    for forbidden in ("hr_signer", "letterhead", "medical_form", "doc_sign_cfg", "ins_settings",
+                      "workflow_config", "push_config", "sigs", "stamp", "updated"):
+        grade(forbidden not in brand_dump, "GET", f"/public/brand (no {forbidden})",
+              "a settings row this route must never read reached an unauthenticated caller")
+    grade(bool(((brand or {}).get("names") or {}).get("coAr")), "GET", "/public/brand (company name)",
+          f"names was {(brand or {}).get('names')!r}")
+    grade(str((brand or {}).get("logo") or "").startswith("data:image/"), "GET", "/public/brand (logo)",
+          f"logo was {str((brand or {}).get('logo'))[:32]!r}")
+    grade(bool(brand_headers.get("etag")), "GET", "/public/brand (ETag)",
+          f"headers were {sorted(brand_headers)}")
+    grade("max-age=300" in (brand_headers.get("cache-control") or ""),
+          "GET", "/public/brand (cache-control)",
+          f"cache-control was {brand_headers.get('cache-control')!r}")
+    call((304,), "GET", "/public/brand", extra_headers={"If-None-Match": brand_headers.get("etag", "")})
+    call((200,), "GET", "/public/brand", extra_headers={"If-None-Match": '"stale"'})
+
+    # ------------------------------------------------------------------ push tokens (storage only, nothing sent)
+    _, switch = call((200,), "GET", "/settings/push", "hr_approver")
+    grade((switch or {}).get("enabled") is False, "GET", "/settings/push (T4: off by default)",
+          f"the switch must ship off, got {switch!r}")
+    _, bells_before = call((200,), "GET", "/me/notifications", "requester")
+    phone = "ExponentPushToken[smoke000000000000000a]"
+    tablet = "ExpoPushToken[smoke0000000000000000000b]"
+    hr_token = "ExponentPushToken[smoke000000000000000hr]"
+    plain_token = "ExponentPushToken[smoke00000000000000pc]"
+    call((200,), "POST", "/me/push-token", "requester", {"token": phone, "platform": "android"})
+    call((200,), "POST", "/me/push-token", "requester", {"token": tablet, "platform": "ios"})
+    _, mine = call((200,), "GET", "/me/push-token", "requester")
+    grade(len((mine or {}).get("items") or []) == 2 and "token" not in json.dumps(mine),
+          "GET", "/me/push-token (T2: two devices, no token text)", f"{mine!r}")
+    _, bells_after = call((200,), "GET", "/me/notifications", "requester")
+    grade(len(bells_after or []) == len(bells_before or []),
+          "GET", "/me/notifications (T4: a registration sends nothing)",
+          f"{len(bells_before or [])} notifications before, {len(bells_after or [])} after")
+    call((422,), "POST", "/me/push-token", "requester", {"token": "not-a-token", "platform": "android"})
+    call((422,), "POST", "/me/push-token", "requester", {"token": phone, "platform": "windows"})
+    call((200,), "DELETE", "/me/push-token", "requester", {"token": tablet})
+    _, one_left = call((200,), "GET", "/me/push-token", "requester")
+    grade(len((one_left or {}).get("items") or []) == 1, "GET", "/me/push-token (one device left)",
+          f"{one_left!r}")
+    call((200,), "POST", "/me/push-token", "hr_approver", {"token": hr_token, "platform": "ios"})
+    call((404,), "DELETE", "/me/push-token", "requester", {"token": hr_token}, allow={404})
+    _, hr_devices = call((200,), "GET", "/me/push-token", "hr_approver")
+    grade(len((hr_devices or {}).get("items") or []) == 1,
+          "GET", "/me/push-token (T2: HR keeps its own device)", f"{hr_devices!r}")
+    call((403,), "GET", "/settings/push", "requester", allow={403})
+    call((403,), "PUT", "/settings/push", "requester", {"enabled": True}, allow={403})
+    call((422,), "PUT", "/settings/push", "hr_approver", {"enabled": "yes"})
+    _, switched_on = call((200,), "PUT", "/settings/push", "hr_approver", {"enabled": True})
+    grade((switched_on or {}).get("enabled") is True, "PUT", "/settings/push (on)", f"{switched_on!r}")
+    _, switched_off = call((200,), "PUT", "/settings/push", "hr_approver", {"enabled": False})
+    grade((switched_off or {}).get("enabled") is False, "PUT", "/settings/push (off again)",
+          f"{switched_off!r}")
+    # T3: the device is forgotten with the session, not only by the app's own delete
+    call((200,), "POST", "/me/push-token", "plain_employee", {"token": plain_token, "platform": "ios"})
+    call((204,), "POST", "/auth/logout", "plain_employee")
+    api.login("plain_employee", accounts["plain_employee"]["username"], password)
+    _, after_logout = call((200,), "GET", "/me/push-token", "plain_employee")
+    grade(len((after_logout or {}).get("items") or []) == 0,
+          "GET", "/me/push-token (T3: logout forgot the device)", f"{after_logout!r}")
 
     # ------------------------------------------------------------------ public holidays
     _, holiday = call((201,), "POST", "/holidays", "hr_approver",

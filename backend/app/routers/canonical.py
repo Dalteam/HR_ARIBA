@@ -33,6 +33,7 @@ from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
 from app.services import html_safety
+from app.services import push as push_tokens
 from app.services import team_scope
 from app.services.request_envelope import Attachment, RequestInput
 
@@ -454,6 +455,9 @@ def refresh(body: dict[str, Any], db: Session = Depends(get_db)):
 @router.post("/auth/logout", status_code=204)
 def logout(request: Request, actor: dict[str, Any] = Depends(lambda authorization=Header(None), db=Depends(get_db): _authenticate(db, authorization, True)), db: Session = Depends(get_db)):
     db.execute(text("DELETE FROM public.ariba_sessions WHERE token=:token"), {"token": actor["token"]})
+    # A push token is a way back in, so it dies with the session (Stage 6, T3): the app sends its own
+    # delete on sign-out, but the server does not depend on the client having got that far.
+    push_tokens.forget_account(db, actor["account_id"])
     _write_audit(db, actor, request, "auth", "logout", "account", actor["account_id"])
     db.commit()
 
@@ -3206,6 +3210,7 @@ def update_account(user_id: uuid.UUID, body: dict[str, Any], request: Request, a
     db.execute(text("UPDATE public.ariba_auth_accounts SET role=:role,active=:active,updated_at=now() WHERE id=:id"), {"role": role, "active": active, "id": user_id})
     if not active:
         db.execute(text("DELETE FROM public.ariba_sessions WHERE account_id=:id"), {"id": user_id})
+        push_tokens.forget_account(db, user_id)  # a disabled account keeps no way back in (Stage 6, T3)
     _write_audit(db, actor, request, "accounts", "update", "account", user_id, details={"role": role, "active": active})
     db.commit()
     target.update({"role": role, "active": active})
@@ -3221,6 +3226,7 @@ def temporary_password(user_id: uuid.UUID, request: Request, actor: dict[str, An
     password = "".join(secrets.choice("abcdefghjkmnpqrstuvwxyz23456789") for _ in range(8)) + secrets.choice("abcdefghjkmnpqrstuvwxyz") + secrets.choice("23456789")
     db.execute(text("UPDATE public.ariba_auth_accounts SET password_hash=:hash,must_change=true,updated_at=now() WHERE id=:id"), {"hash": _hasher.hash(password), "id": user_id})
     db.execute(text("DELETE FROM public.ariba_sessions WHERE account_id=:id"), {"id": user_id})
+    push_tokens.forget_account(db, user_id)  # the phone has to register again after a forced reset (T3)
     account["password_hash"], account["must_change"] = _hasher.hash(password), True
     _write_audit(db, actor, request, "accounts", "reset_password", "account", user_id)
     db.commit()

@@ -642,7 +642,123 @@ account whose role is `manager` download **any** document of a report — the ex
 the viewer. Narrowing it would change an endpoint the HR screens already use, so it is your call, and
 it is recorded rather than done.
 
+## Public brand and push tokens — ✅ Stage 6 (`services/brand.py`, `services/push.py`, `routers/public.py`, `routers/push.py`)
+
+Two surfaces with one phone each: a phone that has **not** signed in still has to know what the
+company looks like (the login screen, the splash and every palette — `brandInfo()` in
+`src/lib/port.ts`, re-pulled by `theme.tsx` on foreground and every 90 s), and a phone that has signed
+in has to leave its Expo token somewhere (`push.register()` in `src/lib/push.ts`). **Sending is not in
+this stage** (class C): there is no sender, no queue and no outbound call anywhere — storage, and the
+switch a later stage will read.
+
+| Method | Path | Answer | Who |
+|---|---|---|---|
+| GET | `/public/brand` | the envelope of B1 | **nobody in particular** — no token, no session |
+| POST | `/me/push-token` | `{ok: true}` — body `{token, platform}` | any signed-in account, its own row (T1) |
+| GET | `/me/push-token` | `{ok, enabled, items: [{platform, created_at, last_seen_at}]}` — **never the token itself** | the caller, its own rows (T2) |
+| DELETE | `/me/push-token` | `{ok, removed}` — body `{token?}`; without a token, **all** of mine | the token's owner; anybody else's token is `404` (T2) |
+| GET | `/settings/push` | `{enabled, devices}` | HR/`admin`/`admin_manager`/`ceo` |
+| PUT | `/settings/push` | `{enabled, devices}` — body `{enabled}`, a boolean or `422` | HR/`admin`/`admin_manager` |
+
+**B1 — the whole of `/public/brand`, field by field.** This is the complete list; a field that is not
+in it is not in the answer.
+
+| Field | Read from | What is sent |
+|---|---|---|
+| `names.coAr`, `names.coEn` | `ariba_app_settings['company_names']` | the two strings, trimmed, at most 200 characters |
+| `brand.p`, `brand.s`, `brand.a`, `brand.hero` | `brand_colors` | a `#rgb`/`#rrggbb` colour; an empty or unparsable value is left **out**, never guessed |
+| `brand.heroImage` | `brand_colors.heroImage` | a raster `data:` URI, or nothing (B3) |
+| `brand.punch` | `brand_colors.punch`, else `punch_watermark.data` | the same (HR edits the colour row; the old screens wrote the watermark row) |
+| `brand.reset` | `brand_colors.reset` | `true` only when the stored value is literally `true` |
+| `logo` | `company_logo.data` | the company logo — `null` when it is absent or refused (B3) |
+| `appLogo` | `app_logo.data`, else `company_logo.data` | what `login.tsx` paints before sign-in |
+
+Measured on the migrated database: `logo` 46,706 characters, `brand.punch` 44,646, `appLogo` = the
+company logo (no separate `app_logo` row yet), **138,232 bytes** for the whole answer.
+
+**B2 — nothing else in `ariba_app_settings` can reach this route.** It reads **five keys by name**
+(`company_names`, `brand_colors`, `company_logo`, `app_logo`, `punch_watermark`) and copies named
+fields out of each; the table's other rows are never selected, and that matters because some of them
+are the most sensitive data the system holds: `hr_signer` (the HR manager's signature and stamp,
+234 KB), `letterhead` (the letter page), `medical_form`, `ins_settings`, `doc_sign_cfg`,
+`workflow_config`, `app_links`, `leave_carry`, `manager_team_salary`, `goals_config`,
+`notify_email_since` and `push_config`. The same rule applies inside the rows it does read:
+`company_logo` stores `{data, name, updated}` and only `data` leaves — not the file name HR uploaded,
+not the timestamp. A wrong type, a colour that is not hex, an image that is not a raster `data:` URI
+(an SVG can carry script, so SVG is **not** on the list) or a name that is not a string is *absent*
+from the answer rather than passed through. Pinned by `test_only_the_five_named_keys_are_ever_read`,
+`test_the_stored_row_keeps_its_other_fields_on_the_server`,
+`test_a_colour_that_does_not_parse_is_dropped_not_passed_through`,
+`test_an_image_must_be_an_embedded_raster`, and by the smoke's ten "no `hr_signer` / no `letterhead` /
+…" checks against the live database.
+
+**B3 — a cap and a cache, because the answer is large and public.** The stored logo is ~46 KB of
+base64 and the punch picture ~44 KB; a settings row has no ceiling, so each image field is capped at
+`MAX_IMAGE_CHARS` (512 KiB) and a bigger one is treated as **absent** — a half-sent data URI would
+render as a broken image, and truncating it would be worse than the wordmark fallback the login
+screen already has. The answer is identical for every caller, so it is served
+`Cache-Control: public, max-age=300, must-revalidate` with an `ETag` (a hash of the answer) and
+answers **`304`** with an empty body when the phone sends it back; `If-None-Match: *`, a list and the
+weak `W/` form are honoured. `core/security.py` keeps the `Cache-Control` a route sets — every other
+answer still says `no-store` — and the blanket `Content-Security-Policy: default-src 'none'` is
+unchanged on this route too (it is JSON; the policy costs nothing and closes the door on a browser
+being talked into rendering it).
+
+
+**T1 — a token belongs to the account that registers it.** The token is the primary key of
+`ariba_push_tokens`, so `POST /me/push-token` is an upsert: it writes the caller's `account_id`, and a
+phone that signs in as somebody else moves the row to that account (the same install is the same
+device). One account may hold several tokens. The format is checked **before** anything is written —
+`ExponentPushToken[…]` or `ExpoPushToken[…]`, at most 210 characters, `platform` one of `android`,
+`ios` — and anything else is `422` with nothing stored, because a token that cannot be delivered to is
+a row that fails on every future send.
+
+**T2 — nobody lists anybody's tokens, and no route ever returns one.** `GET /me/push-token` takes no
+account parameter (the account is the caller's, from the session) and answers `platform` +
+`created_at` + `last_seen_at`: the token text is not in the query, so it cannot appear in the answer.
+`DELETE` removes **one of mine** (body `{token}`) or **all of mine** (body `{}` — what the app sends
+when it has lost its token); a token that belongs to another account is `404 not_found`, the same
+answer as one that does not exist, and removes nothing. Both writes are audited **without the token**
+(`push_token_register {platform}`, `push_token_delete {all, count}`) — the row is the evidence, the
+credential is not (S9's principle, applied to a device).
+
+
+**T3 — a token dies with the session.** `POST /auth/logout` deletes every token of the account,
+`PATCH /auth/users/{id}` with `is_active: false` deletes them, and a temporary password (which already
+kills the sessions) deletes them too. The app sends its own delete on sign-out; the server does not
+depend on it having got that far. Every read also joins `ariba_auth_accounts` on `active`, so a row
+that survives a path nobody thought of still cannot reach a disabled account.
+
+**T4 — sending stays off.** `push_config` ships absent, so `enabled` is `false`; `PUT /settings/push`
+is the switch HR will flip when a sender exists, and it is read on every registration and every device
+read, so flipping it needs no restart. With it off, a registration writes **one row and nothing else**
+— no bell entry, no e-mail, no outbound request — which the unit test pins by counting the statements
+a registration issues and the smoke pins by counting the caller's notifications before and after.
+There is no sender in the codebase to switch on.
+
+| # | Caller → route | Answer |
+|---|---|---|
+| N1 | an anonymous client → `GET /public/brand` | `200`, and the body carries none of `hr_signer`, `letterhead`, `medical_form`, `doc_sign_cfg`, `ins_settings`, `workflow_config`, `push_config`, `sigs`, `stamp` |
+| N2 | the same → `GET /public/brand` when a stored image is over the cap | that field is absent (`null`), never truncated |
+| N3 | the same → `GET /public/brand` with `If-None-Match` equal to the answer's `ETag` | `304`, empty body (and `200` again for a stale tag) |
+| N4 | a signed-in employee → `POST /me/push-token {token: "not-a-token"}` | `422 invalid_token`, nothing written |
+| N5 | the same → `{token: …, platform: "windows"}` | `422 invalid_platform`, nothing written |
+| N6 | the same → a token over `TOKEN_MAX_CHARS` | `422 invalid_token`, nothing written |
+| N7 | an employee → `GET /me/push-token` | his own rows, and the token text is in no field and at no depth |
+| N8 | an employee → `DELETE /me/push-token {token: <HR's token>}` | `404 not_found`; HR's row is still there |
+| N9 | an employee → `DELETE /me/push-token {}` | his own tokens only; HR's row untouched |
+| N10 | an employee → `GET` or `PUT /settings/push` | `403 forbidden`, the switch unchanged |
+| N11 | HR → `PUT /settings/push {enabled: "yes"}` (or `{}`, or `1`) | `422 invalid_request`, the switch unchanged |
+| N12 | HR → `PATCH /auth/users/{id} {is_active: false}` for an account holding a token | `200`; that account's tokens are gone (T3) |
+| N13 | the owner → `POST /auth/logout` | `204`; every token of that account is gone, and a fresh sign-in lists none |
+| N14 | a device registered while the switch is off | nothing is sent and no bell row is written — the token is only stored |
+
+**Not built, on purpose:** a sender (class C), a reminder job, and any HR screen for the device list.
+`port.ts` has exactly the three token calls above and `push.ts` uses two of them, so nothing invents a
+fourth.
+
 ## Open questions from the prototypes (to settle in their phases)
+
 
 1. **2024 leave opening rule**: where do the first 10 days of the 2023 close go? (see Leave)
 2. **Late minutes**: from work start, or from work start + tolerance (see Attendance)?

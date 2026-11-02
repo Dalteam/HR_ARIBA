@@ -44,6 +44,10 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 32 | **`GET /documents/{id}/file` is wider than the Stage 5 viewer** | It authorizes with `_employee_scope`, so an account whose role is `manager` can download **any** document of a direct report (ID/iqama, contract, degree, photo) — the exact width the new `/documents/{id}/content` refuses (S1). It was left untouched because `hr-web/src/lib/employees.ts` (`documentBlob`, reached only through `openDocument()`) depends on it: decide whether to narrow it to the S1 doors or to keep it and accept that a manager can bypass the viewer (and its audit row). The callers are known now and **none of them would break**: the employee-portal profile opens the caller's own documents, the HR leaves page opens a leave attachment, the dependents tab and the employee form open a document they are already displaying, and `tools/smoke/api_smoke.py` opens a document it uploaded as the HR account — each is either `self`, an HR role, or (the smoke's) HR, which the narrowed version still allows. The employee app reads `/documents/{id}/content` only, never `/file` | backend | Needs decision (decide before go-live) |
 | 33 | **Confirm with HR/legal that a manager may open sick-leave (and maternity) attachments** | S1(c) lets a direct manager open the file on **any** leave request of his report, and the argument is that he already approves that leave with the employee's reason in front of him (`GET /me/team/requests`). A medical report is the strongest form of that paper, so HR/legal should confirm it explicitly — the alternative is a narrower list of leave types in `_manager_may_open` (`routers/canonical.py`), one line, and the audit row (`documents/open`, `via:'content'`) already records every open | HR / legal | Open (Stage 5 follow-up) |
 | 34 | **`doc_sign_cfg.hr_closes` stays off until HR confirms** | The setting ships **off** (S10): a letter closes at its last signature, which is what the business does today. Turning it on makes HR the last signer and leaves the letter waiting for `POST /letters/{request_id}/approve` — a route no screen calls yet (#31). Enable it only after HR says they want that step *and* the HR screen exists; until then a letter that reaches `stage='hr'` is already closed (`current_stage='completed'`) and HR's approve answers `409 already_closed`/`not_waiting_for_hr` | HR / hr-web | Open (Stage 5 follow-up) |
+| 36 | **The app logo is the company logo until HR uploads a separate one** | `GET /public/brand` answers `appLogo` from `ariba_app_settings['app_logo'].data` and falls back to `company_logo.data`; the migrated database has **no `app_logo` row**, so the login screen paints the company logo (46,706 characters of base64) — which is what it did before this stage. If the client wants a different mark on the splash/login than on letters and payslips, HR needs a field for it in the settings screen; the route already prefers it when it exists | HR / employee-app | Open (only if the client wants two marks) |
+| 37 | **Nothing sends a push yet** | Stage 6 stores tokens and ships the switch (`push_config.enabled`, **off**); a sender is class C and is the decision this stage deliberately did not take: Expo's push API over outbound HTTPS (needs the EAS project id in the build, #11/#12), batches of 100 per request, what a push may say (the bell's Arabic title/body already exist and are the natural text), and what to do with the `DeviceNotRegistered` receipts that Expo returns — those rows must be deleted, which is the same call `logout` makes (T3) | backend / team lead | Open (class C) |
+| 38 | **No HR screen for registered devices** | `GET /settings/push` answers `{enabled, devices}` — a **count**, never a token (T2), so HR can see how many phones are registered but cannot list or revoke one. A device list (platform + dates, and a revoke button) is a screen decision, not built: the API's `GET /me/push-token` shape would have to be widened for HR, which is a privacy question of its own | hr-web | Open |
+
 
 ## 3. Verification and documentation
 
@@ -58,6 +62,7 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 20 | **Line-ending policy** | The port converted **CRLF to LF**: 15,462 insertions / 10,728 deletions, of which **17,704 changed lines are whitespace/EOL only**, and 9 files have no content change at all. Decision for the team lead: add a `.gitattributes` (`* text=auto eol=lf`) or not. Until then review those commits with `git show -w` / `git diff -w` | team lead | Needs decision |
 | 21 | **`.claude/settings.json`** from the reference repo (it enables the `expo@claude-plugins-official` plugin for Claude Code) | Deliberately left out of the port commit. It was already tracked (since `31cb909`) with the same content, and the only local difference was CRLF, so it was restored to `HEAD` instead of committed. Nothing to exclude; keep it or ignore it as the team prefers | team lead | Needs decision (no action taken) |
 | 35 | **Native WebView with scripting disabled not verified on a real phone** | `html-view.tsx` now passes `javaScriptEnabled={false}` and `domStorageEnabled={false}`, and the web build's iframe has carried no script permission since the port — but neither has been **seen on a device**. This PC renders letters through `html-view.web.tsx` (the iframe), so the browser walkthrough proves the iframe half only; the native half is the SDK 58 WebView of the Expo build, which needs #4 (a phone that can reach the API) first. Say so plainly until then: S12's third line is *tested*, the viewer's own setting is *configured*, not yet *observed* | employee-app | Open (with #4) |
+| 39 | **The "disable an account" rule is unit-tested only** | `PATCH /auth/users/{id} {is_active:false}` deletes that account's push tokens (T3, `test_disabling_an_account_forgets_its_tokens`), but `api_smoke.py` cannot prove it end to end: the account it creates gets a temporary password, so it cannot sign in to register a token first, and HR cannot register one *for* somebody else (by design, T2). Closing it means a second token-bearing account in `smoke_setup.py` — three lines, whenever the smoke next changes | backend / tools | Open |
 
 ## 4. Decisions and housekeeping
 
@@ -66,6 +71,7 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 12 | **Distribution of the employee app** | Store build (EAS + dev build + review) versus a web app installed to the home screen (`public/` PWA shell and `railway.json` are ready). This decides push notifications, geolocation permissions and the update path — a team decision, not a technical one | team lead | Needs decision |
 | 13 | The **Supabase password shared earlier must be reset** | It was shared in plain text during the port; rotate it and keep the new one in the password manager only | me | Open |
 | 14 | **Future client pushes need a repeatable sync process** | The reference repo is copied in by hand today (`Downloads\_ref_HR_ARIBA1`, `Downloads\_backups\employee-app_before-ui-port`). Define how a new client drop is compared, ported, verified (parity + `tsc` + `expo export` + `sw.test.mjs`) and recorded — before the next drop, not during it | team lead | Open |
+| 40 | **Unauthenticated routes (`/public/brand`, login, password recovery) have no rate limit; decide before go-live** | What exists today (checked 2 Nov 2026): `POST /auth/login` in `canonical.py` counts **failed** attempts in `ariba_login_attempts` and answers `429` at 25 per username or 40 per IP in 15 minutes; nothing else is limited. `GET /public/brand` (up to four images of 512 KiB each, five database reads per call, no token) has no limit, and `POST /auth/refresh` has none. Password recovery does not exist yet (Stage 8) and must not ship without one. The `config.py` limiter (`login_max_per_username` 5, `login_max_per_ip` 20, 300 s) is only used by `routers/auth.py`, which `main.py` does not mount, so those settings do nothing today. Behind Railway's proxy the IP comes from `X-Forwarded-For` (`--forwarded-allow-ips=*`), so a per-IP count is only as good as that header. Decide: limits per route, where they are counted (database vs memory, one instance), and whether Railway's edge does any of it | backend / team lead | Needs decision |
 
 ## 5. Adopted rules
 
@@ -217,7 +223,7 @@ of this section produced (the guards below, the phone viewer, the letter route's
 | Unit tests | `python -m pytest -q` (cwd `backend`) | **279 passed, 16 skipped** — the Stage 4 236 plus 43 new (`test_html_safety.py` 11, `test_signing_surface.py` 32, both new files) |
 | Unit tests against a database | `CANONICAL_TEST_DATABASE_URL=postgresql+psycopg://…/ariba_verify_stage5b pytest -q` | **280 passed, 15 skipped** |
 | HTTP surface | `api_smoke.py --base …:8018` (its own fresh copy and `_smoke_info.json`) | **PASS=238 RULE=5 STUB=1 (244 checks)**, `RESULT: OK`, exit 0. The Stage 4 run on the same script was **187/4/1 (192)** |
-| The same checks as last stage | the `api_smoke.py` **at `HEAD`**, run against the same fresh copy and the same server | **191/5/1 (197)**: every check older than this stage still passes, in the same order, and its 5 `RULE`s are the same allow-listed probes (`/documents/{zero}/file` and `/employees/2/photo` are `404`, `/me/team/requests` is `403` for a plain employee, plus the zero-uuid probes for the new `GET`s). The 47 extra rows in the working copy are the stage's own section (35 checks, all `PASS`), the **17 dependency rows** this pass added so no `if <id>:` block can skip itself, one more cleanup `DELETE`, and two `POST /me/attendance/punch` calls fewer — a fresh copy has no open punch to recover from, the same one-row difference #16 explains for Stage 1 |
+| The same checks as last stage | the `api_smoke.py` **at `HEAD`**, run against the same fresh copy and the same server | **191/5/1 (197)**: every check older than this stage still passes, in the same order, and its 5 `RULE`s are the same allow-listed probes (`/documents/{zero}/file` and `/employees/2/photo` are `404`, `/me/team/requests` is `403` for a plain employee, plus the zero-uuid probes for the new `GET`s). What was measured is the two totals: **244** checks in the working copy against **197** at `HEAD`, i.e. 47 more rows. How those 47 split (the stage's own section, the dependency rows added so no `if <id>:` block can skip itself, cleanup, attendance punches) was **not itemised**; an earlier breakdown here did not add up to 47 and was removed on 2 Nov 2026 |
 | Seed | `manager_demo_seed.py --dst ariba_manager_demo`, then one throwaway query | **5 letters in the five states** — `employee` (plain), `employee` (with a manager needed), `manager`, `hr`, `rejected` — **3 attachments** (annual ticket, sick report, iqama) and **3 signed copies**; the Arabic file names survive the round trip (`ascii(left(file_name,1))` = 1582/1588, i.e. خ/ش) |
 | Frontend type-check | `npx tsc --noEmit` (cwd `frontend/employee-app`) | **exit 0** after `port.ts` widened the employee sign's `next` to include `done` and `managerSign` to `{ok, next}`, and `html-view.tsx` gained `javaScriptEnabled={false}` |
 | Browser walkthrough | — | **pending**, together with Stage 4 (see its row): the seeded demo carries the five letter states and both stages' screens, so one browser pass covers both |
@@ -284,4 +290,53 @@ The seed needed no code change: it already writes the five states, and this stag
 two lookup rows above and the `doc_sign_cfg` default the business runs on (`hr_closes` off, `onboarding`
 needing the manager) — which is what makes the demo show the "waiting for the manager" and "waiting at HR"
 letters side by side.
+
+
+## Stage 6 checks, fresh copies (2 Nov 2026)
+
+The stage adds the two things the app needs around sign-in: the company's identity for a phone that has
+no session yet (`GET /public/brand` — the only route in this API without a token) and somewhere to
+leave the device's Expo token (`POST`/`GET`/`DELETE /me/push-token`), plus the switch a sender will
+read (`GET`/`PUT /settings/push`, **off**). Two shared files moved: `core/security.py` keeps a
+`Cache-Control` a route sets, exactly as it already kept a route's CSP, and three handlers in
+`canonical.py` (logout, disable an account, temporary password) take the account's tokens with the
+session. **Nothing is sent:** there is no sender, no queue and no outbound call anywhere, which is what
+"class C" means here.
+
+| Check | Command | Result |
+|---|---|---|
+| Unit tests | `python -m pytest -q` (cwd `backend`) | **314 passed, 16 skipped** — the Stage 5 279 + 35 in `tests_canonical/test_public_brand_push.py` (new file) |
+| Unit tests against a database | `CANONICAL_TEST_DATABASE_URL=postgresql+psycopg://…/ariba_verify_stage6 pytest -q` | **315 passed, 15 skipped** |
+| HTTP surface | `api_smoke.py --base …:8019` (its own fresh copy `ariba_stage6_demo` and `_smoke_info.json`) | **PASS=286 RULE=5 STUB=1 (292 checks)**, `RESULT: OK`, exit 0. The Stage 5 run was **238/5/1 (244)**; the 48 new rows are this stage's own section and every one passes |
+| The same checks as last stage | the `api_smoke.py` **at `HEAD`**, on its own fresh copy (`ariba_stage6_head`), against the same server | **241/5/1 (247)**: its 244 checks all pass with the same verdicts, and the OpenAPI sweep adds the three GETs it did not know about last time (`/public/brand`, `/me/push-token`, `/settings/push`) — all `PASS`. 241 − 3 = 238, so no older row changed |
+| Live brand probe | one throwaway script against the same server | `200`, **138,232 bytes**, `ETag: "e2d3…6290"`, `Cache-Control: public, max-age=300, must-revalidate`, the blanket `default-src 'none'` CSP still on the answer and `nosniff` beside it; the same request with `If-None-Match` answers **`304`** with a 0-byte body |
+| Frontend type-check | `npx tsc --noEmit` (cwd `frontend/employee-app`) | **exit 0** — the app already called all three surfaces (`brandInfo()`, `push.register()`, `push.unregister()`), so no frontend file changed |
+| Browser walkthrough | — | **pending**, together with Stages 4+5 (one seeded demo covers all three), and #35/#11 still need a phone |
+
+The 48 smoke rows walk it the way the phone does, and the refusals are the point: the brand answer is
+read **with no bearer token** and checked for the exact four-key envelope, for the two names, for a
+`data:` logo, for an `ETag` and a `max-age=300`, and — ten separate checks — for the *absence* of
+`hr_signer`, `letterhead`, `medical_form`, `doc_sign_cfg`, `ins_settings`, `workflow_config`,
+`push_config`, `sigs`, `stamp` and `updated` in the body an unauthenticated caller receives; the same
+URL answers `304` with its own `ETag` and `200` with a stale one. Then two tokens are registered (the
+device list shows two and **no token text**), a bad token and a `windows` platform are `422`, one token
+is deleted and one is left, an employee who sends HR's token gets `404` **and HR still sees its own
+device**, the switch is `403` for the employee on read and on write, `422` for a body that is not a
+boolean, `on` and `off again` for HR, and after `POST /auth/logout` a fresh sign-in lists **zero**
+devices — the server, not the app, forgot them.
+
+The stage's rules are unit tests too, without a database: B1's field list, B2 (the five keys and only
+those five; `company_logo`'s `name`/`updated` never leave; a colour that is not hex, an image that is not
+a raster `data:` URI — SVG included — and a `reset` that is not literally `true` are *absent*), B3 (the
+512 KiB cap per image is a `null`, not a truncated URI; the ETag moves when a colour moves), T1
+(upsert; twelve bad tokens and six bad platforms refused with nothing written), T2 (the read never
+carries a token and takes no account parameter; another account's token is `404` and removes nothing;
+`{}` removes all of mine), T3 (logout, disable and temporary password each delete the tokens — and an
+account that stays active keeps them), and T4 (the switch defaults off, only HR reads or writes it, a
+non-boolean is `422`, a registration with the switch off writes **one row** and touches neither
+`workflow_notifications` nor the mail tables — and `services/push.py` contains no sender to switch on).
+
+**Recorded, not a gap:** the seed needed no change. Stage 6 writes no demo data at all — a token is a
+real device's, and the smoke's four fake ones (`ExponentPushToken[smoke…]`) are deleted by its own
+cleanup, which also removes the `push_config` row it wrote, so a fresh copy stays fresh (see #17).
 

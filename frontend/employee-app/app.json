@@ -54,7 +54,9 @@
         {
           "faceIDPermission": "نستخدم Face ID لتسجيل دخولك بسرعة وأمان."
         }
-      ]
+      ],
+      "expo-asset",
+      "expo-sharing"
     ],
     "scheme": "ariba",
     "experiments": {

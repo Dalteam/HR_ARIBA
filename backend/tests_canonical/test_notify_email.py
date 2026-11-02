@@ -89,6 +89,9 @@ class FakeDB:
         self.statements.append((sql, params or {}))
         if "count(*) FILTER" in sql:
             return FakeResult(mapping_one=self.counts)
+        # The queue first: since Stage 7 its WHERE reads the `announcements_mail` setting in a subquery.
+        if "FROM public.workflow_notifications n" in sql:
+            return FakeResult(rows=self.pending)
         if "FROM public.ariba_app_settings" in sql:
             return FakeResult(first_row=(self.setting_row,) if self.setting_row is not None else None)
         if "FROM public.ariba_mail_accounts" in sql:
@@ -97,8 +100,6 @@ class FakeDB:
             return FakeResult(rows=self.attachment_rows)
         if "FROM public.ariba_documents" in sql:
             return FakeResult(rows=self.document_rows)
-        if "FROM public.workflow_notifications n" in sql:
-            return FakeResult(rows=self.pending)
         return FakeResult()
 
     def commit(self):

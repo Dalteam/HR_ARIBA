@@ -1982,22 +1982,32 @@ def payslips(actor: dict[str, Any] = Depends(current_actor), db: Session = Depen
     return out
 
 
+# Bell kinds that belong to one person only (Stage 7): shown as themselves, never forwarded through the HR pool,
+# and never marked read by somebody else's "read all".
+_PERSONAL_KINDS = ("announcement", "greeting")
+_NOT_PERSONAL_KIND = "coalesce(kind,'') NOT IN ('announcement','greeting')"
+
+
 @router.get("/me/notifications")
 def notifications(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """The bell (V118): workflow_notifications for me + forms waiting for my answer, in the app's shape.
 
     HR/admin also see the entries addressed to the HR pool (`ariba_hr_pool()`: HR accounts, employee 40
     and the HR approver of the workflows), so the bell keeps working when no account carries role='hr'.
+    Announcements and greetings are never forwarded through the pool (Stage 7, A5): they are addressed to
+    one person, and a colleague's greeting is not HR's business.
     """
     eid = actor.get("employee_id")
     is_hr = actor.get("role") in HR_ROLES
     out = []
-    for n in _rows(db, """SELECT n.*,r.status AS req_status,r.request_type FROM public.workflow_notifications n
+    for n in _rows(db, f"""SELECT n.*,r.status AS req_status,r.request_type FROM public.workflow_notifications n
             LEFT JOIN public.workflow_requests r ON r.id=n.request_id
             WHERE n.recipient_employee_id=:e
-               OR (:hr AND n.recipient_employee_id IN (SELECT public.ariba_hr_pool()))
+               OR (:hr AND n.recipient_employee_id IN (SELECT public.ariba_hr_pool()) AND {_NOT_PERSONAL_KIND})
             ORDER BY n.created_at DESC LIMIT 50""", e=eid, hr=is_hr):
-        if n["kind"] == "request":
+        if n["kind"] in _PERSONAL_KINDS:
+            kind, target = n["kind"], "index"
+        elif n["kind"] == "request":
             kind, target = "request", "team"
         else:
             kind, target = ("no" if n.get("req_status") == "rejected" else "ok"), "leaves"
@@ -2014,8 +2024,8 @@ def mark_notifications_read(body: dict[str, Any] | None = None, actor: dict[str,
     """Mark my entries read — for HR/admin also the ones the pool forwarded to them."""
     ids = (body or {}).get("ids")
     params = {"e": actor.get("employee_id"), "hr": actor.get("role") in HR_ROLES}
-    pool = """recipient_employee_id=:e
-              OR (:hr AND recipient_employee_id IN (SELECT public.ariba_hr_pool()))"""
+    pool = f"""recipient_employee_id=:e
+              OR (:hr AND recipient_employee_id IN (SELECT public.ariba_hr_pool()) AND {_NOT_PERSONAL_KIND})"""
     if ids is None:
         db.execute(text(f"UPDATE public.workflow_notifications SET read_at=now() WHERE ({pool}) AND read_at IS NULL"), params)
         db.commit()

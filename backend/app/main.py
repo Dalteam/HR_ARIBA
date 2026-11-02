@@ -13,7 +13,7 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import canonical, goals, health, manager, public, push, tasks
+from app.routers import announcements, canonical, goals, health, manager, public, push, tasks
 from app.services import notify_email
 
 API_PREFIX = "/api/v1"
@@ -97,6 +97,9 @@ def create_app() -> FastAPI:
     # sender anywhere: this stage stores tokens, it does not send.
     app.include_router(public.router, prefix=API_PREFIX)
     app.include_router(push.router, prefix=API_PREFIX)
+    # Announcements and greetings (Stage 7): the home card (/me/announcements) and HR's side
+    # (/announcements, /occasions, /settings/greetings, /settings/announcements), on migration 003.
+    app.include_router(announcements.router, prefix=API_PREFIX)
     return app
 
 

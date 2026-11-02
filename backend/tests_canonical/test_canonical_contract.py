@@ -18,6 +18,7 @@ from app.routers import canonical as canonical_router
 from app.routers.canonical import _public_employee, _sign, _verify_password
 
 EXPECTED_TABLES = {
+    "ariba_announcement_notifs", "ariba_announcements", "ariba_emp_occasions",  # 003_announcements.sql (Stage 7)
     "ariba_app_settings", "ariba_asset_custody_log", "ariba_assets", "ariba_audit_log",
     "ariba_audit_purge_requests", "ariba_auth_accounts", "ariba_bootstrap_recovery",
     "ariba_candidate_files", "ariba_candidate_invites", "ariba_candidates", "ariba_delegations",

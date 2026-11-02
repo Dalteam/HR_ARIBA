@@ -16,9 +16,12 @@ from sqlalchemy.ext.automap import automap_base
 # Every public table `configure_models()` may reflect. The fourteen `ariba_*` entries that follow come
 # from `docs/db-migrations/001_react_port.sql` (delegation, manager perms, recruitment, goals, document
 # signing, leave files, mail, tasks, WebAuthn, push) — they exist in every database created from
-# `ariba_src`, so the allowlist has to cover them before those screens are ported.
+# `ariba_src`, so the allowlist has to cover them before those screens are ported. The three
+# announcement tables come from `003_announcements.sql` (Stage 7): apply it before this backend starts.
 CANONICAL_TABLE_NAMES = frozenset(
     {
+        "ariba_announcement_notifs",
+        "ariba_announcements",
         "ariba_app_settings",
         "ariba_asset_custody_log",
         "ariba_assets",
@@ -33,6 +36,7 @@ CANONICAL_TABLE_NAMES = frozenset(
         "ariba_deleted_items",
         "ariba_doc_signing",
         "ariba_documents",
+        "ariba_emp_occasions",
         "ariba_employee_master_state",
         "ariba_evaluations",
         "ariba_leave_files",

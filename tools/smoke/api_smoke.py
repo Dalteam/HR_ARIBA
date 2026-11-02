@@ -205,6 +205,14 @@ def _cleanup(database: str, employee_id: str, account_id: str, host: str, port: 
         ("DELETE FROM public.ariba_push_tokens WHERE strpos(token, '[smoke') > 0", ()),
         ("DELETE FROM public.ariba_app_settings WHERE key='push_config'", ()),
     ]
+    # Stage 7: the smoke's announcements and greetings (already hidden, their bell entries already gone),
+    # its occasion note, and the e-mail switch it saved (off). Every title and note carries `smoke-ann-`.
+    statements += [
+        ("DELETE FROM public.workflow_notifications WHERE strpos(title, 'smoke-ann-') > 0", ()),
+        ("DELETE FROM public.ariba_announcements WHERE strpos(title, 'smoke-ann-') > 0", ()),
+        ("DELETE FROM public.ariba_emp_occasions WHERE strpos(coalesce(note, ''), 'smoke-ann-') > 0", ()),
+        ("DELETE FROM public.ariba_app_settings WHERE key IN ('announcements_mail', 'occasions_auto')", ()),
+    ]
     problems = []
     dsn = url or f"host={host} port={port} user={user} dbname={database}"
     try:
@@ -721,6 +729,104 @@ def main() -> int:
     _, after_logout = call((200,), "GET", "/me/push-token", "plain_employee")
     grade(len((after_logout or {}).get("items") or []) == 0,
           "GET", "/me/push-token (T3: logout forgot the device)", f"{after_logout!r}")
+
+    # ------------------------------------------------------------------ announcements and greetings (Stage 7)
+    # Hostile text on purpose (A11): the database's ariba_sanitize trigger stores < > " as look-alike
+    # characters, so the card and the bell must both answer the same defanged text, with the words intact.
+    tag = "smoke-ann-" + uuid.uuid4().hex[:8]
+    hostile = f'<script>alert(1)</script> {tag} <img src=x onerror="alert(2)">'
+    card_keys = {"id", "kind", "occasion", "title", "body", "pinned", "created_at"}
+    hr_emp = accounts["hr_approver"]["employee_id"]
+
+    def card(who: str) -> list[dict[str, Any]]:
+        _, data = call((200,), "GET", "/me/announcements", who)
+        return list((data or {}).get("items") or []) if isinstance(data, dict) else []
+
+    def bell_titles(who: str) -> list[str]:
+        _, data = call((200,), "GET", "/me/notifications", who)
+        return [str(n.get("title")) for n in (data or []) if isinstance(n, dict)]
+
+    card("requester")
+    _, sent = call((200,), "POST", "/announcements", "hr_approver",
+                   {"title": hostile, "body": hostile, "audience": "all"})
+    ann_id = need((sent or {}).get("id"), "POST", "/announcements (an id to follow)")
+    grade(int((sent or {}).get("sent") or 0) > 0, "POST", "/announcements (A1: sent to current employees)", f"{sent!r}")
+    if ann_id:
+        mine_now = card("requester")
+        mine_item = next((i for i in mine_now if i.get("id") == ann_id), None) or {}
+        shown = str(mine_item.get("title") or "")
+        grade(tag in shown and not any(c in shown + str(mine_item.get("body") or "") for c in '<>"'),
+              "GET", "/me/announcements (A11: hostile text stored defanged, words kept)", f"{mine_item!r}")
+        grade(set(mine_item) == card_keys, "GET", "/me/announcements (N4: exactly seven keys)",
+              f"{sorted(mine_item)}")
+        grade(bool(shown) and shown in bell_titles("requester"), "GET",
+              "/me/notifications (A5: the bell rang, same text as the card)")
+        call((200,), "PATCH", f"/announcements/{ann_id}", "hr_approver", {"title": tag + " (edited)", "pinned": True})
+        call((422,), "PATCH", f"/announcements/{ann_id}", "hr_approver", {"audience": "employees"})
+        grade(any(i.get("title") == tag + " (edited)" and i.get("pinned") is True for i in card("requester")),
+              "GET", "/me/announcements (A6: the edit shows on the card)")
+        _, hr_items = call((200,), "GET", "/announcements", "hr_approver")
+        listed = next((i for i in (hr_items or {}).get("items") or [] if i.get("id") == ann_id), {})
+        grade(bool(listed) and listed.get("recipients") == (sent or {}).get("sent") and "employee_ids" not in listed,
+              "GET", "/announcements (A2: a count, not the recipients)", f"{listed!r}")
+    # refusals: only HR writes and lists (N1, N10)
+    for method, path, body in (("POST", "/announcements", {"title": "x"}), ("GET", "/announcements", None),
+                               ("PATCH", f"/announcements/{ann_id or uuid.uuid4()}", {"title": "x"}),
+                               ("DELETE", f"/announcements/{ann_id or uuid.uuid4()}", None),
+                               ("GET", "/occasions", None), ("POST", "/occasions", {}),
+                               ("GET", "/settings/greetings", None), ("PUT", "/settings/greetings", {"enabled": True}),
+                               ("POST", "/occasions/run-auto", None), ("GET", "/settings/announcements", None),
+                               ("PUT", "/settings/announcements", {"email": True})):
+        call((403,), method, path, "requester", body, allow={403})
+    # bad bodies (N5, N13, N14)
+    call((422,), "POST", "/announcements", "hr_approver", {"title": "x" * 201})
+    call((422,), "POST", "/announcements", "hr_approver", {"title": tag, "kind": "greeting", "occasion": "recovery"})
+    call((422,), "POST", "/announcements", "hr_approver", {"title": tag, "expires_on": "2000-01-01"})
+    call((422,), "POST", "/announcements", "hr_approver", {"title": tag, "audience": "employer"})
+    call((422,), "POST", "/announcements", "hr_approver",
+         {"title": tag, "audience": "employees", "employee_ids": [emp_id, "SMOKE-NOT-AN-EMPLOYEE"]})
+    # a greeting to one person of the HR pool: theirs only, not every HR account's (A5, N2, N6)
+    greet_title = f"تهنئة {tag}"
+    _, greeted = call((200,), "POST", "/announcements", "hr_approver",
+                      {"title": greet_title, "kind": "greeting", "occasion": "newborn", "audience": "employees",
+                       "employee_ids": [hr_emp]})
+    greet_id = need((greeted or {}).get("id"), "POST", "/announcements (a greeting to follow)")
+    if greet_id:
+        grade(greet_title in bell_titles("hr_approver"), "GET", "/me/notifications (the greeted person sees it)")
+        grade(greet_title not in bell_titles("admin"), "GET", "/me/notifications (N6: not forwarded to other HR)")
+        grade(all(i.get("id") != greet_id for i in card("requester")), "GET", "/me/announcements (N2: not a colleague's)")
+    # the switches ship off, and run-auto does nothing while they are off (A9, D5, N11)
+    _, greetings_cfg = call((200,), "GET", "/settings/greetings", "hr_approver")
+    grade(isinstance(greetings_cfg, dict) and not any(greetings_cfg.values()), "GET", "/settings/greetings (off)",
+          f"{greetings_cfg!r}")
+    _, mail_cfg = call((200,), "GET", "/settings/announcements", "hr_approver")
+    grade(mail_cfg == {"email": False}, "GET", "/settings/announcements (D5: not e-mailed)", f"{mail_cfg!r}")
+    call((422,), "PUT", "/settings/announcements", "hr_approver", {"email": "yes"})
+    call((200,), "PUT", "/settings/announcements", "hr_approver", {"email": False})
+    _, ran = call((200,), "POST", "/occasions/run-auto", "hr_approver")
+    grade((ran or {}).get("sent") == 0, "POST", "/occasions/run-auto (N11: off sends nothing)", f"{ran!r}")
+    # HR's occasion notes (A10)
+    call((422,), "POST", "/occasions", "hr_approver",
+         {"employee_id": emp_id, "occasion": "recovery", "occ_date": today.isoformat()})
+    _, occ = call((200,), "POST", "/occasions", "hr_approver",
+                  {"employee_id": emp_id, "occasion": "graduation", "occ_date": today.isoformat(), "note": tag})
+    occ_id = need((occ or {}).get("id"), "POST", "/occasions (an id to follow)")
+    if occ_id:
+        _, occ_list = call((200,), "GET", "/occasions", "hr_approver")
+        grade(any(o.get("id") == occ_id for o in (occ_list or {}).get("items") or []), "GET", "/occasions (listed)")
+        call((200,), "DELETE", f"/occasions/{occ_id}", "hr_approver")
+        call((404,), "DELETE", f"/occasions/{occ_id}", "hr_approver", allow={404})
+    # delete = hide, and the bell entries leave every bell (A7, D4, N9)
+    if ann_id:
+        _, hidden = call((200,), "DELETE", f"/announcements/{ann_id}", "hr_approver")
+        grade((hidden or {}).get("removed") == (sent or {}).get("sent"), "DELETE", "/announcements (D4: bell entries removed)",
+              f"{hidden!r} vs {sent!r}")
+        grade(all(i.get("id") != ann_id for i in card("requester")), "GET", "/me/announcements (A7: gone from the card)")
+        grade(not any(tag in t for t in bell_titles("requester")), "GET", "/me/notifications (D4: gone from the bell)")
+        call((404,), "DELETE", f"/announcements/{ann_id}", "hr_approver", allow={404})
+        call((404,), "PATCH", f"/announcements/{ann_id}", "hr_approver", {"title": "x"}, allow={404})
+    if greet_id:
+        call((200,), "DELETE", f"/announcements/{greet_id}", "hr_approver")
 
     # ------------------------------------------------------------------ public holidays
     _, holiday = call((201,), "POST", "/holidays", "hr_approver",

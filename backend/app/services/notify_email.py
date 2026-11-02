@@ -272,6 +272,13 @@ def cutoff(db: Session, settings: Settings | None = None) -> datetime | None:
 ADDRESS_SQL = "coalesce(" + ", ".join(
     f"nullif(btrim(d.data->>'{field}'), '')" for field in ADDRESS_FIELDS) + ", '')"
 
+# Stage 7 (BUSINESS_RULES D5): a greeting is never mailed, and an announcement only while HR has switched
+# ariba_app_settings['announcements_mail'].email on (it ships off). Every other kind is unchanged.
+MAILABLE_KIND_SQL = """(coalesce(n.kind, '') <> 'greeting'
+       AND (coalesce(n.kind, '') <> 'announcement'
+            OR EXISTS (SELECT 1 FROM public.ariba_app_settings s
+                        WHERE s.key = 'announcements_mail' AND s.value->>'email' = 'true')))"""
+
 PENDING_SQL = text(f"""
     SELECT n.id, n.recipient_employee_id, n.request_id, n.title, n.body, n.stage, n.kind,
            n.created_at, n.email_tries,
@@ -289,6 +296,7 @@ PENDING_SQL = text(f"""
      WHERE n.emailed_at IS NULL
        AND n.email_tries < :max_tries
        AND n.created_at >= :since
+       AND {MAILABLE_KIND_SQL}
        AND {ADDRESS_SQL} <> ''
      ORDER BY n.created_at
      LIMIT :limit
@@ -340,6 +348,7 @@ def pending_count(db: Session, since: datetime, max_tries: int = 5) -> dict[str,
           JOIN public.employee_directory d ON d.employee_id = n.recipient_employee_id
          WHERE n.emailed_at IS NULL
            AND n.created_at >= :since
+           AND {MAILABLE_KIND_SQL}
     """), {"max_tries": max_tries, "since": since}).mappings().one()
     return {key: int(row[key] or 0) for key in ("ready", "no_address", "gave_up")}
 

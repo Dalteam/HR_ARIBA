@@ -757,6 +757,161 @@ There is no sender in the codebase to switch on.
 `port.ts` has exactly the three token calls above and `push.ts` uses two of them, so nothing invents a
 fourth.
 
+## Announcements and greetings — ✅ Stage 7, rules approved by the owner 2 Nov 2026 (`services/announcements.py`, `routers/announcements.py`, migration `003_announcements.sql`)
+
+The screen is the home card «الإعلانات والتهاني» (`src/components/announcements.tsx`). It calls one route,
+`GET /me/announcements`, and expects `{ok, items: [{id, kind, occasion, title, body, pinned, created_at}]}`
+(`src/lib/api.ts`). The bell already knows the kinds `announcement` and `greeting` (`Notification.kind`).
+Neither `hr-web` nor the app has a screen for **writing** one, so HR's side is API-only in this stage,
+like the Stage 2 permissions (#28). The client's reference (`port_announcements.py`, their
+`002_announcements.sql`) is the guide for the table shape; it is not copied, and three of its choices are
+deliberately changed (A5, A9, A10).
+
+| Method | Path | Answer | Who |
+|---|---|---|---|
+| GET | `/me/announcements` | `{ok, items}`: the card's shape above, at most 10 | any signed-in account, its own items only (A3) |
+| GET | `/announcements` | `{ok, items}`: every non-hidden row with `audience`, `employer_id`, `recipients` (count), `pinned`, `expires_on`, `source`, `created_at` | HR (`hr`/`admin`/`admin_manager`) only (A2) |
+| POST | `/announcements` | `{ok, id, sent}`; body `{kind, title, body?, occasion?, audience, employer_id?, employee_ids?, pinned?, expires_on?}` | HR only |
+| PATCH | `/announcements/{id}` | `{ok}`; body any of `{title, body, pinned, expires_on}` | HR only (A6) |
+| DELETE | `/announcements/{id}` | `{ok}`: hides the row (A7) | HR only |
+| GET | `/occasions` | `{ok, items: [{id, employee_id, name, occasion, occ_date, yearly, note}]}` | HR only (A10) |
+| POST | `/occasions` | `{ok, id}`; body `{employee_id, occasion, occ_date, yearly?, note?}` | HR only |
+| DELETE | `/occasions/{id}` | `{ok}`: hides the row | HR only |
+| GET / PUT | `/settings/greetings` | `{enabled, birthday, anniversary, custom}`, all **off** by default | HR only (A9) |
+| GET / PUT | `/settings/announcements` | `{email}`, **off** by default | HR only (A12) |
+| POST | `/occasions/run-auto` | `{ok, sent}`: today's automatic greetings, once each | HR only (A9) |
+
+### The table design (migration `003_announcements.sql`, two new tables, nothing existing changed)
+
+- **`ariba_announcements`**: `id uuid`, `kind` (`announcement`/`greeting`), `occasion` (greetings only, from
+  the list in A8), `title` (≤ 200), `body` (≤ 2000, plain text), `audience` (`all`/`employer`/`employees`),
+  `employer_id smallint` → `employers(id)` (when `audience='employer'`), `employee_ids text[]` (when
+  `audience='employees'`), `pinned`, `expires_on date`, `source` (`manual`/`auto`), `auto_key` (unique: one
+  automatic greeting per person, occasion and year), `sent_count`, `hidden`, `created_by`, `created_at`,
+  `updated_by`, `updated_at`. The column names match the client's table so a future client drop lines up;
+  the one change is `employer_id` instead of the employer's *name* (a renamed employer would otherwise lose
+  its announcements).
+- **`ariba_emp_occasions`**: `id uuid`, `employee_id` → `employee_directory` (cascade), `occasion`, `occ_date`,
+  `yearly`, `note`, `hidden`, `created_by`, `created_at`.
+- Checks in the database as well as in the code: the `kind`, `audience` and `source` values, `title` not
+  blank, and "`employer` needs an employer, `employees` needs at least one id".
+
+**A1 — Recipients are today's employees.** When a row is sent, the server works out who receives it:
+`all` means every employee who is `active` and not terminated (`isTerminated`/`term`); 22 people in
+`ariba_src` today, never the 84 former staff. `employer` is those of them with that `employer_id`.
+`employees` is the listed ids, and **every** id must be a current employee: one that is not makes the
+whole request `422 invalid_recipients` with the list of the ids that cannot receive, and nothing is
+written. (HR is the only caller, so naming those ids back to HR leaks nothing.)
+
+**A2 — Only HR writes, and only HR lists.** `hr`/`admin`/`admin_manager` create, edit, hide and list.
+The CEO, managers and employees get `403` on every HR route; they read announcements the same way as
+everybody else, through their own card (A3). The HR list carries a recipient **count**, never the
+recipients' names. A targeted greeting ("congratulations on your newborn") is about one person's life,
+so it is not shown to the CEO by default (decision D6).
+
+**A3 — The card shows only what is addressed to me, and only while it is current.**
+`GET /me/announcements` returns rows that are not hidden and not expired (`expires_on` on or after today
+in Riyadh), where:
+- the row is an **announcement** that is pinned or less than 14 days old, or a **greeting** less than 24
+  hours old (the app filters again for an app left open overnight);
+- the audience matches me **now**: `all`, or `employer` = my current employer, or my id is in
+  `employee_ids`.
+
+They are ordered pinned first, then newest, with at most 10. An account with no employee record (a pure
+admin login) sees only `all`.
+
+**A4 — The card never shows who else got it.** The answer has exactly the seven fields above.
+`audience`, `employer_id`, `employee_ids`, `sent_count`, `created_by`, `source` and `auto_key` are not
+selected for `/me`. A greeting sent to three people does not tell any of them who the other two are.
+
+**A5 — The bell rings once, for the right person only.** Sending writes one `workflow_notifications`
+row per recipient, with `kind='announcement'` or `'greeting'`. `GET /me/notifications` gets one
+additive change: those two kinds are passed through as themselves with `target: "index"`, instead of
+being turned into the "approved/rejected" kinds as today. **Changed from today's bell:** HR accounts
+see every entry addressed to the HR pool (`ariba_hr_pool()`, employee 40 today). For these two kinds
+that would show a colleague's personal greeting to every HR account, so **announcement and greeting
+entries are never forwarded through the pool**: each person sees only their own.
+
+**A6 — Editing fixes the wording, not the audience.** `PATCH` may change `title`, `body`, `pinned` and
+`expires_on`, with the same limits as on create. `kind`, `occasion`, `audience` and the recipients
+cannot change, because the bell entries have already been delivered to those people. To reach other
+people, send a new announcement. An edit changes what the card shows and **does not ring the bell
+again**; the bell entries already sent keep their original text (they are the delivery record).
+
+**A7 — "Delete" hides, and takes it out of every bell (D4).** `DELETE` sets `hidden`. The row leaves the
+card and the HR list at once, and stays in the table for the record (with the audit row). Its bell
+entries are **deleted**, through the link table `ariba_announcement_notifs`, so nobody's bell keeps a
+withdrawn notice; a "withdrawn" placeholder was not chosen, because it would still tell people that
+something had been sent. An e-mail that already went out cannot be recalled (e-mail is off today, #7).
+A hidden or unknown id is `404` on `PATCH` and `DELETE`.
+
+**A8 — Occasions are an allow-list.** A greeting's `occasion` and an `ariba_emp_occasions.occasion` must
+be one of `birthday`, `anniversary`, `graduation`, `wedding`, `newborn`, `promotion`, `achievement`,
+`other`. Anything else is `422`. The client's list also has **`recovery` (الشفاء)**: that is health
+information, so it is **left out** until HR confirms they want it (decision D2). An announcement has no
+occasion (it is stored as `null`).
+
+**A9 — Automatic greetings are off, and only HR can run them.** `/settings/greetings`
+(`ariba_app_settings['occasions_auto']`, the client's key) ships with `enabled: false`. With it on,
+`POST /occasions/run-auto` sends today's birthday, work-anniversary and registered-occasion greetings
+(each part has its own switch), **each only to the person it is about**: colleagues never learn
+someone's birthday or age. `auto_key` makes a second run on the same day send nothing.
+**Changed from the client's code:**
+- there, *any* signed-in account could trigger the run; here it is HR only;
+- nothing runs on a timer in this stage. A daily automatic run is decision D3.
+
+**A10 — Personal occasions are HR's notes.** `ariba_emp_occasions` holds dates from people's private
+lives (a wedding, a newborn). Only HR lists, adds or hides them. Nobody else, the employee included, has
+a route to them in this stage. Every write is audited (the client's code audited none).
+
+**A11 — Plain text, length-limited, audited.**
+- **Text:** `title` is required, trimmed, at most 200 characters, and over 200 is `422`, not cut.
+  `body` is at most 2000 characters.
+- **Never HTML, and defanged on write:** both are plain **text**. Control characters are dropped, and
+  migration 003 attaches the database's existing `ariba_sanitize` trigger (the one already on
+  `workflow_notifications`, `employee_directory`, `workflow_requests` and 14 other tables), which stores
+  `<`, `>` and `"` as look-alike characters. So `<script>` arrives as harmless text on the card and in
+  the bell alike. The app prints both with `<T>`, and any future HR screen must not render them as HTML.
+- **Dates:** `expires_on` is `YYYY-MM-DD` and not in the past.
+- **Audit:** every create, edit, hide, occasion write, settings change and automatic run appends
+  `ariba_audit_log` with the id, kind, audience and recipient count, **never the body**. Reading the
+  card is not audited (it is a notice board, not a personal file).
+
+**A12 — E-mail is a separate switch, and greetings are never mailed (D5).** Even once e-mail is on (#7),
+the sender (`services/notify_email.py`) skips every `greeting` bell row, and skips `announcement` rows
+unless HR turns on `/settings/announcements` `{email: true}` (`ariba_app_settings['announcements_mail']`,
+**off** by default). No push is sent: there is still no sender (#37).
+
+### The refusals the negative tests pin
+
+| # | Who → what | Expected |
+|---|---|---|
+| N1 | employee, manager, CEO → `POST`/`PATCH`/`DELETE /announcements`, `GET /announcements` | 403 `forbidden`, nothing written |
+| N2 | employee → `GET /me/announcements` with a greeting addressed to a colleague | not in the list |
+| N3 | employee of employer A → an `employer` announcement for employer B | not in the list |
+| N4 | anybody → `/me/announcements` | each item has exactly the seven keys; no `employee_ids`/`audience`/`created_by` anywhere in the JSON |
+| N5 | HR → `POST` with one former employee among `employee_ids` | 422 `invalid_recipients` naming that id; no row and no bell entry written |
+| N6 | HR account → bell, after a greeting to employee 40 (the HR pool) | not in the HR account's bell |
+| N7 | anybody → a greeting older than 24 h, an announcement older than 14 days and not pinned, an expired one, a hidden one | not in the card |
+| N8 | HR → `PATCH` trying to change `audience`/`employee_ids`/`kind` | 422; recipients unchanged |
+| N9 | HR → `PATCH`/`DELETE` an unknown or hidden id | 404 `not_found` |
+| N10 | employee, manager, CEO → `/occasions` (any method), `/settings/greetings`, `/occasions/run-auto` | 403 |
+| N11 | HR → `run-auto` with the switch off | `{sent: 0}`, nothing written |
+| N12 | HR → `run-auto` twice on the same day with it on | the second run sends 0 |
+| N13 | HR → occasion `recovery`, or any value off the list | 422 |
+| N14 | HR → title of 201 characters, an `expires_on` in the past, `audience='employer'` with no employer | 422 |
+
+### Decisions (owner, 2 Nov 2026)
+- **D1:** may a manager send an announcement to their own team? **No**, HR only (default kept).
+- **D2:** should `recovery` (health) be an occasion? **No** (default kept). Whether the occasion notes
+  should exist at all is for HR to confirm (FOLLOW_UPS #44).
+- **D3:** should automatic greetings run daily by themselves? **No** (default kept): the switch is off
+  and only HR can run them.
+- **D4:** when HR deletes an announcement, it **disappears from the bells too** (A7).
+- **D5:** announcements are **not** e-mailed by default (a switch that ships off) and greetings are
+  **never** e-mailed (A12).
+- **D6:** may the CEO read the HR list? **No** (default kept).
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

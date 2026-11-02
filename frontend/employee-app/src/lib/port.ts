@@ -104,10 +104,10 @@ export const docs = {
   content: (id: string) => api<DocContent>(`/documents/${encodeURIComponent(id)}/content`),
   states: () => api<SignState[]>("/me/sign/states"),
   employeeSign: (requestId: string, b: { document_id: string | null; template_type: string; signed_base64: string }) =>
-    post<{ next: "manager" | "hr"; document_id: string }>(`/me/letters/${encodeURIComponent(requestId)}/sign`, b),
+    post<{ next: "manager" | "hr" | "done"; document_id: string }>(`/me/letters/${encodeURIComponent(requestId)}/sign`, b),
   managerPending: () => api<ManagerPending[]>("/me/sign/pending"),
   managerSign: (requestId: string, b: { action: "approved" | "rejected"; signed_base64?: string; reason?: string }) =>
-    post<{ ok: boolean }>(`/me/sign/${encodeURIComponent(requestId)}`, b),
+    post<{ ok: boolean; next: "hr" | "done" | "rejected" }>(`/me/sign/${encodeURIComponent(requestId)}`, b),
 };
 
 // ---------------------------------------------------------------- push, brand

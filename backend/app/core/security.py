@@ -29,8 +29,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         h["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
         h["Cross-Origin-Opener-Policy"] = "same-origin"
         if not request.url.path.startswith(_DOCS_PATHS):
-            # The API only ever returns JSON.
-            h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+            # The API only ever returns JSON — except the letter body, which is a document and brings its
+            # own policy (`html_safety.DISPLAY_CSP`: still no script, but its CSS and `data:` images
+            # render). A route that sets one keeps it; everything else gets the blanket policy.
+            if "content-security-policy" not in h:
+                h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
             h["Cache-Control"] = "no-store"
         if get_settings().env == "production":
             h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"

@@ -35,11 +35,15 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 23 | **Who signs last is now data, not code** | Each type ends at the stage `ariba_app_settings['workflow_config'].final_by_type` names (`hr` or `ceo`); the migrated setting already maps `unpaid`, `salary_advance`, `iban_change`, `profile_edit`, `document` to HR and everything else falls back to the CEO, exactly as before. So HR can move a type's last signature without a deploy — but the five names are a business rule nobody has confirmed. Also: any value other than `hr`/`ceo` is ignored (code default wins), so whatever screen edits `workflow_config` must accept only those two | client | Needs decision |
 | 24 | The new **team screen expects `salary_total` per member** | **Settled in code (Stage 2):** `/me/team` returns `salary_total`/`net_salary` only when the manager holds `view_team_salary` **and** HR turned the `manager_team_salary` setting on (`PUT /settings/team-salary`). The default is off, so a migration never starts exposing salaries. What the client still has to answer: whether a direct manager should see the team's salary at all | client | Awaiting client |
 | 25 | **`models.py` allowlist grew by the 14 migration-001 tables** | `ariba_candidate*`, `ariba_delegations`, `ariba_doc_signing`, `ariba_evaluations`, `ariba_leave_files`, `ariba_mail_accounts`, `ariba_mail_log`, `ariba_manager_perms`, `ariba_push_tokens`, `ariba_targets`, `ariba_tasks`, `ariba_webauthn_credentials` are now reflectable so the Stage 2 screens can use them, and `EXPECTED_TABLES` in `tests_canonical/test_canonical_contract.py` matches. Side effect: `configure_models()` now refuses to start against a database **without** `001_react_port.sql` — every database we run (`ariba_src` and every copy of it) already has all 14 | backend | Recorded |
-| 26 | **Manager demo data** | `tools/smoke/manager_demo_seed.py` creates a throwaway `ariba_manager_demo` (copy of `ariba_src`) with a manager, three reports (one delegated, one not, one with no row), an outsider, an HR login, their permissions, the salary setting off and three team requests. It refuses `ariba_src` and any Railway/Supabase host, and it is re-runnable (`--no-copy`). Logins and the password are written to `_manager_demo_info.json` (git-ignored); drop the database when the screen has been reviewed | backend | Recorded |
+| 26 | **Manager demo data** | `tools/smoke/manager_demo_seed.py` creates a throwaway `ariba_manager_demo` (copy of `ariba_src`) with a manager, three reports (one delegated, one not, one with no row), an outsider, an HR login, their permissions, the salary setting off and three team requests — and for Stage 5 the letter chain (two letters to sign, one waiting for the manager, one waiting at HR, one refused), the `doc_sign_cfg` setting, the sick/annual leave PDFs the manager may open and an iqama scan he may not. It refuses `ariba_src` and any Railway/Supabase host, and it is re-runnable (`--no-copy`). Logins and the password are written to `_manager_demo_info.json` (git-ignored); drop the database when the screen has been reviewed | backend | Recorded |
 | 27 | **`api_smoke.py` dies printing its report when stdout is redirected on Windows** | With stdout going to a file or pipe, Python takes the ANSI code page (cp1252 here) and `print(text)` raises `UnicodeEncodeError` on the Arabic details. **No verdict was ever affected**: `_report` writes `_api_smoke.txt` (`encoding="utf-8"`) *before* printing it, and `main`'s cleanup runs before `_report`, so the report file is complete and the database is tidy — only the console copy is lost and the exit code is 1. Proven on the same copy: `160/4` with `PYTHONIOENCODING=utf-8` (exit 0) and `160/4` with stdout redirected (exit 1, file says `RESULT: OK`). The script should still set its own stdout encoding | backend / tools | Open |
 | 28 | **No HR screen for manager permissions** | Stage 2 ships the API (`GET/PUT /settings/manager-perms`, `GET/PUT /settings/team-salary`) but `hr-web` has no page for it: granting a permission or turning the team's salary on is a `curl` today, so HR cannot use the feature without a developer | hr-web | Open (Stage 2 follow-up) |
 | 29 | **`/docs` cannot authorize a single endpoint** | `GET /openapi.json` has `components.securitySchemes: null` and every operation carries `security: null`: the API reads the raw `Authorization` header (`canonical.current_actor`) instead of declaring `HTTPBearer`, so Swagger UI shows no *Authorize* button and cannot send a token — an authenticated `Try it out` is a `401` today. This blocks the "HR turns the salary setting on from `/docs`" path that #28 was going to fall back on: the same code needs `HTTPBearer` attached to `current_actor` (one dependency, no behaviour change) | backend | Open (Stage 2 follow-up) |
 | 30 | **Who approves an evaluation** | Stage 3 reads the signing stage from `ariba_app_settings['goals_config'].evaluation_approver` (`hr` when the setting is missing, `ceo` as the alternative) and the people at that stage from `workflow_approvers` + the stage's roles, never the evaluator. Two halves need HR's answer: whether **HR** or the **CEO** signs an evaluation, and whether HR should also read the manager's **drafts** (today: no — a draft belongs to its evaluator, see [BUSINESS_RULES.md](BUSINESS_RULES.md) § Goals). A third half is its own question: **HR cannot write evaluations** — HR administers the targets, but an evaluation's `items`/`comments` stay the evaluator's and the API refuses HR with `403` (P7). Confirm with HR that this is the separation they want, because the prototype let HR edit everything | HR / backend | Open (Stage 3 follow-up) |
+| 31 | **Confirm with HR that they want a final step on letters, and add an HR screen for it** | Stage 5 (Option A) makes HR the last signer of a letter: `POST /letters/{request_id}/approve` moves `stage='hr'` → `current_stage='completed'` and rings the employee. The employee app does not call it and `hr-web` has no page for it, so today a signed letter waits at `stage='hr'` until someone calls the route by hand — ask HR whether they want that step at all, and build the screen if they do. Building it means `/letters` must also return `current_stage`: today it returns only the generated `status`, so `hr-web/src/app/(hr)/(portal)/templates/page.tsx` labels every `pending` row «بانتظار الموظف» even when the letter is waiting for the manager or for HR | HR / hr-web | Open (Stage 5 follow-up) |
+| 32 | **`GET /documents/{id}/file` is wider than the Stage 5 viewer** | It authorizes with `_employee_scope`, so an account whose role is `manager` can download **any** document of a direct report (ID/iqama, contract, degree, photo) — the exact width the new `/documents/{id}/content` refuses (S1). It was left untouched because `hr-web/src/lib/employees.ts` (`documentBlob`, reached only through `openDocument()`) depends on it: decide whether to narrow it to the S1 doors or to keep it and accept that a manager can bypass the viewer (and its audit row). The callers are known now and **none of them would break**: the employee-portal profile opens the caller's own documents, the HR leaves page opens a leave attachment, the dependents tab and the employee form open a document they are already displaying, and `tools/smoke/api_smoke.py` opens a document it uploaded as the HR account — each is either `self`, an HR role, or (the smoke's) HR, which the narrowed version still allows. The employee app reads `/documents/{id}/content` only, never `/file` | backend | Needs decision (decide before go-live) |
+| 33 | **Confirm with HR/legal that a manager may open sick-leave (and maternity) attachments** | S1(c) lets a direct manager open the file on **any** leave request of his report, and the argument is that he already approves that leave with the employee's reason in front of him (`GET /me/team/requests`). A medical report is the strongest form of that paper, so HR/legal should confirm it explicitly — the alternative is a narrower list of leave types in `_manager_may_open` (`routers/canonical.py`), one line, and the audit row (`documents/open`, `via:'content'`) already records every open | HR / legal | Open (Stage 5 follow-up) |
+| 34 | **`doc_sign_cfg.hr_closes` stays off until HR confirms** | The setting ships **off** (S10): a letter closes at its last signature, which is what the business does today. Turning it on makes HR the last signer and leaves the letter waiting for `POST /letters/{request_id}/approve` — a route no screen calls yet (#31). Enable it only after HR says they want that step *and* the HR screen exists; until then a letter that reaches `stage='hr'` is already closed (`current_stage='completed'`) and HR's approve answers `409 already_closed`/`not_waiting_for_hr` | HR / hr-web | Open (Stage 5 follow-up) |
 
 ## 3. Verification and documentation
 
@@ -53,6 +57,7 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 17 | **`api_smoke` is not self-cleaning** | It deletes the employee, the account and the payroll row, but leaves `ariba_audit_log` +49 rows, `ariba_app_settings` `ins_settings` (11 → 12), `ariba_deleted_items` +4, `attendance` +1, the `payroll_periods` row `2099-01` and — since Stage 4 — two `ariba_tasks` rows (a task the requester finished, a meeting HR cancelled) with their four audit rows. So `railway_validate` is red on **any** database the smoke test has touched. Either extend the cleanup or always verify on a throwaway copy (see #18) | backend / tools | Open |
 | 20 | **Line-ending policy** | The port converted **CRLF to LF**: 15,462 insertions / 10,728 deletions, of which **17,704 changed lines are whitespace/EOL only**, and 9 files have no content change at all. Decision for the team lead: add a `.gitattributes` (`* text=auto eol=lf`) or not. Until then review those commits with `git show -w` / `git diff -w` | team lead | Needs decision |
 | 21 | **`.claude/settings.json`** from the reference repo (it enables the `expo@claude-plugins-official` plugin for Claude Code) | Deliberately left out of the port commit. It was already tracked (since `31cb909`) with the same content, and the only local difference was CRLF, so it was restored to `HEAD` instead of committed. Nothing to exclude; keep it or ignore it as the team prefers | team lead | Needs decision (no action taken) |
+| 35 | **Native WebView with scripting disabled not verified on a real phone** | `html-view.tsx` now passes `javaScriptEnabled={false}` and `domStorageEnabled={false}`, and the web build's iframe has carried no script permission since the port — but neither has been **seen on a device**. This PC renders letters through `html-view.web.tsx` (the iframe), so the browser walkthrough proves the iframe half only; the native half is the SDK 58 WebView of the Expo build, which needs #4 (a phone that can reach the API) first. Say so plainly until then: S12's third line is *tested*, the viewer's own setting is *configured*, not yet *observed* | employee-app | Open (with #4) |
 
 ## 4. Decisions and housekeeping
 
@@ -196,4 +201,87 @@ and no reason. The frontend's `port.ts` needs no change: `type` is still a strin
 Two things the app does **not** call, and therefore were not built: editing or deleting a task, and a
 reminder job. `port.ts` has exactly the four calls listed in [BUSINESS_RULES.md](BUSINESS_RULES.md)
 § Tasks; nothing invents a fifth.
+
+## Stage 5 checks, fresh copies (2 Nov 2026)
+
+The stage closes the letter chain (S6/S10: HR as the last signer, and who needs a manager's signature) and
+adds the content-safety layer S12 promised (`services/html_safety.py`) plus the one viewer both apps read a
+document through (`GET /documents/{id}/content`, audited, S1 doors). No existing route changed its shape;
+`port.ts` only widened two return types. Every copy below was made from `ariba_src` and dropped afterwards
+(`smoke_setup.py --src ariba_src --dst ariba_smoke_stage5b` for the smoke run,
+`… --dst ariba_verify_stage5b` for pytest). The numbers are from the last pass, after the fixes the review
+of this section produced (the guards below, the phone viewer, the letter route's policy).
+
+| Check | Command | Result |
+|---|---|---|
+| Unit tests | `python -m pytest -q` (cwd `backend`) | **279 passed, 16 skipped** — the Stage 4 236 plus 43 new (`test_html_safety.py` 11, `test_signing_surface.py` 32, both new files) |
+| Unit tests against a database | `CANONICAL_TEST_DATABASE_URL=postgresql+psycopg://…/ariba_verify_stage5b pytest -q` | **280 passed, 15 skipped** |
+| HTTP surface | `api_smoke.py --base …:8018` (its own fresh copy and `_smoke_info.json`) | **PASS=238 RULE=5 STUB=1 (244 checks)**, `RESULT: OK`, exit 0. The Stage 4 run on the same script was **187/4/1 (192)** |
+| The same checks as last stage | the `api_smoke.py` **at `HEAD`**, run against the same fresh copy and the same server | **191/5/1 (197)**: every check older than this stage still passes, in the same order, and its 5 `RULE`s are the same allow-listed probes (`/documents/{zero}/file` and `/employees/2/photo` are `404`, `/me/team/requests` is `403` for a plain employee, plus the zero-uuid probes for the new `GET`s). The 47 extra rows in the working copy are the stage's own section (35 checks, all `PASS`), the **17 dependency rows** this pass added so no `if <id>:` block can skip itself, one more cleanup `DELETE`, and two `POST /me/attendance/punch` calls fewer — a fresh copy has no open punch to recover from, the same one-row difference #16 explains for Stage 1 |
+| Seed | `manager_demo_seed.py --dst ariba_manager_demo`, then one throwaway query | **5 letters in the five states** — `employee` (plain), `employee` (with a manager needed), `manager`, `hr`, `rejected` — **3 attachments** (annual ticket, sick report, iqama) and **3 signed copies**; the Arabic file names survive the round trip (`ascii(left(file_name,1))` = 1582/1588, i.e. خ/ش) |
+| Frontend type-check | `npx tsc --noEmit` (cwd `frontend/employee-app`) | **exit 0** after `port.ts` widened the employee sign's `next` to include `done` and `managerSign` to `{ok, next}`, and `html-view.tsx` gained `javaScriptEnabled={false}` |
+| Browser walkthrough | — | **pending**, together with Stage 4 (see its row): the seeded demo carries the five letter states and both stages' screens, so one browser pass covers both |
+
+The smoke's new section walks the chain the way the app does, not only its refusals: `/settings/doc-sign`
+is read by HR, refused to an employee (`403` on read and on write) and refuses a `manager_types` that is not
+a list (`422`) before reading back what it saved; a letter is sent and then signed with a **hostile**
+`signed_base64` (`<script>`, `onerror`, `javascript:` link, an image on a remote host) and the copy HR opens
+next is checked to be clean while keeping the text and the `<!--ARIBA_EN-->` marker the English page needs
+(S12/D28, D30); the same document read by another employee is `404` (D11) and `POST /letters/{id}/approve`
+on a letter that closed itself is `409` (D25) and is `403` for an employee (D20); the employee's own
+`POST /me/sign` afterwards is `404` (D14); then `hr_closes` is switched on and the employee's signature
+answers `next: "hr"`, HR's approve closes the letter and a second approve is `409` (D22); then a
+manager-needed type answers `next: "manager"` and HR's approve is `409` because the letter is not at HR
+(D21). Each letter is deleted at the end of its block, and the delete leaves no signing row behind.
+
+Five things the gate itself caught, all fixed before the numbers above were taken:
+
+* **The smoke copy had no `template:salary_cert`.** `POST /letters` refuses a type that is not in
+  `workflow_request_types`, so the first two letters came back `422` and — because each block is guarded by
+  `if letter_id:` — the whole signing section *skipped itself* while the run still ended `RESULT: OK`.
+  `smoke_setup.py` now creates the two letter types the demo seed also creates
+  (`template:onboarding`, `template:salary_cert`) and prints them, and each of the three blocks carries a
+  `grade(...)` check that fails loudly when the letter could not be created. A smoke that skips is worse
+  than a smoke that is red.
+* **That was not one block, it was the file's pattern.** Every `if <id>:` in `api_smoke.py` — targets,
+  tasks, meetings, requests, forgot punch, two attendance rows, the new employee, his account, the plain
+  letter, the three signing letters, the holiday and the document upload — had the same hole: the create
+  call above it can answer `RULE` (a 4xx with an error code) instead of `PASS`, and then the whole block
+  disappears while the summary stays green. Each one now goes through `need(...)`, which records a row of
+  its own and **fails** when the id is empty (`grade(...)` is the same check without a value), and the two
+  old `notes.append("… the answer path was skipped")` lines are gone — a note is not a result. The 17 new
+  rows all `PASS` on a fresh copy, so nothing was hiding behind them today; a future `422` there is now red.
+* **The phone viewer never disabled JavaScript.** `BUSINESS_RULES` S12 and `html_safety`'s own docstring
+  both said `html-view.tsx` "disables JavaScript outright" — the code passed no such prop, so it was the
+  system web view's default (scripts **on**), which left the sanitizer as the only line for anything the
+  phone renders from an older row. `html-view.tsx` now sets `javaScriptEnabled={false}` (and
+  `domStorageEnabled={false}`), which is what the web build's iframe already did with
+  `sandbox="allow-popups allow-popups-to-escape-sandbox"`.
+* **The letter route's own policy was being overwritten.** `GET /letters/{id}/html` now answers with
+  `html_safety.DISPLAY_CSP` (no script, no remote fetch, inline CSS and `data:` images kept) plus
+  `nosniff` — and the first live probe showed the blanket `default-src 'none'; frame-ancestors 'none'`
+  `core/security.py` puts on every answer *replacing* it, so the header the route set never reached the
+  browser. `security.py` now keeps a policy a route already set and only applies the blanket one when
+  there is none, and a unit test pins both halves (the route's header survives the middleware; every other
+  answer still gets the blanket policy).
+* **The sanitizer had to be confirmed wired, not only tested.** `POST /letters` cleans the HTML before it
+  is stored (`canonical.py`, S12/D30), and both sign routes (`/me/letters/{id}/sign` and
+  `/me/sign/{id}`) go through `_signed_html()`, which refuses a missing or non-base64 body (`422`) and a
+  document over `html_safety.MAX_DOCUMENT_BYTES` (`413`, checked before decoding) and then sanitizes what
+  it stores. The unit tests prove the allow-list; the smoke proves the stored row.
+
+The stage's own section of the report — from the first `GET /settings/doc-sign` to the last
+`PUT /settings/doc-sign` — is **35 checks, all `PASS`**; the script at `HEAD` has no such section. The same
+four attacks the smoke sends as `signed_base64` (`<script>`, `onerror`, a `javascript:` href, an image on
+`evil.example`) are pinned without a database by `test_html_safety.py` — `test_code_is_dropped_with_its_content_not_escaped_into_the_page`, `test_every_handler_attribute_is_dropped`,
+`test_a_link_keeps_its_text_and_loses_a_scheme_that_can_run`, `test_an_image_must_be_a_raster_data_uri` — and
+the stored row by `test_the_stored_copy_is_the_cleaned_one_not_the_submitted_one` and
+`test_a_manager_signature_is_cleaned_before_it_is_stored`; what a browser is allowed to do with an old row
+is `test_the_letter_html_route_sends_the_display_policy` and
+`test_the_security_middleware_keeps_the_route_policy_and_sends_its_own`.
+
+The seed needed no code change: it already writes the five states, and this stage's only seed edits are the
+two lookup rows above and the `doc_sign_cfg` default the business runs on (`hr_closes` off, `onboarding`
+needing the manager) — which is what makes the demo show the "waiting for the manager" and "waiting at HR"
+letters side by side.
 

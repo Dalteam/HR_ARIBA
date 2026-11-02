@@ -30,7 +30,11 @@ function Doc({ x, onDone, state, owner, name, needSig }: { x: Letter; onDone: ()
         try {
           const signed = injectSignature(await letters.html(x.id), "employee", sig, name);
           const r = await docs.employeeSign(x.id, { document_id: null, template_type: x.type.replace(/^template:/, ""), signed_base64: b64Utf8(signed) });
-          toast(r.next === "manager" ? "✍️ تم التوقيع، المستند الآن عند مديرك المباشر لتوقيعه ثم يذهب للموارد البشرية" : "✅ تمت الموافقة بالتوقيع وأُرسل المستند للموارد البشرية", "ok");
+          toast(r.next === "manager"
+            ? "✍️ تم التوقيع، المستند الآن عند مديرك المباشر لتوقيعه"
+            : r.next === "hr"
+              ? "✅ تم التوقيع وأُرسل المستند للموارد البشرية للاعتماد"
+              : "✅ تم التوقيع واعتُمد المستند", "ok");
           await onDone();
         } catch (e) {
           toast(e instanceof ApiError ? e.message : "تعذر التوقيع", "err");
@@ -44,7 +48,7 @@ function Doc({ x, onDone, state, owner, name, needSig }: { x: Letter; onDone: ()
     setBusy(true);
     try {
       await letters.respond(x.id, action, action === "rejected" ? reason.trim() : undefined);
-      toast(action === "approved" ? "تمت الموافقة" : "تم إرسال الرفض", "ok");
+      toast(action === "approved" ? "تم إرسال موافقتك على المستند" : "تم إرسال الرفض", "ok");
       await onDone();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "تعذر الإرسال", "err");
@@ -129,8 +133,8 @@ function ManagerSign({ owner, name, needSig }: { owner: string; name: string; ne
     try {
       const d = await docs.content(x.document_id);
       const html = injectSignature(utf8FromB64(d.base64), "manager", sig, name);
-      await docs.managerSign(x.request_id, { action: "approved", signed_base64: b64Utf8(html) });
-      toast("✅ تم توقيعك وتحويل المستند للموارد البشرية", "ok");
+      const r = await docs.managerSign(x.request_id, { action: "approved", signed_base64: b64Utf8(html) });
+      toast(r.next === "hr" ? "✅ تم توقيعك وتحويل المستند للموارد البشرية" : "✅ تم توقيعك واعتُمد المستند", "ok");
       await load();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "تعذر التوقيع", "err");

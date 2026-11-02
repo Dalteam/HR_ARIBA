@@ -336,7 +336,11 @@ work, not an absence). Sickness, maternity, paternity, death, marriage, umrah, h
 type added later — all arrive as `private` and the screen prints «إجازة»; the reason/notes column is
 **never selected** from `leave_requests`, so there is nothing to leak. It is an allow-list, not a
 block-list: a new type is silent until somebody deliberately adds it. HR gets the same redacted row in
-this tab — the real type belongs to the leave screens, which is where a leave is a leave.
+this tab — the real type belongs to the leave screens, which is where a leave is a leave. **This is a
+ceiling, not an extra promise**: the manager who approves that same leave already reads its real type
+and its reason on `GET /me/team/requests`, so the redaction protects the colleagues who hold
+`view_team_leaves` **without** `view_team_requests` — measured and recorded in § Documents and
+e-signing S2.
 
 `422 invalid_request` for: no recipient, a list of blanks, a `kind` other than the two, an empty
 `title`, a title over 200 characters, a `due` that is not `YYYY-MM-DD`, a meeting without `start`, a
@@ -362,7 +366,284 @@ Not confirmed by hand: the browser pass over this screen is **pending** and will
 the signing stage (one seeded database serves both) — see [FOLLOW_UPS.md](FOLLOW_UPS.md) § Stage 4
 checks for exactly what was run.
 
+## Documents and e-signing — ✅ Stage 5 (`services/html_safety.py`, `routers/canonical.py`)
+
+The screens are `app/(tabs)/documents.tsx` (what waits for my signature: sign, approve without a
+signature, object with a reason — and «مستندات بانتظار توقيعي كمدير»), `app/document/[id].tsx` (the
+viewer) and `app/letter/[id].tsx` (the same HTML in the older viewer). **Five calls** in
+`src/lib/port.ts` (`docs.content`, `docs.states`, `docs.employeeSign`, `docs.managerPending`,
+`docs.managerSign`), three the screens already use (`GET /me/letters`,
+`POST /me/letters/{id}/respond`, `GET /letters/{id}/html`) and one HR needs to close the chain.
+
+**The ceiling, measured before writing any rule.** A manager who has `view_team_requests` already reads
+all of this for the *same* leave, from `GET /me/team/requests` (`canonical._workflow_out`):
+`employee_name`, `type` (**the real leave type** — `sick`, `maternity`, …), `from_date`, `to_date`,
+`days`, **`notes`** (the free-text reason the employee typed), `attachment_id`, `rejection_reason`,
+`law_note`, `status`, `stage`. `GET /team/availability` returns `{id, name, job, dept, leaves:
+[{from, to, days, type}]}`, and `type` is only ever `annual`, `remote` or `private`. **So availability
+shows strictly less than the approval view — nothing beyond it**: it does not name the type, and it
+carries no reason, note, attachment or amount. Its only extra fields are `job`/`dept`, which the same
+manager already has from `GET /me/team`. The leave attachment is served to nobody today: it is an
+`ariba_documents` row hanging off the request (`ariba_documents.request_id`); the
+`leave_requests.doc_attachment_id` column that the approval view exposes is legacy and the app's submit
+path never fills it. Two consequences, both deliberate:
+
+- **P7 keeps its job** for managers who hold `view_team_leaves` but **not** `view_team_requests` — the
+  availability list is their only view of a report's leave, and it still names no type beyond
+  `annual`/`remote`. For the approver it is a courtesy, not a guarantee: he can read the type and the
+  reason on the approval screen. If you would rather availability named the type too, it is the
+  one-line `NAMED_LEAVE_TYPES` allow-list in `services/tasks.py` — it would still show less than the
+  approval view.
+- **A manager opening a leave attachment (S1) is not new information**: he already approves that leave
+  with its notes in front of him. The rule below only lets him see the paper behind the claim.
+
+| Method | Path | Answer | Who |
+|---|---|---|---|
+| GET | `/documents/{id}/content` | `{id, file_name, mime_type, base64}` | the employee the document belongs to; HR/`admin`/`admin_manager`/`ceo`; a direct manager **only** for (a) the document waiting for *his* signature, or (b) a document attached to a **leave request of his direct report**, all leave types — and nothing else (S1); a manager's open is audited, the owner's is not (S1.1) |
+| GET | `/me/sign/states` | `[{request_id, stage, needs_manager, reject_reason, emp_signed_at, mgr_signed_at}]` | the letter's employee, their own rows |
+| POST | `/me/letters/{request_id}/sign` | `{next: "manager"\|"hr"\|"done", document_id}` — body `{document_id?, template_type?, signed_base64}` | the letter's employee, while `current_stage='employee'` and `status='pending'` (`next:"done"` means the letter closed with this signature — `hr_closes` off, S10) |
+| GET | `/me/sign/pending` | `[{request_id, document_id, employee_id, employee_name, emp_signed_at, template_type}]` | the manager the row is waiting for, nobody else |
+| POST | `/me/sign/{request_id}` | `{ok, next}` (`next` is `hr`, `done` or `rejected`) — body `{action: "approved"\|"rejected", signed_base64?, reason?}` | that same manager, while `stage='manager'` |
+| POST | `/letters/{request_id}/approve` *(new; the app does not call it — HR does)* | `{ok, status}` | HR/`admin`/`admin_manager`/`ceo` while `stage='hr'` **and `hr_closes` is on**; `409` on any second call (S10) |
+| GET | `/settings/doc-sign` | `{hr_closes, manager_types}` | HR/`admin`/`admin_manager`/`ceo` |
+| PUT | `/settings/doc-sign` | `{hr_closes, manager_types}` — body `{hr_closes?, manager_types?}` | HR/`admin`/`admin_manager` (the same gate as the other two settings, S10) |
+
+Where the data already lives (no migration needed): a letter is a `workflow_requests` row with
+`request_type='template:<type>'` (`onboarding`, `custody`, `extension`, `termination`, `clearance`,
+`experience`, `evaluation`, `contract_end`, `salary_cert`, `custom`), `payload = {title, template_type,
+sent_by}`, and one `ariba_documents` row (`document_type='letter'`, `text/html`) holding the HTML HR
+sent; the chain itself is `ariba_doc_signing`, one row per request keyed by `request_id`, with
+`stage ∈ ('manager','hr','rejected')`, `needs_manager`, `manager_id`, `emp_signed_at`, `mgr_signed_at`,
+`reject_reason`. `ariba_app_settings['doc_sign_cfg'].manager_types` names the types that need the
+direct manager's signature (the seeded setting has `["onboarding"]`, an empty list when unset). A leave
+attachment is a second kind of `ariba_documents` row: same table, `request_id` = the leave's request,
+`document_type` from the request type (`employee_upload`, `iban_certificate`, …). The migration's
+`ariba_leave_files` table is **not** used by this port (no row, no route, no read) — attachments were
+already filed in `ariba_documents` before Stage 5, so the viewer reads one table for both. Two columns
+are **generated** and no route writes them: `workflow_requests.status` (from `current_stage`:
+`completed` → `approved`, `rejected` → `rejected`, else `pending`) and `ariba_documents.file_size`.
+And two are foreign keys: `workflow_requests.request_type` → `workflow_request_types` and
+`ariba_documents.document_type` → `document_types`, so a letter type that is not in the lookup cannot
+be sent at all (the Stage 5 demo seed adds `template:onboarding` and `template:salary_cert` when its
+copy lacks them).
+
+**S1 — The viewer opens two doors for a manager, and one envelope for everyone else.** `/content`
+returns the bytes of one `ariba_documents` row as base64 plus its name and mime type. Its readers are
+(a) the employee the document belongs to, (b) the HR read roles and the CEO, and (c) a **direct
+manager**, only for two things: the document **currently waiting for his own signature**
+(`ariba_doc_signing.stage='manager'` **and** `manager_id=me` **and** `document_id=that id`), and a
+document **attached to a leave request of his direct report, for all leave types** — the paper behind
+a claim he is already asked to approve. Nothing else: not the report's ID/iqama, passport, contract,
+degree, certificates or photo, not a payslip, not another letter, not a colleague's document. "Direct
+report" means `employee_directory.manager_id = me` **at read time** (a viewer is a current
+relationship, unlike the signature snapshot in S8). Everyone else — another employee, an account with
+no employee row, another team's manager, the report's *former* manager — gets `404 not_found`, the same
+answer as an id that does not exist, never a `403` that would confirm the document is real.
+
+**S1.1 — Every manager open is audited, and the content is not.** `ariba_audit_log` gets one row:
+`module='documents'`, `action='open'`, `entity_type='document'`, `entity_id=<document id>`,
+`actor_employee_id=me`, `details={"employee_id": <owner>, "via": "content"}` — never the bytes, the
+base64, the file name or the HTML. The employee opening his own document is not audited (his paper,
+the same choice S9 makes for reads); HR's screens keep the `download` row they already write. The
+leave itself is already visible in the request screens, so this row answers the one question they
+cannot: *did the manager look at the attachment?*
+
+**S2 — Availability may never show a manager more than the approval screen already does.** Measured, not
+assumed: the approval list (`GET /me/team/requests`) gives the same manager the real leave type, the
+dates, the days, the employee's `notes`, the rejection reason and the law note; `/team/availability`
+gives dates, days and a type limited to `annual`/`remote`/`private`. Availability is therefore a subset
+by construction, and any field added to it later has to be justified against that ceiling — never
+against "he is the manager". The reason text and the attachment are never part of it: the calendar is
+a glance, the request is the record.
+
+**S3 — A letter is signed in one order and no other.** employee → (direct manager, only when the type
+is listed in `doc_sign_cfg.manager_types`) → HR, and the **HR step is optional**: it happens only when
+`doc_sign_cfg.hr_closes` is on, which is **off by default** (S10 decides who closes the letter). The
+unsigned approval of S6 takes the same path. The signing row's `stage` is the furthest stage the
+letter reached, and every route checks it before writing: the employee's sign route needs
+`current_stage='employee'` and `status='pending'` (otherwise `404`: a letter that already moved is not
+a pending letter of his), the manager's route needs `stage='manager'` and `manager_id=me`
+(otherwise `404`), HR's needs `stage='hr'` (otherwise `409 not_waiting_for_hr`, because HR may open a
+letter that is genuinely mid-chain and should be told plainly rather than be shown a 404).
+
+**S4 — The client never chooses which document gets the signature.** `document_id` in the employee's
+body is accepted for compatibility (the app sends `null`) and **ignored**: the server signs the letter
+the request owns, never another document id a caller supplies. `template_type` is read from the
+request's payload, not from the body, so a client cannot make an `onboarding` letter look like a
+`salary_cert` to slip past the manager's signature. The request's own row decides everything else.
+
+**S5 — The signature travels only inside a document, and the original is never touched.** The
+employee's signature stays on the device (`src/lib/signature.ts`: a file, or `localStorage` on the web;
+there is no route that uploads it on its own). What arrives is `signed_base64`: the whole HTML with the
+signature embedded. The server stores it as a **new** `ariba_documents` row
+(`document_type='signed_document'`, `mime_type='text/html'`, `uploaded_by` = the signer,
+`request_id` = the request) and leaves the delivered letter byte-for-byte as it was, so HR can always
+see what was sent next to what came back. No column holds a signature, no route returns one, and the
+manager's copy is a second `signed_document` row rather than an overwrite of the employee's.
+
+**S6 — What "approve without signature" means.** `POST /me/letters/{id}/respond {action:'approved'}`
+stays the unsigned approval: no signed copy, a signing row with `document_id = NULL`, the approval time
+in `emp_signed_at`, and **the same stage logic as a signature** (the manager when the type needs one,
+then HR only when `hr_closes` is on). This **changes one existing handler**: today an approved letter
+jumps to `current_stage='completed'`; from Stage 5 an approval that needs a manager stops at `manager`,
+one that does not stops at `hr` when `hr_closes` is on, and one that does not and needs no HR step
+closes at `completed` in the same request. A rejection (`rejected` + reason ≥ 3 chars) is unchanged
+except that it also requires the letter to still be at the employee's stage.
+
+**S7 — The manager's pending list is his own signature duty, not a team view.** `GET /me/sign/pending`
+lists `stage='manager' AND manager_id=me`, newest first, joined to the employee's name and the
+template type. It needs no permission flag (`view_team*` does not gate it): signing what your report
+already signed is a personal act, not a view of their data. Another team's manager's list is empty, and
+that is not a `403`.
+
+**S8 — `manager_id` is a snapshot, not a lookup.** It is written when the employee signs or approves,
+from `employee_directory.manager_id` at that moment. Moving the employee to another manager afterwards
+does not move an open signature, and the new manager does not inherit it — the row would otherwise
+change hands silently mid-chain. **If the type needs a manager and the employee has none**, the chain
+does not stall and does not fail: it goes straight to `stage='hr'`, `needs_manager` stays `true` (the
+type did need one), `manager_id` stays `NULL`, and the audit row carries `no_manager` in
+`details.reason` so HR can see the signature was skipped for want of a manager — not refused by one.
+Decided, not defaulted.
+
+**S9 — The row is the evidence: times, never signature bytes.** The signing row carries
+`emp_signed_at`, `mgr_signed_at`, `reject_reason`, `updated_at`; `workflow_actions` gets one row per
+step; `ariba_audit_log` gets `sign_employee` / `sign_manager` / `sign_reject` / `letter_approve` with
+the request id and the new document id — and no signed content. Reading (`/content` for one's own
+document, `/states`, `/pending`) is **not** audited, the same choice Stage 4 made for reads: these are a
+person's own papers, and an audit row per glance would bury the signatures it is meant to protect. The
+manager's opens on a report's leave attachment are the one exception and have their own row (S1.1) —
+he is reading somebody else's paper.
+
+**S10 — Who closes the chain, and then nothing moves again.** The last signature closes the letter when
+`doc_sign_cfg.hr_closes` is **off** (the default): `current_stage='completed'`, `status` reads back
+`approved` (it is the generated column, so no route ever writes it), the employee's bell rings
+(«اعتُمد مستندك») and the row's `stage` stays where the letter got to (`hr`) — the row records how far
+it went, the request records whether anybody still has to act. When `hr_closes` is **on**, the letter
+waits at `stage='hr'` and `POST /letters/{request_id}/approve` is the last step (Option A): it needs
+`stage='hr'`, sets `current_stage='completed'`, rings the employee's bell, writes `letter_approve` and
+refuses a second call (`409 already_closed` — also when the setting was off and the letter already
+closed itself) as well as an employee, a manager or an outsider (`403` from the role gate, and `404`
+when the id is not a letter at all — the two answers the existing HR letter routes already give).
+A rejected chain is closed for good too: the employee cannot re-sign the same request — HR sends a new
+letter — and a manager cannot reopen what he rejected. **Follow-up entry 31** asks HR to confirm they
+want this final step at all and to build a screen for it; until then the setting stays off and the
+route is API-only.
+
+**S11 — Only the next actor's bell rings.** Employee signs or approves → the manager
+(«مستند بانتظار توقيعك» with the employee's name) or HR («مستند بانتظار اعتمادك» when `hr_closes` is
+on); the manager signs → HR («مستند موقّع بانتظار اعتمادك») when `hr_closes` is on, otherwise the
+employee («اعتُمد مستندك»); the manager rejects → the employee, with the reason; HR approves → the
+employee. A letter that closes at the employee's own signature rings nobody: the employee's own action
+never notifies them, and with `hr_closes` off there is no next actor to ring. No bell goes to anybody
+who is not the next actor in the chain.
+
+**S12 — What arrives with the signature is content, never code.** `signed_base64` is the whole letter
+as the device sent it, so the server treats it as untrusted text before storing it
+(`services/html_safety.py`, a stdlib allow-list sanitizer — the project has no HTML-sanitizing
+dependency and does not add one for this): the tags a letter is made of are kept (`html`, `head`,
+`body`, `div`, `p`, `span`, `table` and friends, lists, headings, `b/i/u/s/small`, `br`, `hr`, `img`,
+`a`, `style`), and everything a letter is not made of is dropped **with its content** — `script`,
+`iframe`, `frame`, `object`, `embed`, `applet`, `form`, `input`, `button`, `select`, `textarea`,
+`svg`, `math`, `link`, `base`, `template`, `noscript`, and every `on*` handler attribute. `img src`
+must be a **`data:` image** (`png`/`jpeg`/`gif`/`webp`/`bmp`) — there is no remote image, font or
+stylesheet, so viewing a letter never calls out to a third party; `a href` may only be `http`,
+`https`, `mailto`, `tel` or a `#fragment` (a `javascript:` link keeps its text and loses the href);
+`<style>` and `style=""` are kept but any declaration naming `url(`, `@import`, `expression(`,
+`behavior`, `-moz-binding` or `image-set(` is removed, so a stylesheet cannot fetch either. The
+`<!--ARIBA_EN-->` marker survives (it is how the app splits the Arabic sheet from the English copy);
+every other comment is dropped, `<meta>` keeps only `charset`. The cleaned text — not the submitted
+one — is what is stored in the `signed_document` row (S5), so what HR opens next to the original is
+already safe; a body over **1 MiB** is refused with `413 file_too_large` before anything is written.
+The letter HR sends is cleaned the same way before it is stored (D30), so a hostile `html` body never
+reaches a viewer at all — and `svg` is never accepted as an image, even as `data:`, because an SVG is
+a document that can carry script while the signature the app draws is a PNG.
+The web viewer already loads documents in an iframe with **no script permission and no same-origin**
+(`html-view.web.tsx`), and the phone viewer disables JavaScript outright (`html-view.tsx`'s
+`javaScriptEnabled={false}`, since Stage 5's review): S12 is the first line, those two are the second. The
+third is the header on the one route that hands a stored letter to a browser, `GET /letters/{id}/html`:
+`default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none';
+form-action 'none'; frame-ancestors 'none'` (`html_safety.DISPLAY_CSP`, `nosniff` alongside) — so a row
+written **before** this stage existed, which was never cleaned, still cannot run or fetch anything;
+`core/security.py` keeps a route's own policy and sends its blanket `default-src 'none'` only to the answers
+that set none. What S12 does not promise: the sheet's CSS layout is preserved but fonts are whatever the
+device has, and an image that is not embedded in the HTML does not survive (letters embed their signature,
+which is why it does).
+
+| # | Caller → route | Answer |
+|---|---|---|
+| D1 | **another employee** → `GET /documents/{id}/content` on a colleague's letter | `404 not_found` — never `403`, and the body carries no name, size or mime type |
+| D2 | **an account with no employee row** (outsider) → the same | `404 not_found` |
+| D3 | **another team's manager** → the same | `404` |
+| D4 | a direct manager → `/content` of that report's **ID/iqama, passport, contract, degree, certificate or photo** | `404` — the viewer opens two doors for him and no more (S1) |
+| D5 | a direct manager → `/content` of another **letter** of that report (a `template:` request that is not waiting for him) | `404` |
+| D6 | that manager → the same document **after** he signed it | `404` (the chain moved on) |
+| D7 | a direct manager → `/content` of an attachment on his report's **leave request** (any leave type: annual, sick, maternity, unpaid, …) | `200`, the bytes, **plus exactly one `ariba_audit_log` row** `documents/open/document` with `{employee_id, via:'content'}` and no content (S1.1) |
+| D8 | the same manager → the same attachment **after** the employee's `manager_id` changed | `404` — the door follows the current relationship (S1) |
+| D9 | **another team's manager** → that same leave attachment | `404` |
+| D10 | **an outsider** (account, no employee row) → that same leave attachment | `404` |
+| D11 | **another employee** (a teammate, not the owner) → that same leave attachment | `404` |
+| D12 | that manager → `/content` of an attachment on his report's **non-leave** request (`document` upload, `iban_change`, `profile_edit`, overtime) | `404` — the door is "a leave request", not "any request" |
+| D13 | another employee → `POST /me/letters/{id}/sign` | `404`, nothing written, no signing row, no audit row |
+| D14 | the employee himself → `POST /me/sign/{id}` (the manager's route) | `404` |
+| D15 | another team's manager → `POST /me/sign/{id}` | `404`, nothing written |
+| D16 | the right manager → `POST /me/sign/{id}` when `stage` is `hr` or `rejected` | `404` |
+| D17 | the employee → sign again, or after a rejection, or after HR closed it | `404` (it is no longer a pending letter of his) |
+| D18 | the manager → `POST /me/sign/{id}` with `action:"rejected"` and no reason (or < 3 characters) | `422 invalid_request`, the row stays at `manager` |
+| D19 | the employee → sign with `signed_base64` missing, not valid base64, or over the upload limit | `422 invalid_request` / `413 file_too_large`, the request stays at `employee` |
+| D20 | **an employee, a manager or an outsider** → `POST /letters/{request_id}/approve` | `403 forbidden` from the role gate; `404` when the id is not a letter — and in both cases nothing is written |
+| D21 | HR → `POST /letters/{id}/approve` while `stage` is `manager` or `rejected` | `409 not_waiting_for_hr` |
+| D22 | HR → the same approve twice | `409 already_closed` |
+| D23 | anybody → `GET /me/sign/states` | only the caller's own requests; an account with no employee row gets `[]`, never somebody else's row |
+| D24 | the employee → `POST /me/letters/{id}/sign` on a letter whose type needs no manager, with `hr_closes` **off** | `200 {next:"done"}`, `document_id`; request `current_stage='completed'`, row `stage='hr'`, and **no bell** to HR (S10/S11) |
+| D25 | HR → `POST /letters/{id}/approve` on a letter that closed itself because `hr_closes` was off | `409 already_closed`, nothing written (S10) |
+| D26 | the employee → sign a letter whose type **is** in `manager_types` | `200 {next:"manager"}`; row `stage='manager'` with `manager_id` = their manager at that moment, that manager's bell rings, and the employee's `/me/sign/states` shows `stage:"manager"` |
+| D27 | that manager → sign it, `hr_closes` **off** | `200 {ok:true}`; request `completed`, row `stage='hr'` + `mgr_signed_at`, the employee's bell rings («اعتُمد مستندك»), HR's does not (S10/S11) |
+| D28 | the employee → sign with a `signed_base64` carrying `<script>`, an `onclick`, a `javascript:` link and a remote `<img src>` | `200`; the stored `signed_document` row contains none of them, keeps the letter's text, the `<!--ARIBA_EN-->` marker and the `data:` signature image (S12) |
+| D29 | the employee → sign with a body over 1 MiB | `413 file_too_large`, no `signed_document` row and no signing row written (S12) |
+| D30 | HR → `POST /letters` with a hostile `html` body | the letter is created and the **stored** `ariba_documents` row is the sanitized HTML, not the submitted one (S12) |
+| D31 | an employee / a manager → `PUT /settings/doc-sign` | `403 forbidden`, the setting unchanged |
+
+**The three decisions, as settled on 2026-11-01:**
+
+1. **A manager opens the documents attached to his direct reports' leave requests, for all leave types —
+   and nothing else.** Implemented as S1(c) + S1.1 (audited, no content) with D7–D12 as the negatives
+   (another team's manager, an outsider, another employee, a non-leave request, a former report). The
+   same principle caps `/team/availability` (S2): measured, it already returns strictly less than the
+   approval screen — it does not even name the type it is allowed to name.
+2. **A type that needs a manager, for an employee who has none: straight to HR, `no_manager` in the
+   audit** (S8). Not a `409`: the employee's own act must not fail because HR has not filled in
+   `manager_id` yet, and the audit row is what tells HR a signature was skipped and why.
+3. **Option A — HR closes the `hr` stage** through the new `POST /letters/{request_id}/approve` (S10),
+   with D20–D22 as the negatives. It is **behind `doc_sign_cfg.hr_closes`, off by default**: with the
+   setting off the chain closes at the last signature the type needs, which is what the business does
+   today. Follow-up entry 31 asks HR to confirm they want this final step and to build a screen for it,
+   since the app does not call the route.
+
+**The two build decisions taken on 2026-11-01, when Stage 5 was implemented:**
+
+4. **`hr_closes` is a setting, not a constant**, stored with the rest of the letter configuration
+   (`doc_sign_cfg` in `app_settings`, read and written by `GET`/`PUT /settings/doc-sign`) and read on
+   every signature — turning it on takes effect on the next signature, not on restart. Off is the
+   default because today's letters end at HR's desk, not HR's approve button (S10).
+5. **The signed HTML is sanitized on write** (`services/html_safety.py`, S12) rather than on read, and
+   with the standard library rather than a new dependency. Sanitizing on write means one bad payload
+   can never be stored, and every reader (the employee app, the web view, a future HR screen, a file
+   downloaded through `GET /documents/{id}/file`) is protected by the same code — while sanitizing on
+   read would leave the raw payload in the database and in every backup. The rule applies to the HR
+   letter body as well, not only to the employee's signature (D30).
+
+**Still open (not a blocker, one line either way):** P7 names a leave `annual`/`remote` and calls
+everything else «إجازة» on `/team/availability`. That is now known to be *stricter* than what the
+approver sees; it protects only the managers who hold `view_team_leaves` without `view_team_requests`.
+Say the word and `NAMED_LEAVE_TYPES` in `services/tasks.py` names every type instead.
+
+**Flagged, not changed (follow-up entry 32):** the older `GET /documents/{id}/file` still lets an
+account whose role is `manager` download **any** document of a report — the exact width S1 refuses for
+the viewer. Narrowing it would change an endpoint the HR screens already use, so it is your call, and
+it is recorded rather than done.
+
 ## Open questions from the prototypes (to settle in their phases)
+
 1. **2024 leave opening rule**: where do the first 10 days of the 2023 close go? (see Leave)
 2. **Late minutes**: from work start, or from work start + tolerance (see Attendance)?
 3. **Settlement leave compensation base**: the prototype uses basic ÷ 30. Should it be basic + housing ÷ 30

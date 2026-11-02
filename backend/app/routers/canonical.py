@@ -32,6 +32,7 @@ from app.database import get_db
 from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
+from app.services import html_safety
 from app.services import team_scope
 from app.services.request_envelope import Attachment, RequestInput
 
@@ -880,6 +881,25 @@ def _set_app_setting(db: Session, key: str, value: Any, actor: dict[str, Any] | 
         db.execute(text("INSERT INTO public.ariba_app_settings(key,value,updated_at,updated_by) VALUES(:k,CAST(:v AS jsonb),now(),:by)"), params)
 
 
+# The letter-signing chain is configured in one setting: `doc_sign_cfg`. `hr_closes` is **off**
+# unless HR turns it on (S10: today a letter ends with the last signature, not at an HR button) and
+# `manager_types` names the letter types that need the direct manager's signature (S3).
+DOC_SIGN_CFG_KEY = "doc_sign_cfg"
+
+
+def _doc_sign_cfg(db: Session) -> dict[str, Any]:
+    """`ariba_app_settings['doc_sign_cfg']` in the shape `GET /settings/doc-sign` answers.
+
+    Both fields are optional in the stored object — the seeded setting carries only
+    `manager_types` — so `hr_closes` reads back `false` until HR saves it, and `manager_types` reads
+    back `[]`, never `None`, so a caller can test membership without a guard."""
+    saved = _app_setting(db, DOC_SIGN_CFG_KEY)
+    saved = saved if isinstance(saved, dict) else {}
+    types = saved.get("manager_types")
+    return {"hr_closes": saved.get("hr_closes") is True,
+            "manager_types": [str(t) for t in types] if isinstance(types, list) else []}
+
+
 # Links written into the notification e-mails (the client's migration 39): {"hr": …, "emp": …}.
 # Empty means "use PUBLIC_APP_URL", so the settings page can stay blank on a single-domain deploy.
 def _clean_app_link(value: Any, field: str) -> str:
@@ -914,6 +934,38 @@ def update_app_links(body: dict[str, Any], request: Request, actor: dict[str, An
     _write_audit(db, actor, request, "settings", "update", "ariba_app_settings", "app_links")
     db.commit()
     return _app_links_row(db)
+
+def _manager_types(value: Any) -> list[str]:
+    """The letter types a body names, refused rather than guessed when the shape is wrong (S10)."""
+    if not isinstance(value, list) or any(not isinstance(t, str) or not t.strip() for t in value):
+        raise ApiError(422, "invalid_request", "manager_types must be a list of letter types")
+    return [t.strip() for t in value]
+
+
+@router.get("/settings/doc-sign")
+def doc_sign_settings(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """`{hr_closes, manager_types}` — who closes a letter, and which types need a manager (S10)."""
+    _require(actor, *HR_READ_ROLES)
+    return _doc_sign_cfg(db)
+
+
+@router.put("/settings/doc-sign")
+def update_doc_sign_settings(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor),
+                            db: Session = Depends(get_db)):
+    """Save either field; the one the body omits keeps its stored value (S10)."""
+    _require(actor, *HR_ROLES)
+    cfg = _doc_sign_cfg(db)
+    if "hr_closes" in body:
+        cfg["hr_closes"] = body.get("hr_closes") is True
+    if "manager_types" in body:
+        cfg["manager_types"] = _manager_types(body.get("manager_types"))
+    _set_app_setting(db, DOC_SIGN_CFG_KEY, cfg, actor)
+    _write_audit(db, actor, request, "settings", "update", "ariba_app_settings", DOC_SIGN_CFG_KEY,
+                 details={"hr_closes": cfg["hr_closes"], "manager_types": cfg["manager_types"]})
+    db.commit()
+    return cfg
+
+
 
 
 # GOSI settings in the legacy shape (getInsSettings). Stored in ariba_app_settings['ins_settings'];
@@ -2003,28 +2055,324 @@ def my_letters(actor: dict[str, Any] = Depends(current_actor), db: Session = Dep
 
 @router.post("/me/letters/{letter_id}/respond")
 def respond_letter(letter_id: uuid.UUID, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """Approve a letter without a signature, or reject it with a reason (S6).
+
+    An approval is the signed path minus the signature: a chain row with `document_id = NULL`, the
+    approval time in `emp_signed_at`, and the manager (when the type needs one) then HR (only when
+    `hr_closes` is on) — one that needs neither closes here. A rejection still needs a reason of
+    three characters and closes the letter for good."""
     row = _row(db, "SELECT * FROM public.workflow_requests WHERE id=:id AND employee_id=:eid AND request_type LIKE 'template:%' AND current_stage='employee' AND status='pending'", id=letter_id, eid=actor.get("employee_id"))
     if not row:
         raise ApiError(404, "not_found", "Pending letter not found")
     action = body.get("action")
-    if action not in {"approved", "rejected"} or (action == "rejected" and len(str(body.get("reason") or "").strip()) < 3):
+    reason = str(body.get("reason") or "").strip()
+    if action not in {"approved", "rejected"} or (action == "rejected" and len(reason) < 3):
         raise ApiError(422, "invalid_request", "Invalid letter response")
-    status = "approved" if action == "approved" else "rejected"
-    db.execute(text("INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment) VALUES(:id,:aid,'employee',:action,:reason)"), {"id": letter_id, "aid": actor["account_id"], "action": action, "reason": body.get("reason")})
-    db.execute(text("UPDATE public.workflow_requests SET current_stage=:stage,completed_at=now(),updated_at=now() WHERE id=:id"), {"stage": "completed" if status == "approved" else "rejected", "id": letter_id})
-    _write_audit(db, actor, request, "letters", "respond", "workflow_request", letter_id, details={"action": action})
-    db.commit()
+    if action == "rejected":
+        db.execute(text("INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment) VALUES(:id,:aid,'employee',:action,:reason)"), {"id": letter_id, "aid": actor["account_id"], "action": action, "reason": reason})
+        db.execute(text("UPDATE public.workflow_requests SET current_stage='rejected',updated_at=now() WHERE id=:id"), {"id": letter_id})
+        _write_audit(db, actor, request, "letters", "respond", "workflow_request", letter_id, details={"action": action})
+        db.commit()
+    else:
+        step = _employee_step(db, actor, row, None)
+        details: dict[str, Any] = {"action": action, "next": step["next"]}
+        if step["needs_manager"] and not step["manager_id"]:
+            details["reason"] = "no_manager"  # S8
+        _write_audit(db, actor, request, "letters", "respond", "workflow_request", letter_id, details=details)
+        db.commit()
     return _row(db, """SELECT r.id,r.request_type AS type,r.payload->>'title' AS title,r.status,
         (SELECT a.comment FROM public.workflow_actions a WHERE a.request_id=r.id AND a.action='rejected' ORDER BY a.created_at DESC LIMIT 1) AS rejection_reason,
         r.created_at,r.completed_at AS responded_at FROM public.workflow_requests r WHERE r.id=:id""", id=letter_id)
 
 
+
 @router.get("/letters/{letter_id}/html", response_class=HTMLResponse)
 def letter_html(letter_id: uuid.UUID, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """The letter's HTML as it was stored — for the app's viewer and the web view.
+
+    The bytes are the cleaned ones (S12: `POST /letters` and both sign routes sanitize before writing),
+    so this route adds the header, not a second pass: `DISPLAY_CSP` makes a letter written before that
+    rule existed inert in a browser too, and `nosniff` keeps a browser from guessing another type."""
     row = _row(db, "SELECT d.file_data,d.mime_type,d.file_name FROM public.ariba_documents d JOIN public.workflow_requests r ON d.request_id=r.id WHERE r.id=:id AND (r.employee_id=:eid OR :role=ANY(:roles)) LIMIT 1", id=letter_id, eid=actor.get("employee_id"), role=actor["role"], roles=list(HR_READ_ROLES))
     if not row:
         raise ApiError(404, "not_found", "Letter not found")
-    return HTMLResponse(bytes(row["file_data"]).decode("utf-8", errors="replace"))
+    return HTMLResponse(bytes(row["file_data"]).decode("utf-8", errors="replace"),
+                        headers={"Content-Security-Policy": html_safety.DISPLAY_CSP,
+                                 "X-Content-Type-Options": "nosniff"})
+
+
+# --------------------------------------------------------------------------- the signing chain
+# A letter is a `template:<type>` request HR sends. The chain is one `ariba_doc_signing` row per
+# request (PK `request_id`, text) whose `stage` is the furthest stage the letter reached, and the
+# signed HTML comes back as a **new** `ariba_documents` row so the delivered letter stays as it was
+# (S5). Nothing here holds a signature by itself, and nothing returns one (S9).
+
+#: The document type of the copy a device signs and sends back (S5).
+SIGNED_DOCUMENT = "signed_document"
+
+
+def _type_needs_manager(cfg: dict[str, Any], template_type: Any) -> bool:
+    """Does this letter type ask for the direct manager's signature? (`*` names every type.)"""
+    types = cfg["manager_types"]
+    return "*" in types or str(template_type or "") in types
+
+
+def _signed_html(body: dict[str, Any]) -> str:
+    """The cleaned HTML a device sent as `signed_base64` (S12).
+
+    Refused before anything is written: `422 invalid_request` when it is missing or not base64,
+    `413 file_too_large` when the document is over `html_safety.MAX_DOCUMENT_BYTES` (D19, D29)."""
+    raw = str(body.get("signed_base64") or "").strip()
+    if raw.lower().startswith("data:"):
+        raw = raw.partition(",")[2]
+    compact = "".join(raw.split())
+    if not compact:
+        raise ApiError(422, "invalid_request", "signed_base64 is required")
+    if len(compact) > (html_safety.MAX_DOCUMENT_BYTES * 4) // 3 + 8:
+        raise ApiError(413, "file_too_large", "The signed document is larger than 1 MB")
+    try:
+        data = base64.b64decode(compact, validate=True)
+    except (ValueError, TypeError):  # binascii.Error is a ValueError: not base64 at all
+        raise ApiError(422, "invalid_request", "signed_base64 is not valid base64")
+    return html_safety.sanitize_document(data)
+
+
+def _store_signed_document(db: Session, *, employee_id: str, request_id: Any, uploader: str | None,
+                           html: str, file_name: str) -> uuid.UUID:
+    """The signed copy as a new `ariba_documents` row, next to the letter HR sent (S5).
+
+    `uploaded_by` is the signer, so HR can tell the employee's copy from the manager's; `file_size`
+    is a generated column and is never written here (or anywhere)."""
+    data = html.encode("utf-8")
+    row = _row(db, """INSERT INTO public.ariba_documents
+        (employee_id,request_id,document_type,file_name,mime_type,file_data,uploaded_by)
+        VALUES (:eid,:rid,:type,:name,'text/html',:data,:by) RETURNING id""",
+               eid=employee_id, rid=request_id, type=SIGNED_DOCUMENT, name=file_name, data=data,
+               by=uploader)
+    return row["id"]
+
+
+def _signing_row(db: Session, request_id: uuid.UUID) -> dict[str, Any] | None:
+    """The chain row of one letter, locked for the step that is about to move it."""
+    return _row(db, "SELECT * FROM public.ariba_doc_signing WHERE request_id=:r FOR UPDATE", r=request_id)
+
+
+def _notify_hr_letter(db: Session, request_id: Any, title: str, body: str) -> None:
+    """Ring the HR stage's people — the next actor's bell, and nobody else's (S11)."""
+    for person in _stage_people(db, "hr"):
+        _insert_notification(db, person, request_id, title, body, "hr", "template")
+
+def _employee_step(db: Session, actor: dict[str, Any], row: dict[str, Any],
+                   document_id: uuid.UUID | None) -> dict[str, Any]:
+    """The employee signed or approved a letter: write the chain row, move the request, ring one bell.
+
+    A signature and an unsigned approval take exactly the same path (S6): the manager when the type
+    needs one (S8: straight to HR when the employee has none, `needs_manager` still true), then HR
+    only when `hr_closes` is on, and otherwise the letter closes here with `status='approved'` — the
+    last signature closes it (S10). Answers `{next, needs_manager, manager_id}`."""
+    cfg = _doc_sign_cfg(db)
+    request_id = row["id"]
+    payload = row.get("payload") or {}
+    template_type = payload.get("template_type")
+    manager = _row(db, "SELECT manager_id FROM public.employee_directory WHERE employee_id=:e",
+                   e=row["employee_id"]) or {}
+    listed = _type_needs_manager(cfg, template_type)
+    manager_id = str(manager.get("manager_id") or "").strip() or None
+    if manager_id == str(row["employee_id"]):
+        manager_id = None
+    manager_id = manager_id if listed else None
+    db.execute(text("""INSERT INTO public.ariba_doc_signing
+        (request_id,document_id,employee_id,needs_manager,manager_id,stage,emp_signed_at,updated_at)
+        VALUES (:rid,:doc,:eid,:needs,:mgr,:stage,now(),now())
+        ON CONFLICT (request_id) DO UPDATE SET document_id=EXCLUDED.document_id,
+            needs_manager=EXCLUDED.needs_manager,manager_id=EXCLUDED.manager_id,
+            stage=EXCLUDED.stage,emp_signed_at=now(),updated_at=now()"""),
+               {"rid": request_id, "doc": document_id, "eid": row["employee_id"],
+                "needs": listed, "mgr": manager_id, "stage": "manager" if manager_id else "hr"})
+    db.execute(text("""INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment)
+        VALUES(:r,:a,'employee','approved',NULL)"""), {"r": request_id, "a": actor["account_id"]})
+    db.execute(text("""UPDATE public.workflow_notifications SET read_at=now()
+        WHERE request_id=:r AND stage='employee' AND read_at IS NULL"""), {"r": request_id})
+    if manager_id:
+        nxt = "manager"
+        db.execute(text("UPDATE public.workflow_requests SET current_stage='manager',updated_at=now() WHERE id=:r"),
+                   {"r": request_id})
+    elif cfg["hr_closes"]:
+        nxt = "hr"
+        db.execute(text("UPDATE public.workflow_requests SET current_stage='hr',updated_at=now() WHERE id=:r"),
+                   {"r": request_id})
+    else:
+        nxt = "done"
+        db.execute(text("""UPDATE public.workflow_requests SET current_stage='completed',
+            completed_at=now(),updated_at=now() WHERE id=:r"""), {"r": request_id})
+    employee = _row(db, "SELECT name_ar FROM public.employee_directory WHERE employee_id=:e",
+                    e=row["employee_id"]) or {}
+    name = employee.get("name_ar") or row["employee_id"]
+    letter = payload.get("title") or template_type or "مستند"
+    if nxt == "manager":
+        _insert_notification(db, manager_id, request_id, "مستند بانتظار توقيعك",
+                             f"{name} وقّع «{letter}» وهو بانتظار توقيعك كمدير مباشر", "manager", "template")
+    elif nxt == "hr":
+        _notify_hr_letter(db, request_id, "مستند بانتظار اعتمادك",
+                          f"{name} وقّع «{letter}» وهو بانتظار اعتماد الموارد البشرية")
+    # `done`: the employee's own act never rings his own bell, and nobody else has a step (S11).
+    return {"next": nxt, "needs_manager": listed, "manager_id": manager_id}
+
+
+@router.get("/me/sign/states")
+def sign_states(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """Where each of the caller's own letters stands — `stage` is the furthest stage it reached.
+
+    Not audited (S9), and an account with no employee row simply has no rows (D23)."""
+    eid = actor.get("employee_id")
+    if not eid:
+        return []
+    return _rows(db, """SELECT request_id,stage,needs_manager,reject_reason,emp_signed_at,mgr_signed_at
+        FROM public.ariba_doc_signing WHERE employee_id=:eid ORDER BY updated_at DESC""", eid=eid)
+
+
+@router.get("/me/sign/pending")
+def sign_pending(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """What waits for *this* manager's signature — his own duty, not a view of his team (S7).
+
+    No `view_team*` flag gates it: signing what a report already signed is a personal act, and
+    another team's manager simply gets an empty list."""
+    me = actor.get("employee_id")
+    if not me:
+        return []
+    return _rows(db, """SELECT g.request_id,g.document_id,g.employee_id,d.name_ar AS employee_name,
+        g.emp_signed_at,COALESCE(r.payload->>'template_type',split_part(r.request_type,':',2)) AS template_type
+        FROM public.ariba_doc_signing g
+        LEFT JOIN public.employee_directory d ON d.employee_id=g.employee_id
+        LEFT JOIN public.workflow_requests r ON r.id=g.request_id
+        WHERE g.stage='manager' AND g.manager_id=:me ORDER BY g.emp_signed_at DESC""", me=me)
+
+
+@router.post("/me/letters/{request_id}/sign")
+def sign_letter(request_id: uuid.UUID, body: dict[str, Any], request: Request,
+                actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """The employee signs his own pending letter (S3–S5, S12).
+
+    The request decides which document is signed — a `document_id` in the body is ignored (S4) — the
+    signed HTML is cleaned before it is stored (S12, D28/D29) and the chain then moves exactly as an
+    unsigned approval would (S6). A letter that already moved is not a pending letter of his (404)."""
+    row = _row(db, """SELECT * FROM public.workflow_requests WHERE id=:id AND employee_id=:eid
+        AND request_type LIKE 'template:%' AND current_stage='employee' AND status='pending'""",
+               id=request_id, eid=actor.get("employee_id"))
+    if not row:
+        raise ApiError(404, "not_found", "Pending letter not found")
+    html = _signed_html(body)
+    title = str((row.get("payload") or {}).get("title") or "letter")
+    document_id = _store_signed_document(db, employee_id=row["employee_id"], request_id=row["id"],
+                                         uploader=actor.get("employee_id"), html=html,
+                                         file_name=f"{title}-signed.html")
+    step = _employee_step(db, actor, row, document_id)
+    details: dict[str, Any] = {"next": step["next"], "document_id": str(document_id)}
+    if step["needs_manager"] and not step["manager_id"]:
+        details["reason"] = "no_manager"  # S8: the signature was skipped, not refused, and HR can see why
+    _write_audit(db, actor, request, "letters", "sign_employee", "workflow_request", row["id"], details=details)
+    db.commit()
+    return {"next": step["next"], "document_id": str(document_id)}
+
+
+@router.post("/me/sign/{request_id}")
+def manager_sign_letter(request_id: uuid.UUID, body: dict[str, Any], request: Request,
+                        actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
+    """The one manager the chain is waiting for signs — or rejects — the letter (S3, S7, S9, S12).
+
+    Anyone else, and any letter no longer at `stage='manager'`, gets `404`: the row is not theirs to
+    see (D14–D17). A rejection needs a reason and closes the chain for good (D18, S10)."""
+    signing = _signing_row(db, request_id)
+    if not signing or signing.get("stage") != "manager" or signing.get("manager_id") != actor.get("employee_id"):
+        raise ApiError(404, "not_found", "Nothing is waiting for your signature")
+    action = body.get("action")
+    reason = str(body.get("reason") or "").strip()
+    employee_id = signing["employee_id"]
+    letter = _row(db, "SELECT payload,request_type FROM public.workflow_requests WHERE id=:r",
+                  r=request_id) or {}
+    title = str((letter.get("payload") or {}).get("title") or "مستند")
+    if action == "rejected":
+        if len(reason) < 3:
+            raise ApiError(422, "invalid_request", "A rejection needs a reason of at least 3 characters")
+        db.execute(text("""UPDATE public.ariba_doc_signing SET stage='rejected',reject_reason=:reason,
+            updated_at=now() WHERE request_id=:r"""), {"reason": reason, "r": request_id})
+        db.execute(text("""UPDATE public.workflow_requests SET current_stage='rejected',
+            updated_at=now() WHERE id=:r"""), {"r": request_id})
+        db.execute(text("""INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment)
+            VALUES(:r,:a,'manager','rejected',:reason)"""),
+                   {"r": request_id, "a": actor["account_id"], "reason": reason})
+        db.execute(text("""UPDATE public.workflow_notifications SET read_at=now()
+            WHERE request_id=:r AND stage='manager' AND read_at IS NULL"""), {"r": request_id})
+        _insert_notification(db, employee_id, request_id, "المدير رفض توقيع المستند", f"السبب: {reason}",
+                             "employee", "template")
+        _write_audit(db, actor, request, "letters", "sign_reject", "workflow_request", request_id,
+                     details={"reason": reason})
+        db.commit()
+        return {"ok": True, "next": "rejected"}
+    if action != "approved":
+        raise ApiError(422, "invalid_request", "Invalid action")
+    html = _signed_html(body)
+    document_id = _store_signed_document(db, employee_id=employee_id, request_id=request_id,
+                                         uploader=actor.get("employee_id"), html=html,
+                                         file_name=f"{title}-signed-manager.html")
+    nxt = "hr" if _doc_sign_cfg(db)["hr_closes"] else "done"
+    db.execute(text("""UPDATE public.ariba_doc_signing SET stage='hr',mgr_signed_at=now(),updated_at=now()
+        WHERE request_id=:r"""), {"r": request_id})
+    db.execute(text("""INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment)
+        VALUES(:r,:a,'manager','approved',NULL)"""), {"r": request_id, "a": actor["account_id"]})
+    db.execute(text("""UPDATE public.workflow_notifications SET read_at=now()
+        WHERE request_id=:r AND stage='manager' AND read_at IS NULL"""), {"r": request_id})
+    if nxt == "hr":
+        db.execute(text("UPDATE public.workflow_requests SET current_stage='hr',updated_at=now() WHERE id=:r"),
+                   {"r": request_id})
+        _notify_hr_letter(db, request_id, "مستند موقّع بانتظار اعتمادك",
+                          f"«{title}» موقّع من الموظف ومديره المباشر وهو بانتظار اعتمادكم")
+    else:
+        db.execute(text("""UPDATE public.workflow_requests SET current_stage='completed',
+            completed_at=now(),updated_at=now() WHERE id=:r"""), {"r": request_id})
+        _insert_notification(db, employee_id, request_id, "اعتُمد مستندك",
+                             f"اعتُمد «{title}» بعد توقيعك وتوقيع مديرك المباشر", "employee", "template")
+    _write_audit(db, actor, request, "letters", "sign_manager", "workflow_request", request_id,
+                 details={"document_id": str(document_id), "next": nxt})
+    db.commit()
+    return {"ok": True, "next": nxt}
+
+
+@router.post("/letters/{request_id}/approve")
+def approve_letter(request_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor),
+                   db: Session = Depends(get_db)):
+    """HR closes a letter that is waiting at its stage — the last step when `hr_closes` is on (S10).
+
+    The app does not call it; an HR screen would. A letter that is not waiting for HR (`manager`,
+    `rejected`, or `hr_closes` off) answers `409 not_waiting_for_hr`, one that is already closed
+    answers `409 already_closed`, and an employee or a manager gets `403` from the role gate — the
+    answers the other HR letter routes already give (D20–D22, D25)."""
+    _require(actor, *HR_READ_ROLES)
+    row = _row(db, "SELECT * FROM public.workflow_requests WHERE id=:id AND request_type LIKE 'template:%'",
+               id=request_id)
+    if not row:
+        raise ApiError(404, "not_found", "Letter not found")
+    if row.get("current_stage") in {"manager", "rejected"}:
+        raise ApiError(409, "not_waiting_for_hr", "This letter is not waiting for HR")
+    if row.get("current_stage") == "completed" or row.get("status") != "pending":
+        raise ApiError(409, "already_closed", "This letter is already closed")
+    if row.get("current_stage") != "hr" or not _doc_sign_cfg(db)["hr_closes"]:
+        raise ApiError(409, "not_waiting_for_hr", "This letter is not waiting for HR")
+    title = str((row.get("payload") or {}).get("title") or "مستند")
+    db.execute(text("""UPDATE public.workflow_requests SET current_stage='completed',
+        completed_at=now(),updated_at=now() WHERE id=:r"""), {"r": request_id})
+    db.execute(text("""INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment)
+        VALUES(:r,:a,'hr','approved',NULL)"""), {"r": request_id, "a": actor["account_id"]})
+    db.execute(text("""UPDATE public.workflow_notifications SET read_at=now()
+        WHERE request_id=:r AND stage='hr' AND read_at IS NULL"""), {"r": request_id})
+    _insert_notification(db, row["employee_id"], request_id, "اعتُمد مستندك",
+                         f"اعتُمد «{title}» من الموارد البشرية", "employee", "template")
+    _write_audit(db, actor, request, "letters", "letter_approve", "workflow_request", request_id,
+                 details={"stage": "hr"})
+    db.commit()
+    return {"ok": True, "status": "approved"}
+
+
 
 
 @router.get("/employees/{employee_id}/documents")
@@ -2055,6 +2403,49 @@ def download_document(document_id: uuid.UUID, actor: dict[str, Any] = Depends(cu
         raise ApiError(404, "not_found", "Document not found")
     _employee_scope(db, actor, row["employee_id"])
     return Response(content=bytes(row["file_data"]), media_type=row["mime_type"], headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(row['file_name'])}", "Cache-Control": "private, no-store"})
+
+
+def _manager_may_open(db: Session, me: str, row: dict[str, Any]) -> bool:
+    """The two doors a direct manager has, and no third one (S1).
+
+    (a) the document currently waiting for **his own** signature, and (b) a document attached to a
+    **leave** request of his direct report — all leave types, because he already approves that leave
+    with its reason in front of him. "Direct report" is `manager_id = me` *now* (S1, D8)."""
+    if row.get("request_id") and _row(db, """SELECT 1 AS x FROM public.ariba_doc_signing
+            WHERE request_id=:r AND stage='manager' AND manager_id=:me AND document_id=:d""",
+                                     r=row["request_id"], me=me, d=row["id"]):
+        return True
+    return bool(_row(db, """SELECT 1 AS x FROM public.ariba_documents d
+        JOIN public.workflow_requests r ON r.id=d.request_id
+        JOIN public.employee_directory e ON e.employee_id=d.employee_id
+        WHERE d.id=:d AND e.manager_id=:me
+          AND (r.request_type = ANY(:leave_types)
+               OR EXISTS (SELECT 1 FROM public.leave_requests l WHERE l.workflow_request_id=r.id))""",
+                      d=row["id"], me=me, leave_types=sorted(LEAVE_FORM_TYPES)))
+
+
+@router.get("/documents/{document_id}/content")
+def document_content(document_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor),
+                     db: Session = Depends(get_db)):
+    """One document's bytes as base64: the owner, HR, and the two manager doors (S1).
+
+    The manager's open is audited — one row, no content, no file name (S1.1); the employee opening
+    his own paper is not (S9). Everybody else gets `404`, the answer an id that does not exist gets,
+    never a `403` that would confirm the document is real (D1–D12)."""
+    row = _row(db, "SELECT id,employee_id,request_id,file_name,mime_type,file_data FROM public.ariba_documents WHERE id=:id", id=document_id)
+    if not row:
+        raise ApiError(404, "not_found", "Document not found")
+    me, owner = actor.get("employee_id"), row["employee_id"]
+    if actor.get("role") in HR_READ_ROLES or (me and owner == me):
+        pass  # HR's screens and the owner's own paper: no audit row (S9)
+    elif me and _manager_may_open(db, me, row):
+        _write_audit(db, actor, request, "documents", "open", "document", row["id"],
+                     details={"employee_id": owner, "via": "content"})
+        db.commit()
+    else:
+        raise ApiError(404, "not_found", "Document not found")
+    return {"id": str(row["id"]), "file_name": row["file_name"], "mime_type": row["mime_type"],
+            "base64": base64.b64encode(bytes(row["file_data"])).decode("ascii")}
 
 
 @router.delete("/documents/{document_id}", status_code=204)
@@ -2732,6 +3123,7 @@ def send_letter(body: dict[str, Any], request: Request, actor: dict[str, Any] = 
     content = str(body.get("html") or "")
     if not title or not content:
         raise ApiError(422, "invalid_request", "Letter title and HTML are required")
+    content = html_safety.sanitize_document(content)  # S12/D30: the stored copy is the cleaned one
     request_type = "template:" + str(body.get("type") or "custom")
     _require_lookup(db, "workflow_request_types", request_type, "request type")
     _require_lookup(db, "document_types", "letter", "document type")
@@ -2754,6 +3146,8 @@ def send_letter(body: dict[str, Any], request: Request, actor: dict[str, Any] = 
 def delete_letter(letter_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     _require(actor, *HR_ROLES)
     db.execute(text("DELETE FROM public.ariba_documents WHERE request_id=:id"), {"id": letter_id})
+    # the chain row must not outlive its letter, or `/me/sign/pending` would list a deleted one (S7)
+    db.execute(text("DELETE FROM public.ariba_doc_signing WHERE request_id=:id"), {"id": letter_id})
     result = db.execute(text("DELETE FROM public.workflow_requests WHERE id=:id AND request_type LIKE 'template:%'"), {"id": letter_id})
     if result.rowcount == 0:
         raise ApiError(404, "not_found", "Letter not found")

@@ -18,6 +18,7 @@ throw-away rows it created in that database instead of the local one.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 import time
@@ -265,6 +266,25 @@ def main() -> int:
         return api.check(expect, method, path, body, api.tokens.get(who) if who else None,
                          raw, content_type, allow)
 
+    def grade(ok: bool, method: str, path: str, detail: str = "") -> bool:
+        """One check that is not a status code: the chain's next step, or what got stored (S12).
+
+        `call(...)` grades the request it makes; this grades the *dependency* a later block needs, so a
+        block can never be skipped quietly while the run stays green."""
+        RESULTS.append({"method": method, "path": path, "status": 200, "verdict": "PASS" if ok else "FAIL",
+                        "ms": 0, "detail": "" if ok else detail})
+        return ok
+
+    def need(value: Any, method: str, path: str, detail: str = "") -> str:
+        """The id a block below needs: an empty id is a FAIL here, never a silent skip.
+
+        Every `if <id>:` in this file is guarded by one of these, because the create call it depends on
+        can answer `RULE` (a 4xx with an error code) instead of `PASS`, and without the guard the whole
+        block would disappear from the report while `RESULT` stayed `OK`."""
+        ok = grade(bool(value), method, path,
+                   detail or "the id came back empty, so every check that needs it would have been skipped")
+        return str(value) if ok else ""
+
     # ------------------------------------------------------------------ reachability and sign-in
     call((200,), "GET", api.base + "/health")
     spec_status, spec = call((200,), "GET", api.base + "/openapi.json", allow={404})
@@ -289,7 +309,8 @@ def main() -> int:
     # ------------------------------------------------------------------ lookups the write journeys need
     _, lookups = call((200,), "GET", "/settings/lookups", "requester")
     workplaces = (lookups or {}).get("workplaces") if isinstance(lookups, dict) else []
-    workplace_id = str(((workplaces or [{}])[0] or {}).get("id") or "")
+    workplace_id = need(((workplaces or [{}])[0] or {}).get("id"), "GET", "/settings/lookups (a workplace exists)",
+                        "no workplace in the lookups, so the employee lifecycle block would be skipped")
 
     # ------------------------------------------------------------------ employee app reads
     for path in ("/me/employee", "/me/attendance", "/me/leave", "/me/requests", "/me/approvals",
@@ -330,7 +351,8 @@ def main() -> int:
                           {"target": {"employee_id": emp_id, "period_type": "annual",
                                       "period_key": str(today.year), "title": "هدف اختبار الدخان",
                                       "target_value": 10, "actual_value": 4, "weight": 1}})
-    goal_target_id = str(((goal_target or {}).get("target") or {}).get("id") or "")
+    goal_target_id = need(((goal_target or {}).get("target") or {}).get("id"), "POST", "/targets (the target exists)",
+                          f"the target was refused, so the delete checks would be skipped: {goal_target!r}")
     call((403,), "POST", "/targets", "requester",
          {"target": {"employee_id": emp_id, "period_type": "annual",
                      "period_key": str(today.year), "title": "هدف من موظف"}}, allow={403})
@@ -353,35 +375,34 @@ def main() -> int:
     _, task_sent = call((200,), "POST", "/tasks", "hr_approver",
                         {"to": [emp_id], "kind": "task", "title": f"مهمة دخان {today.isoformat()}",
                          "details": "من سكربت الدخان", "due": (today + timedelta(days=5)).isoformat()})
-    if (task_sent or {}).get("sent"):
+    if grade(bool((task_sent or {}).get("sent")), "POST", "/tasks (the task was sent)", f"refused: {task_sent!r}"):
         _, inbox = call((200,), "GET", "/tasks?box=inbox", "requester")
         task_id = str(next((row.get("id") for row in (inbox or {}).get("items", [])
                             if str(row.get("title") or "").startswith("مهمة دخان")), "") or "")
+        task_id = need(task_id, "GET", "/tasks?box=inbox (the task HR sent is there)",
+                       "the task HR sent is not in the requester's inbox")
         if task_id:
             call((200,), "POST", f"/tasks/{task_id}/update", "requester", {"status": "done"})
             call((409,), "POST", f"/tasks/{task_id}/update", "requester",
                  {"status": "done"}, allow={409})
-        else:
-            notes.append("the task the HR account sent is not in the requester's inbox: "
-                         "the answer path was skipped")
     _, meeting_sent = call((200,), "POST", "/tasks", "hr_approver",
                            {"to": [emp_id], "kind": "meeting",
                             "title": f"اجتماع دخان {today.isoformat()}",
                             "start": f"{today.isoformat()}T10:00:00+03:00",
                             "end": f"{today.isoformat()}T11:00:00+03:00", "location": "قاعة 1"})
-    if (meeting_sent or {}).get("sent"):
+    if grade(bool((meeting_sent or {}).get("sent")), "POST", "/tasks (the meeting was sent)",
+             f"refused: {meeting_sent!r}"):
         _, sent_box = call((200,), "GET", "/tasks?box=sent", "hr_approver")
         meeting_id = str(next((row.get("id") for row in (sent_box or {}).get("items", [])
                                if str(row.get("title") or "").startswith("اجتماع دخان")), "") or "")
+        meeting_id = need(meeting_id, "GET", "/tasks?box=sent (the meeting is in his sent box)",
+                          "the meeting the HR account sent is not in its sent box")
         if meeting_id:
             call((422,), "POST", f"/tasks/{meeting_id}/update", "hr_approver", {"status": "done"})
             call((200,), "POST", f"/tasks/{meeting_id}/update", "hr_approver",
                  {"status": "cancelled"})
             call((409,), "POST", f"/tasks/{meeting_id}/update", "hr_approver",
                  {"status": "cancelled"}, allow={409})
-        else:
-            notes.append("the meeting the HR account sent is not in its sent box: "
-                         "the cancel path was skipped")
     call((404,), "POST", f"/tasks/{uuid.uuid4()}/update", "requester", {"status": "done"},
          allow={404})
 
@@ -411,7 +432,7 @@ def main() -> int:
     _, created = call((201,), "POST", "/me/requests", "requester",
                       {"type": "overtime", "on_date": (today - timedelta(days=1)).isoformat(),
                        "hours": 1, "notes": "smoke overtime"})
-    req_id = str((created or {}).get("id") or "")
+    req_id = need((created or {}).get("id"), "POST", "/me/requests (the request exists)", f"refused: {created!r}")
     if req_id:
         call((200,), "GET", "/me/requests", "requester")
         call((200,), "GET", "/me/approvals", "ceo_approver")
@@ -426,7 +447,8 @@ def main() -> int:
     _, second = call((201,), "POST", "/me/requests", "requester",
                      {"type": "overtime", "on_date": (today - timedelta(days=2)).isoformat(),
                       "hours": 2, "notes": "smoke negative path"})
-    second_id = str((second or {}).get("id") or "")
+    second_id = need((second or {}).get("id"), "POST", "/me/requests (the negative-path request exists)",
+                     f"refused: {second!r}")
     if second_id:
         call((422,), "POST", f"/me/approvals/{second_id}", "ceo_approver", {"action": "bogus"})
         call((422,), "POST", f"/me/approvals/{second_id}", "ceo_approver", {"action": "reject"})
@@ -440,7 +462,8 @@ def main() -> int:
     _, fp = call((201,), "POST", "/me/requests", "requester",
                  {"type": "forgot_punch", "punch_kind": "in", "on_date": fp_day.isoformat(),
                   "time_from": "08:00", "notes": "smoke forgot punch"})
-    fp_id = str((fp or {}).get("id") or "")
+    fp_id = need((fp or {}).get("id"), "POST", "/me/requests (the forgot-punch request exists)",
+                 f"refused: {fp!r}")
     if fp_id:
         call((200,), "POST", f"/requests/{fp_id}/final-approve", "hr_approver", {"reason": "smoke approval"})
         call((200,), "GET", f"/me/attendance/range?date_from={fp_day}&date_to={fp_day}", "requester")
@@ -455,7 +478,8 @@ def main() -> int:
     _, manual = call((201,), "POST", "/attendance", "hr_approver",
                      {"employee_id": emp_id, "work_date": manual_day.isoformat(), "time_in": "09:00",
                       "time_out": "17:00", "status": "present", "notes": "smoke manual"})
-    rec_id = str((manual or {}).get("id") or "")
+    rec_id = need((manual or {}).get("id"), "POST", "/attendance (the manual punch exists)",
+                  f"refused: {manual!r}")
     if rec_id:
         call((200,), "PATCH", f"/attendance/{rec_id}", "hr_approver", {"notes": "smoke manual updated"})
         call((422,), "PATCH", f"/attendance/{rec_id}", "hr_approver", {})
@@ -464,7 +488,8 @@ def main() -> int:
     open_day = today - timedelta(days=6)
     _, open_rec = call((201,), "POST", "/attendance", "hr_approver",
                        {"employee_id": emp_id, "work_date": open_day.isoformat(), "time_in": "09:00"})
-    open_id = str((open_rec or {}).get("id") or "")
+    open_id = need((open_rec or {}).get("id"), "POST", "/attendance (the open punch exists)",
+                   f"refused: {open_rec!r}")
     if open_id:
         call((409,), "POST", "/attendance", "hr_approver",
              {"employee_id": emp_id, "work_date": open_day.isoformat(), "time_in": "10:00"}, allow={409})
@@ -506,7 +531,8 @@ def main() -> int:
                                {"name_ar": "موظف اختبار الدخان", "name_en": "Smoke Test Employee",
                                 "workplace_id": workplace_id, "join_date": today.isoformat(),
                                 "nationality": "Saudi"})
-        new_emp = str((new_employee or {}).get("id") or (new_employee or {}).get("employee_id") or "")
+        new_emp = need((new_employee or {}).get("id") or (new_employee or {}).get("employee_id"),
+                       "POST", "/employees (the new employee exists)", f"refused: {new_employee!r}")
     call((422,), "POST", "/employees", "hr_approver", {"name_ar": "بلا جهة عمل"})
     if new_emp:
         call((200,), "GET", f"/employees/{new_emp}", "hr_approver")
@@ -519,7 +545,8 @@ def main() -> int:
              {"nationality_id": "Saudi", "basic_salary": 5000, "housing_allowance": 1250})
         _, account = call((200,), "POST", "/auth/users", "hr_approver",
                           {"employee_id": new_emp, "role": "employee"})
-        user_id = str(((account or {}).get("user") or {}).get("id") or "")
+        user_id = need(((account or {}).get("user") or {}).get("id"), "POST", "/auth/users (the account exists)",
+                       f"refused: {account!r}")
         if user_id:
             call((200,), "GET", f"/auth/users/by-employee/{new_emp}", "hr_approver")
             call((200,), "PATCH", f"/auth/users/{user_id}", "hr_approver",
@@ -533,7 +560,7 @@ def main() -> int:
     _, letter = call((200,), "POST", "/letters", "hr_approver",
                      {"employee_id": emp_id, "title": "خطاب اختبار الدخان",
                       "html": "<p>smoke letter</p>", "type": "custom"})
-    letter_id = str((letter or {}).get("id") or "")
+    letter_id = need((letter or {}).get("id"), "POST", "/letters (the custom letter exists)", f"refused: {letter!r}")
     if letter_id:
         call((200,), "GET", "/letters", "hr_approver")
         call((200,), "GET", "/me/letters", "requester")
@@ -548,11 +575,76 @@ def main() -> int:
         call((404,), "DELETE", f"/letters/{letter_id}", "hr_approver", allow={404})
         call((404,), "GET", f"/letters/{letter_id}/html", "requester", allow={404})
 
+    # ------------------------------------------------------------------ Stage 5: the signing chain and the viewer
+    call((200,), "GET", "/settings/doc-sign", "hr_approver")
+    call((403,), "GET", "/settings/doc-sign", "requester", allow={403})
+    call((403,), "PUT", "/settings/doc-sign", "requester", {"hr_closes": True}, allow={403})
+    call((422,), "PUT", "/settings/doc-sign", "hr_approver", {"manager_types": "custom"})
+    call((200,), "PUT", "/settings/doc-sign", "hr_approver", {"hr_closes": False, "manager_types": []})
+    call((200,), "GET", "/me/sign/states", "requester")
+    call((200,), "GET", "/me/sign/pending", "requester")
+
+    # a hostile signature: what HR opens next to the letter must already be clean (S12/D28)
+    _, first = call((200,), "POST", "/letters", "hr_approver",
+                    {"employee_id": emp_id, "title": "خطاب توقيع", "html": "<p>الشهادة</p>", "type": "salary_cert"})
+    first_id = need((first or {}).get("id"), "POST", "/letters (a letter to sign exists)",
+                    f"the letter was refused, so the signing checks below cannot run: {first!r}")
+    if first_id:
+        hostile = ("<html><body><p>نص الشهادة</p><script>alert(1)</script>"
+                   "<img src='https://evil.example/x.png' onerror='alert(1)'>"
+                   "<a href='javascript:alert(1)'>رابط</a><!--ARIBA_EN--></body></html>")
+        _, signature = call((200,), "POST", f"/me/letters/{first_id}/sign", "requester",
+                            {"document_id": None, "template_type": "salary_cert",
+                             "signed_base64": base64.b64encode(hostile.encode("utf-8")).decode("ascii")})
+        grade((signature or {}).get("next") == "done", "POST", f"/me/letters/{first_id}/sign (next)",
+              f"expected next=done, got {(signature or {}).get('next')!r}")
+        signed_id = need((signature or {}).get("document_id"), "POST",
+                         f"/me/letters/{first_id}/sign (the signed copy exists)",
+                         f"no document id in the signature answer: {signature!r}")
+        _, opened = call((200,), "GET", f"/documents/{signed_id}/content", "requester")
+        stored = base64.b64decode(str((opened or {}).get("base64") or "")).decode("utf-8", "replace")
+        survived = [gone for gone in ("<script", "onerror", "javascript:", "evil.example") if gone in stored]
+        grade(not survived and "نص الشهادة" in stored and "<!--ARIBA_EN-->" in stored,
+              "GET", f"/documents/{signed_id}/content (S12)", f"stored copy still carries {survived}")
+        call((404,), "GET", f"/documents/{signed_id}/content", "plain_employee", allow={404})   # D11
+        call((409,), "POST", f"/letters/{first_id}/approve", "hr_approver", allow={409})         # D25
+        call((403,), "POST", f"/letters/{first_id}/approve", "requester", allow={403})           # D20
+        call((404,), "POST", f"/me/sign/{first_id}", "requester", {"action": "approved"}, allow={404})  # D14
+        call((204,), "DELETE", f"/letters/{first_id}", "hr_approver")
+
+    # hr_closes on: the employee's signature waits at HR, and HR's approve is the last step (S10)
+    call((200,), "PUT", "/settings/doc-sign", "hr_approver", {"hr_closes": True, "manager_types": []})
+    _, second = call((200,), "POST", "/letters", "hr_approver",
+                     {"employee_id": emp_id, "title": "خطاب بانتظار الاعتماد", "html": "<p>خطاب</p>", "type": "salary_cert"})
+    second_id = need((second or {}).get("id"), "POST", "/letters (the hr_closes letter exists)", f"refused: {second!r}")
+    if second_id:
+        _, waiting = call((200,), "POST", f"/me/letters/{second_id}/sign", "requester",
+                          {"signed_base64": base64.b64encode(b"<p>signed</p>").decode("ascii")})
+        grade((waiting or {}).get("next") == "hr", "POST", f"/me/letters/{second_id}/sign (next)",
+              f"expected next=hr, got {(waiting or {}).get('next')!r}")
+        call((200,), "POST", f"/letters/{second_id}/approve", "hr_approver")
+        call((409,), "POST", f"/letters/{second_id}/approve", "hr_approver", allow={409})        # D22
+        call((204,), "DELETE", f"/letters/{second_id}", "hr_approver")
+
+    # a type that needs the manager: the signature stops at his manager, so HR is not waiting (D26/D21)
+    call((200,), "PUT", "/settings/doc-sign", "hr_approver", {"hr_closes": False, "manager_types": ["custom"]})
+    _, third = call((200,), "POST", "/letters", "hr_approver",
+                    {"employee_id": emp_id, "title": "خطاب توقيع المدير", "html": "<p>خطاب</p>", "type": "custom"})
+    third_id = need((third or {}).get("id"), "POST", "/letters (the manager-type letter exists)", f"refused: {third!r}")
+    if third_id:
+        _, manager_step = call((200,), "POST", f"/me/letters/{third_id}/sign", "requester",
+                               {"signed_base64": base64.b64encode(b"<p>signed</p>").decode("ascii")})
+        grade((manager_step or {}).get("next") == "manager", "POST", f"/me/letters/{third_id}/sign (next)",
+              f"expected next=manager, got {(manager_step or {}).get('next')!r}")
+        call((409,), "POST", f"/letters/{third_id}/approve", "hr_approver", allow={409})         # D21
+        call((204,), "DELETE", f"/letters/{third_id}", "hr_approver")
+    call((200,), "PUT", "/settings/doc-sign", "hr_approver", {"hr_closes": False, "manager_types": []})
+
     # ------------------------------------------------------------------ public holidays
     _, holiday = call((201,), "POST", "/holidays", "hr_approver",
                       {"name_ar": "عطلة اختبار الدخان", "name_en": "Smoke Holiday",
                        "start_date": "2099-01-05", "days": 1, "is_recurring": False})
-    holiday_id = str((holiday or {}).get("id") or "")
+    holiday_id = need((holiday or {}).get("id"), "POST", "/holidays (the holiday exists)", f"refused: {holiday!r}")
     if holiday_id:
         call((200,), "GET", "/leave/holidays", "requester")
         call((204,), "DELETE", f"/holidays/{holiday_id}", "hr_approver")
@@ -560,7 +652,8 @@ def main() -> int:
     raw_body, ctype = _multipart_form({"type": "other"}, "file", "smoke.png", _png(), "image/png")
     _, doc = call((200,), "POST", f"/employees/{emp_id}/documents", "hr_approver",
                   raw=raw_body, content_type=ctype, allow={422})
-    doc_id = str((doc or {}).get("id") or "")
+    doc_id = need((doc or {}).get("id"), "POST", f"/employees/{emp_id}/documents (the upload exists)",
+                  f"the upload was refused, so its download checks would be skipped: {doc!r}")
     if doc_id:
         call((200,), "GET", f"/employees/{emp_id}/documents", "hr_approver")
         call((200,), "GET", f"/documents/{doc_id}/file", "hr_approver")

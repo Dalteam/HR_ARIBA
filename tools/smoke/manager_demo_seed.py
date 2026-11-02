@@ -12,6 +12,12 @@ For Stage 3 it also seeds a **goal cycle**: targets for two reports, one approve
 the employee sees), one pending (waiting for HR, hidden from the employee) and one draft (only the
 manager sees it), plus a second manager with his own report so "another team's manager" can be tried.
 
+For Stage 5 it seeds the **letter chain** — one letter waiting for EMP1's signature that will need
+his manager, one that closes at his signature, one waiting for DEMO-MGR's signature, one waiting at
+HR and one the manager refused — plus the `doc_sign_cfg` setting (`hr_closes` off, `onboarding`
+needs a manager), a sick-leave PDF and an annual-leave PDF the manager may open, and an iqama scan he
+may **not** open (S1's two doors and no third).
+
 **It is a sandbox tool, not a deployment step.** It refuses `ariba_src`, `postgres` and the
 template databases, and it refuses any host that is not this machine: a Railway or Supabase
 database is never a place to invent employees in. `docs/FOLLOW_UPS.md` #18 is the same rule for
@@ -97,6 +103,16 @@ def _lookup(db, table: str, name: str) -> int:
     return int(row[0])
 
 
+def _lookup_row(db, table: str, code: str, name_ar: str) -> None:
+    """Make sure one lookup code exists: the copy's lists may predate the letter types (they are FKs)."""
+    db.execute(f"""INSERT INTO public.{table}(code,name_ar) VALUES (%s,%s)
+        ON CONFLICT (code) DO UPDATE SET name_ar=EXCLUDED.name_ar""", (code, name_ar))
+
+
+#: The letter types the demo sends (`workflow_requests.request_type` is an FK to this list).
+LETTER_TYPES = {"onboarding": "خطاب تعريف بالعمل", "salary_cert": "شهادة راتب", "custom": "خطاب"}
+
+
 def _clear_references(db, params: dict) -> None:
     """Delete whatever else points at the demo employees (attendance, targets, tasks, …).
 
@@ -129,6 +145,10 @@ def _clear(db) -> None:
     db.execute("DELETE FROM public.ariba_sessions WHERE account_id IN "
                "(SELECT id FROM public.ariba_auth_accounts WHERE employee_id = ANY(%(ids)s))", params)
     db.execute(f"DELETE FROM public.workflow_actions WHERE request_id IN ({requests})", params)
+    db.execute("DELETE FROM public.ariba_doc_signing WHERE employee_id = ANY(%(ids)s) "
+               "OR request_id IN (SELECT id FROM public.workflow_requests "
+               "WHERE employee_id = ANY(%(ids)s))", params)
+
     db.execute(f"DELETE FROM public.workflow_notifications WHERE recipient_employee_id = ANY(%(ids)s) "
                f"OR request_id IN ({requests})", params)
     db.execute("DELETE FROM public.ariba_documents WHERE employee_id = ANY(%(ids)s)", params)
@@ -188,6 +208,94 @@ def _request(db, employee_id: str, request_type: str, payload: dict, stage: str,
                    (employee_id, request_type, payload["from"], payload["to"], payload["days"],
                     notes or None, request_id))
     return request_id
+
+
+def _pdf(line: str) -> bytes:
+    """A minimal one-page PDF: the bytes only have to be something a viewer opens."""
+    stream = f"BT /F1 12 Tf 40 800 Td ({line}) Tj ET".encode("ascii", "replace")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> "
+        b"/Contents 4 0 R >>",
+        b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    start = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    for offset in offsets:
+        out += b"%010d 00000 n \n" % offset
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, start)
+    return bytes(out)
+
+
+#: 1×1 PNG: the "signature" the seeded letters carry, so the app's sheet shows an image.
+_SIGNATURE = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/"
+              "q842iQAAAABJRU5ErkJggg==")
+
+
+def letter_html(title: str, *, signed: bool = False) -> str:
+    """A bilingual sheet in the shape the app's two viewers read (marker included)."""
+    signature = f"<p>التوقيع:</p><img src='data:image/png;base64,{_SIGNATURE}' alt='signature'>" if signed else ""
+    return ("<html><head><meta charset='utf-8'></head><body dir='rtl'>"
+            f"<h1>{title}</h1><p>نص الخطاب التجريبي.</p>{signature}<!--ARIBA_EN-->"
+            f"<div dir='ltr'><h2>{title}</h2><p>Demo letter body.</p></div></body></html>")
+
+
+def _file(db, employee_id: str, request_id, document_type: str, file_name: str, mime: str,
+          data: bytes) -> str:
+    """One file filed under an employee: a leave's paper, or an ID scan nothing should open."""
+    row = db.execute("""INSERT INTO public.ariba_documents
+        (employee_id,request_id,document_type,file_name,mime_type,file_data,uploaded_by)
+        VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                     (employee_id, request_id, document_type, file_name, mime, data,
+                      employee_id)).fetchone()
+    return str(row[0])
+
+
+def _letter(db, employee_id: str, letter_type: str, title: str, stage: str, *, days_ago: int = 1,
+            signing: str | None = None, needs_manager: bool = False,
+            manager_id: str | None = None, reason: str | None = None) -> dict:
+    """One sent letter: the request, the HTML HR sent, an optional signed copy and its chain row.
+
+    `stage` is the request's `current_stage` (`employee`, `manager`, `hr`, `rejected`) and `signing`
+    is the chain row's own `stage` — `None` while the employee has not acted yet."""
+    sent = letter_html(title)
+    row = db.execute("""INSERT INTO public.workflow_requests
+        (employee_id,request_type,payload,current_stage,created_at,updated_at,completed_at)
+        VALUES (%s,%s,%s::jsonb,%s, now() - make_interval(days => %s), now() - make_interval(days => %s),
+                CASE WHEN %s = 'completed' THEN now() - make_interval(days => %s) END)
+        RETURNING id""",
+                     (employee_id, "template:" + letter_type,
+                      json.dumps({"title": title, "template_type": letter_type, "sent_by": HR_EMPLOYEE},
+                                 ensure_ascii=False),
+                      stage, days_ago, days_ago, stage, days_ago)).fetchone()
+    request_id = row[0]
+    db.execute("""INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment)
+        VALUES (%s,NULL,'hr','submitted',%s)""", (request_id, title))
+    letter_id = _file(db, employee_id, request_id, "letter", title + ".html", "text/html",
+                      sent.encode("utf-8"))
+    signed_id = None
+    if signing:
+        signed_id = _file(db, employee_id, request_id, "signed_document", title + "-signed.html",
+                          "text/html", letter_html(title, signed=True).encode("utf-8"))
+        db.execute("""INSERT INTO public.ariba_doc_signing
+            (request_id,document_id,employee_id,needs_manager,manager_id,stage,emp_signed_at,
+             mgr_signed_at,reject_reason,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s, now() - make_interval(days => %s),
+                    CASE WHEN %s IN ('hr','rejected') THEN now() - make_interval(days => %s) END, %s, now())""",
+                   (request_id, signed_id, employee_id, needs_manager, manager_id, signing, days_ago,
+                    signing, days_ago, reason))
+        if signing == "rejected":
+            db.execute("""INSERT INTO public.workflow_actions(request_id,actor_account_id,stage,action,comment)
+                VALUES (%s,NULL,'manager','rejected',%s)""", (request_id, reason))
+    return {"request_id": str(request_id), "letter_document_id": str(letter_id),
+            "signed_document_id": str(signed_id) if signed_id else None}
 
 
 def seed(db) -> dict:
@@ -252,14 +360,54 @@ def seed(db) -> dict:
                     notes="تقرير طبي - عملية جراحية")
     rejected = _request(db, REPORTS[1], "salary_advance", {"amount": 3000, "notes": "ظرف طارئ"}, "rejected", 12,
                         notes="ظرف طارئ")
+
+    # ---- Stage 5: the signing chain (S3–S12) -------------------------------------------------------
+    # `hr_closes` off and `onboarding` needing the manager — the seeded defaults the business runs on.
+    for code, name in LETTER_TYPES.items():
+        _lookup_row(db, "workflow_request_types", "template:" + code, name)
+    db.execute("""INSERT INTO public.ariba_app_settings(key,value,updated_by,updated_at)
+        VALUES ('doc_sign_cfg','{"hr_closes": false, "manager_types": ["onboarding"]}'::jsonb,
+                'manager_demo_seed',now())
+        ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()""")
+    letters = {
+        # waiting for DEMO-EMP1: signing it sends it to his manager (onboarding needs one)
+        "to_sign_with_manager": _letter(db, REPORTS[0], "onboarding", "خطاب تعريف بالعمل", "employee"),
+        # waiting for DEMO-EMP1: signing it closes it, because a salary certificate needs no manager
+        "to_sign_alone": _letter(db, REPORTS[0], "salary_cert", "شهادة راتب", "employee", days_ago=2),
+        # signed by DEMO-EMP2, waiting for DEMO-MGR — his queue, and the one document he may open
+        "waiting_for_manager": _letter(db, REPORTS[1], "onboarding", "خطاب تعريف بالعمل", "manager",
+                                       days_ago=3, signing="manager", needs_manager=True,
+                                       manager_id=MANAGER),
+        # signed by DEMO-EMP3 and his manager, waiting at HR (hr_closes is off: HR may not close it)
+        "waiting_for_hr": _letter(db, REPORTS[2], "onboarding", "خطاب تعريف بالعمل", "hr", days_ago=4,
+                                  signing="hr", needs_manager=True, manager_id=MANAGER),
+        # refused by DEMO-MGR: closed for good, and DEMO-EMP3 sees the reason
+        "rejected": _letter(db, REPORTS[2], "onboarding", "خطاب إنهاء", "rejected", days_ago=6,
+                            signing="rejected", needs_manager=True, manager_id=MANAGER,
+                            reason="البيانات غير مكتملة"),
+    }
+    # The paper behind two claims: DEMO-MGR may open both (leave attachments, all types), and the
+    # iqama scan below is the one document he may not open at all (S1's two doors).
+    files = {
+        "sick_report": _file(db, REPORTS[1], sick, "employee_upload", "sick-report.pdf",
+                             "application/pdf", _pdf("Demo sick leave report")),
+        "annual_ticket": _file(db, REPORTS[0], pending, "employee_upload", "annual-ticket.pdf",
+                               "application/pdf", _pdf("Demo annual leave ticket")),
+        "iqama_scan": _file(db, REPORTS[0], None, "identity", "iqama-scan.pdf",
+                            "application/pdf", _pdf("Demo iqama scan - HR only")),
+    }
+
     return {"accounts": [{"username": u, "employee_id": e, "role": r} for u, e, r in accounts],
+
             "manager": {"employee_id": MANAGER, "reports": list(REPORTS), "outsider": OUTSIDER,
                         "hr": HR_EMPLOYEE},
             "second_manager": {"employee_id": MANAGER2, "report": REPORT4},
             "delegated": [REPORTS[0]], "not_delegated": [REPORTS[1]],
             "requests": {"approved_leave": str(approved), "pending_leave": str(pending),
                          "sick_leave": str(sick), "rejected_advance": str(rejected)},
+            "letters": letters, "files": files,
             "goals": _goals(db), "tasks": _tasks(db)}
+
 
 
 def _target(db, employee_id: str, period_type: str, period_key: str, title: str, *,
@@ -450,6 +598,15 @@ def main() -> int:
     print("  demo_emp1 -> tasks: one open task to finish and one open invitation to accept or decline")
     print("  demo_hr   -> availability lists every active employee")
     print("  demo_mgr2 -> availability lists only DEMO-EMP4")
+
+    print("\n  the letter chain and the viewer (Stage 5):")
+    print("  demo_emp1 -> documents: two letters to sign — «خطاب تعريف بالعمل» (goes to his manager)")
+    print("             and «شهادة راتب» (closes at his own signature)")
+    print("  demo_mgr  -> documents: «مستندات بانتظار توقيعي كمدير» holds DEMO-EMP2's onboarding letter;")
+    print("             the sick-leave report and the annual-leave ticket open for him, the iqama scan is 404")
+    print("  demo_hr   -> /letters lists the letter waiting at HR; POST /letters/{id}/approve answers 409")
+    print("             not_waiting_for_hr while hr_closes is off (S10)")
+    print("  demo_emp3 -> documents: the refused letter, with the manager's reason")
     return 0
 
 

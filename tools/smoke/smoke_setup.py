@@ -110,6 +110,17 @@ def main() -> int:
         if len({a["employee_id"] for a in accounts}) != len(accounts):
             print("warning: smoke accounts share employees")
         db.execute("DELETE FROM public.ariba_sessions")
+        # `POST /letters` refuses a type that is not in the lookup (`canonical._require_lookup`), and the
+        # migrated database only carries `template:custom`. Stage 5's smoke sends real letter types, so
+        # the two the demo seed also adds are created here: without them the signing checks would skip
+        # themselves instead of failing, and a smoke that skips is worse than one that is red.
+        letter_types = {"onboarding": "خطاب تعريف بالعمل", "salary_cert": "شهادة راتب"}
+        for code, name_ar in letter_types.items():
+            db.execute(
+                """INSERT INTO public.workflow_request_types(code, name_ar) VALUES(%s, %s)
+                   ON CONFLICT (code) DO NOTHING""",
+                ("template:" + code, name_ar),
+            )
         by_label = {a["label"]: a for a in accounts}
         requester_emp = by_label["requester"]["employee_id"]
 
@@ -136,6 +147,7 @@ def main() -> int:
           f"manager={info['employee_with_manager']['manager_id']}")  # type: ignore[index]
     print(f"  work location: {info['work_location']['id']} "  # type: ignore[index]
           f"({info['work_location']['lat']},{info['work_location']['lng']})")  # type: ignore[index]
+    print("  letter types: " + ", ".join("template:" + code for code in letter_types))
     return 0
 
 

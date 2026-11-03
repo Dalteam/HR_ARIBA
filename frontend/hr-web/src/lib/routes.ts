@@ -3,7 +3,18 @@
 
 import type { Role } from "./api";
 
-export const FINANCE_ROUTES = ["/payroll", "/payslips", "/end-of-service", "/settlement"] as const;
+// The updated design's payroll-module pages (calculators, transfer file, provisions) sit with payroll.
+export const FINANCE_ROUTES = [
+  "/payroll",
+  "/payslips",
+  "/end-of-service",
+  "/settlement",
+  "/insurance-calculator",
+  "/salary-calculator",
+  "/tax-calculator",
+  "/salary-transfer",
+  "/provisions",
+] as const;
 export const HR_ROUTES = [
   "/dashboard",
   "/employees",
@@ -14,6 +25,16 @@ export const HR_ROUTES = [
   "/templates",
   "/reports",
   "/settings",
+  // the updated design's other new pages (docs/DESIGN_PORT.md)
+  "/candidates",
+  "/business-cards",
+  "/announcements",
+  "/targets",
+  "/evaluation",
+  "/team",
+  "/assets",
+  "/audit-log",
+  "/recycle-bin",
 ] as const;
 
 const HR_READERS: Role[] = ["hr", "ceo", "admin"];

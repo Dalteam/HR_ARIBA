@@ -1,0 +1,9 @@
+/* The ARIBA Two font files themselves (public/fonts). The updated design names the same font but only looks for it
+   installed on the computer (local()); these rules come last so the real files are used everywhere. */
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-weight:300 400;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-weight:500 600;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two';src:url('/fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-weight:700 900;font-style:normal;font-display:swap}
+@font-face{font-family:'ARIBA Two Light';src:url('/fonts/ARIBA_TWO_LIGHT.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'ARIBA Two Medium';src:url('/fonts/ARIBA_TWO_MEDIUM.ttf') format('truetype');font-display:swap}
+@font-face{font-family:'ARIBA Two Bold';src:url('/fonts/ARIBA_TWO_BOLD.ttf') format('truetype');font-display:swap}
+

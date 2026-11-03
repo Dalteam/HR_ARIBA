@@ -18,6 +18,10 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The side menu's "build …" stamp (the updated design's __BUILD__): the build time in Riyadh.
+  env: {
+    NEXT_PUBLIC_BUILD_STAMP: new Date().toLocaleString("sv-SE", { timeZone: "Asia/Riyadh" }).slice(0, 16),
+  },
   async headers() {
     return [
       {

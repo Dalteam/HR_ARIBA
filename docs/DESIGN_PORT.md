@@ -467,7 +467,7 @@ After each screen: `tsc` and lint; a full build at the end of the phase.
 | 11 | Documents | done | the design's top bar order (tabs, then print this tab, refresh, print all), tab labels without icons (🪪 on iqamas), and its **six** tabs; **waiting:** national address (`docsNationalAddress`) and social-insurance certificate (`docsGosiCert`): our documents registry does not return those fields yet (a small backend addition) |
 | 12 | Reports | done (rewritten) | the design's model: 11 cards in its order (adds **probation end**, 90 days from the joining date, and **medical insurance**); every report is columns + rows, with the design's column chooser (show / hide / reorder), all or chosen employees, totals, print and Excel. Data from our API as before. **Waiting:** the custom report builder (`reportCustom`, 2c), the comprehensive leave report (`reportLeaves`, 2c), the certificates report (`reportCerts`, needs a route listing every employee's documents). **Gaps:** a per-employee probation extension (no field); the report-language switch (our salary data has no English names). **Changed on purpose:** our old end-of-service report left out two specific people by name in the code; it now follows the design (no award for consultants, Tamheer and training staff; only amounts above zero), so the name list is gone. Alerts now include medical insurance |
 | 13 | Settings | done (3 Nov 2026) | the design's ten numbered sections (open state remembered), search and chips; our cards moved into them; **new on OUR routes:** direct-manager permissions with the company-wide team-salary switch (Stage 2), document signing types + the «HR closes» switch (Stage 5, off by default), push switch with the device count (Stage 6); read-only for everyone except HR and admin. **Waiting cards** (each names its stage): brand colours (`brandColors`), letterhead (`letterhead`), official / Ramadan schedule (`attSchedule`), leave policy (`lvCancel`), carry / accrual / special entitlements (`leaveRules`), punch logo (`punchLogo`), workflow and circles (`wfConfig`), mail accounts (`mailSettings`), sending mode (`exportEmail`), expiry alerts (`expiryAlerts`), application page (`cand`), roles matrix (`rolesMatrix`) |
-| 14 | Templates | done | already a close port: all eight of the design's documents (onboarding, custody, probation extension, probation end, contract end, clearance, experience, probation evaluation), the salary certificate with Arabic/English, bulk sending and the sent list. Added the design's **job-offer letter** card (**waiting:** `templatesOffer`, 2c). **Not added:** the e-mail button per document (sending off). **Left out on purpose:** the design's `aiBridge` link |
+| 14 | Templates | done | already a close port: all eight of the design's documents (onboarding, custody, probation extension, probation end, contract end, clearance, experience, probation evaluation), the salary certificate with Arabic/English, bulk sending and the sent list. Added the design's **job-offer letter** card (4 Nov 2026: `templatesOffer` is ready — a printed letter for a candidate, so it never goes through `/letters`). **Not added:** the e-mail button per document (sending off). **Left out on purpose:** the design's `aiBridge` link |
 | 15 | Employee web area `/me` | to do (ours only; restyle to the design's employee look in Phase 3) | |
 
 ### Phase 2b: attendance (3 Nov 2026, not committed)
@@ -549,7 +549,7 @@ refresh with two users; saving work locations, manager permissions, document sig
 | Evaluation | `/evaluation` | Stage 3: `/evaluations/…` | HR reads approved evaluations and approves submitted ones when HR is the configured approver (the default); «not found» when there is nothing HR may see. **Waiting:** HR writing an evaluation (`evalHrWrite`, owner decision b) |
 | Team & tasks | `/team` | Stage 4: `/team/availability`, `/tasks` | availability (private leave types arrive only as «إجازة»), tasks and meeting invitations, inbox / sent, 90-second refresh. «Back to work» skips Friday and Saturday only (the design also skips official holidays) |
 | Insurance calculator | `/insurance-calculator` | OUR payroll engine + `/settings/gosi-rates` + documents registry | the same rows, days and rates as the payroll; days editable per row; Excel, official print, the GOSI file (Excel / CSV) |
-| Salary calculator | `/salary-calculator` | the design's formulas + `/settings/gosi-rates` | four modes; the employee rate comes from OUR GOSI settings for the date (the design also has a built-in schedule; ours keeps one source). **Waiting:** «إنشاء عرض وظيفي» (`templatesOffer`) |
+| Salary calculator | `/salary-calculator` | the design's formulas + `/settings/gosi-rates` | four modes; the employee rate comes from OUR GOSI settings for the date (the design also has a built-in schedule; ours keeps one source). «إنشاء عرض وظيفي بهذه الأرقام» carries the components to the templates page's offer card (4 Nov 2026, see below) |
 | Tax calculator | `/tax-calculator` | arithmetic only | as in the design |
 | Salary transfer file | `/salary-transfer` | the month's saved payroll sheet + documents registry | payment-method and employer filters, ID and IBAN checks (mod-97), Excel and CSV |
 | Provisions report | `/provisions` | OUR payroll engine + `/leave/used-through` | end of service and leave value if every current employee left at month end, and the increase over last month |
@@ -574,11 +574,10 @@ part of the owner's test on the copy); the insurance and provisions figures agai
 - **Gaps (no list route returns them):** mobile, e-mail, religion, direct manager, number of dependents, bank account
   number. The certificates report still waits (`reportCerts`).
 
-### Still to do in Phase 2c (not started; each is its own round)
+### Still to do in Phase 2c (not started; its own round)
 
 | Item | Feature id | Why it was left |
 |---|---|---|
-| Job-offer letter | `templatesOffer` | a printed document with the salary calculator's figures; the design's `forms/extraCards.jsx` |
 | Stamp / signature on exports | `exportSeal` | the design's seal studio (drag-and-drop canvas) |
 
 ### Phase 2c: import employees from Excel (3 Nov 2026, not committed)
@@ -614,6 +613,34 @@ part of the owner's test on the copy); the insurance and provisions figures agai
   employee-number shapes — every row came out with the intended action.
 - **Not verified:** the dialog in a browser, and a real import writing to `ariba_design_port` (the owner's test on
   the copy); a workbook with several sheets or without shared strings was not tried.
+
+### Phase 2c: the job-offer letter (4 Nov 2026, not committed)
+
+- **Where:** the templates page's **عرض وظيفي لمرشح** card (`TF_OFFER_CARD`, the design's `pages/forms/index.jsx`
+  lines 125–143) — the one card of the design's grid we still drew as «غير متاح بعد». It is for a **candidate**, not
+  an employee: the candidate's name (the only required field), the five amounts with the name of the «other»
+  allowance, the automatic total, the position, the contract type, the proposed joining date, the annual leave, the
+  offer date, the medical coverage and the letter's language (Arabic / English).
+- **The letter** is `src/lib/calc/offer.ts`, a port of the design's `offerHtml` (`pages/forms/docs.js`): the date
+  line, «الأستاذ/ …», «يسعدنا أن نقدم لك العرض الوظيفي للعمل ضمن فريق شركة …» with the company name from
+  `/settings/company` (the leading «شركة » dropped, as the design does), the salary table with the total row
+  highlighted, «الإجازة السنوية 21 يوم عمل», the medical coverage, the contract type and the joining date, the
+  acceptance box (نعم / لا) and the candidate's name / date / signature line. It prints through `tfWrap` on our
+  letterhead with the HR signature block from Settings (`hrSign`), and keeps the design's DD/MM/YYYY dates and its
+  «ريال سعودي» / «SAR» amounts.
+- **Hand-off from the calculator:** «إنشاء عرض وظيفي بهذه الأرقام» stores the components and opens the templates
+  page, where the card fills itself once and puts the cursor on the candidate's name; «جلب من حاسبة الراتب»
+  refills from the latest result at any time. The design keeps both in a module object (`lib/offerDraft.js`); ours
+  is the same two slots in `sessionStorage` (`src/lib/offer-draft.ts`), because a component may not write a module
+  value under our compiler lint — and this way a reload keeps them.
+- **Honest differences:** the letter is **printed only** — there is no employee to send it to, so it never goes
+  through `/letters` and nothing is stored (the design sends documents to employees from their cards, never the
+  offer). In the English letter the signer's name and title stay as Settings has them, except that the Arabic title
+  is replaced by the signer's English title when one is saved. The wording, the order of the two languages and the
+  rest of the design's card are unchanged.
+- **Checks run:** `tsc` 0, lint 0, `npm run build` exit 0, legacy parity all suites match.
+- **Not verified:** the card, the hand-off and the printed letter (in the browser and as a PDF) — that is the
+  owner's test. The English letter reuses our Arabic signature block, so its look in English is worth a look too.
 
 ## Phase 3: the employee app (3 Nov 2026, started, not committed)
 

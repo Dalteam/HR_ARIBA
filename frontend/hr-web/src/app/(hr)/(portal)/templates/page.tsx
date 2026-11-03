@@ -1,16 +1,19 @@
 "use client";
 
 // Forms & letters (النماذج) — port of the legacy #pg-forms (V70 page + V71 send/status + V114 Arabic forms & contract-end
-// notice + V117 salary certificate + V120 HR signer). One shared employee selector; each card prints on the company
-// letterhead and can be sent to the employee to approve or object in their app.
+// notice + V117 salary certificate + V120 HR signer), plus the updated design's job-offer letter for a candidate
+// (pages/forms/index.jsx TF_OFFER_CARD, lib/calc/offer.ts — printed only, it has no employee to send to). One shared
+// employee selector; each card prints on the company letterhead and can be sent to the employee to approve or object.
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast";
 import { getEmployee, listAllEmployees } from "@/lib/employees";
 import type { Employee, EmployeeListItem } from "@/lib/api";
 import { request } from "@/lib/api";
-import { getSheet } from "@/lib/settings";
+import { getCompany, getSheet } from "@/lib/settings";
 import { buildEnglish, buildSalaryCertEn } from "@/lib/calc/forms-en";
-import { FEATURES } from "@/lib/features";
+import { buildOffer, type OfferCompany, type OfferFields } from "@/lib/calc/offer";
+import { todayIso } from "@/lib/format";
+import { getLastOffer, takeOfferFigures, type OfferFigures } from "@/lib/offer-draft";
 import {
   acctFromIban,
   buildClearance,
@@ -51,6 +54,26 @@ const STATUS: Record<string, React.ReactNode> = {
   pending: <span className="b ba">⏳ بانتظار الموظف</span>,
   approved: <span className="b bg"><i className="ti ti-circle-check" aria-hidden /> تمت الموافقة</span>,
   rejected: <span className="b br"><i className="ti ti-alert-triangle" aria-hidden /> معترَض عليه</span>,
+};
+/** the job-offer card's five amounts, with the design's element ids */
+const OFFER_AMOUNTS: [keyof Pick<OfferFields, "basic" | "housing" | "transport" | "project" | "other">, string, string][] = [
+  ["basic", "OF_BASIC", "الراتب الأساسي"],
+  ["housing", "OF_HOU", "بدل السكن"],
+  ["transport", "OF_TRA", "بدل المواصلات"],
+  ["project", "OF_PRJ", "بدل المشروع"],
+  ["other", "OF_OTH", "بدلات أخرى"],
+];
+/** the calculator's figures as the card's own values (two decimals, as the design rounds them) */
+const figuresPatch = (d: OfferFigures): Partial<OfferFields> => {
+  const rr = (n: number) => String(Math.round((Number(n) || 0) * 100) / 100);
+  return {
+    basic: rr(d.basic),
+    housing: rr(d.housing),
+    transport: rr(d.transport),
+    project: rr(d.project),
+    other: rr(d.other),
+    otherLabel: d.otherLabel ?? "",
+  };
 };
 
 interface LetterRow { id: string; employee_name: string; type: string; title: string; status: string; rejection_reason: string | null; created_at: string }
@@ -101,9 +124,9 @@ function Buttons({ label, onPrint, onSend }: { label: string; onPrint: () => voi
   );
 }
 
-function Card({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+function Card({ title, icon, children, id }: { title: string; icon: string; children: React.ReactNode; id?: string }) {
   return (
-    <div className="card" style={{ padding: 12 }}>
+    <div className="card" style={{ padding: 12 }} id={id}>
       <div className="ct" style={{ marginBottom: 8 }}>
         <i className={"ti " + icon} /> {title}
       </div>
@@ -170,6 +193,12 @@ export default function Page() {
   const [f7, setF7] = useState({ join: "", end: "", rec: "", decision: "", scores: [70, 70, 70, 70, 70] });
   const [ce, setCe] = useState({ join: "", last: "", law: "", other: "", ref: "", notes: "" });
   const [sc, setSc] = useState({ to: "", toEn: "", place: "", placeEn: "", bankOn: false, seal: true, ref: "", lang: "ar" });
+  // the job-offer letter's card (the design's TF_OFFER_CARD): a candidate with no employee record
+  const [of, setOf] = useState<OfferFields>({
+    name: "", basic: "", housing: "", transport: "", project: "", other: "", otherLabel: "", job: "", contractType: "",
+    joinDate: "", leave: "21", date: todayIso(), medical: "", lang: "ar",
+  });
+  const [company, setCompany] = useState<OfferCompany>({ nameAr: "", nameEn: "" });
 
   useEffect(() => {
     let alive = true;
@@ -177,11 +206,13 @@ export default function Page() {
       listAllEmployees({ sort: "name_ar" }),
       getSheet<Signer>("hr_signer").catch(() => ({ data: null })),
       request<LetterRow[]>("/letters").catch(() => []),
-    ]).then(([p, s, l]) => {
+      getCompany().catch(() => null),
+    ]).then(([p, s, l, co]) => {
       if (!alive) return;
       setEmps(p.items);
       if (s.data) setSigner({ ...DEFAULT_SIGNER, ...s.data });
       setLetters(l);
+      if (co) setCompany({ nameAr: co.company_name_ar ?? "", nameEn: co.company_name_en ?? "" });
     });
     return () => {
       alive = false;
@@ -198,6 +229,36 @@ export default function Page() {
       alive = false;
     };
   }, [empId, toast]);
+
+  /** the salary calculator's figures → the offer card (the design's offerDraft: `data` once, `last` on demand) */
+  function setOfAmount(k: (typeof OFFER_AMOUNTS)[number][0], v: string) {
+    setOf((o) => ({ ...o, [k]: v }));
+  }
+  function fillFrom(d: OfferFigures) {
+    setOf((o) => ({ ...o, ...figuresPatch(d) }));
+  }
+  useEffect(() => {
+    // the calculator's figures, if HR pressed «إنشاء عرض وظيفي بهذه الأرقام» there (the design's offerDraft.data, once
+    // only); sessionStorage is not there during the server render, so it is read here
+    const d = takeOfferFigures();
+    if (!d) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOf((o) => ({ ...o, ...figuresPatch(d) }));
+    const t = window.setTimeout(() => {
+      const el = document.getElementById("OF_NAME");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, []);
+  function offerPrint() {
+    const b = buildOffer(of, signer, company);
+    if (typeof b === "string") return toast(b, "err");
+    printDoc(`${b.title} — ${of.name.trim()}`, b.html);
+  }
+  const ofGross = [of.basic, of.housing, of.transport, of.project, of.other].reduce<number>((a, v) => a + (Number(v) || 0), 0);
 
   function need(): FormEmp | null {
     if (!emp || emp.id !== empId) {
@@ -480,11 +541,71 @@ export default function Page() {
           <Buttons label="طباعة إشعار انتهاء العقد" onPrint={() => out(builders.contract_end(), "print")} onSend={() => out(builders.contract_end(), "send")} />
         </Card>
 
-        {/* the updated design's job-offer letter for a candidate; waits for its step (lib/features.ts) */}
-        <Card title="عرض وظيفي لمرشح" icon="ti-briefcase">
-          <div className="al alb">
-            <i className="ti ti-hourglass" aria-hidden />
-            <div><strong>غير متاح بعد</strong><div>يُفتح بعد {FEATURES.templatesOffer.waits?.ar}</div></div>
+        {/* the updated design's job-offer letter for a candidate (pages/forms/index.jsx TF_OFFER_CARD) */}
+        <Card id="TF_OFFER_CARD" title="عرض وظيفي لمرشح" icon="ti-briefcase">
+          <Field label="اسم المرشح *">
+            <input id="OF_NAME" style={STY} value={of.name} onChange={(e) => setOf({ ...of, name: e.target.value })} />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {OFFER_AMOUNTS.map(([k, id, label]) => (
+              <Field key={k} label={label}>
+                <input type="number" step="0.01" id={id} style={STY} value={String(of[k])} onChange={(e) => setOfAmount(k, e.target.value)} />
+              </Field>
+            ))}
+            <Field label="نوع البدل الآخر">
+              <input style={STY} value={of.otherLabel} onChange={(e) => setOf({ ...of, otherLabel: e.target.value })} />
+            </Field>
+            <Field label="الإجمالي (تلقائي)">
+              <input id="OF_GROSS" readOnly style={{ ...STY, opacity: 0.8 }} value={ofGross ? ofGross.toFixed(2) : ""} />
+            </Field>
+          </div>
+          <Field label="الوظيفة (اختياري)">
+            <input style={STY} value={of.job} onChange={(e) => setOf({ ...of, job: e.target.value })} />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <Field label="نوع العقد (اختياري)">
+              <select style={STY} value={of.contractType} onChange={(e) => setOf({ ...of, contractType: e.target.value })}>
+                <option value="">—</option>
+                <option>عقد محدد المدة</option>
+                <option>عقد غير محدد المدة</option>
+                <option>فترة تجربة 90 يوم</option>
+              </select>
+            </Field>
+            <Field label="تاريخ الانضمام المقترح">
+              <DateField style={STY} value={of.joinDate} onChange={(v) => setOf({ ...of, joinDate: v })} />
+            </Field>
+            <Field label="الإجازة السنوية (يوم)">
+              <input type="number" style={STY} value={String(of.leave)} onChange={(e) => setOf({ ...of, leave: e.target.value })} />
+            </Field>
+            <Field label="تاريخ العرض">
+              <DateField style={STY} value={of.date} onChange={(v) => setOf({ ...of, date: v })} />
+            </Field>
+          </div>
+          <Field label="التغطية الطبية">
+            <input style={STY} placeholder="حسب سياسة الشركة" value={of.medical} onChange={(e) => setOf({ ...of, medical: e.target.value })} />
+          </Field>
+          <Field label="لغة العرض">
+            <select style={STY} value={of.lang} onChange={(e) => setOf({ ...of, lang: e.target.value === "en" ? "en" : "ar" })}>
+              <option value="ar">عربي</option>
+              <option value="en">English</option>
+            </select>
+          </Field>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" className="btn bgr bsm" id="OF_PRINT" onClick={offerPrint}>
+              <i className="ti ti-printer" /> طباعة العرض الوظيفي
+            </button>
+            <button
+              type="button"
+              className="btn bsm"
+              id="OF_FROMCALC"
+              onClick={() => {
+                const d = getLastOffer();
+                if (!d) return toast("احسب في حاسبة الراتب الأول", "err");
+                fillFrom(d);
+              }}
+            >
+              جلب من حاسبة الراتب
+            </button>
           </div>
         </Card>
 

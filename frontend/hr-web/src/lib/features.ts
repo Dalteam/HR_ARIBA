@@ -47,7 +47,7 @@ export const FEATURES = {
   reportCerts: backend("مسار يجمع وثائق كل الموظفين (سجل الشهادات)", "a route listing every employee's documents (certificates)"),
   reportLeaves: { status: "ready" } as Feature,
   /** templates: the design's job-offer letter for a candidate (a printed document, no backend) */
-  templatesOffer: ui("نقل خطاب العرض الوظيفي (المرحلة 2c)", "porting the job-offer letter (Phase 2c)"),
+  templatesOffer: { status: "ready" } as Feature,
   /** attendance: the design's shift schedule (official / Ramadan hours) behind lateness, required hours and the shift column */
   attSchedule: backend("مرحلة الساعات المرنة ودوام رمضان", "the flexible-hours / Ramadan stage"),
   /** leaves: HR returns a request to the direct manager with a note (the design's hr_return_to_manager) */

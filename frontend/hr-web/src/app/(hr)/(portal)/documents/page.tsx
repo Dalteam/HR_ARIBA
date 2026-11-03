@@ -7,16 +7,21 @@ import { PageState } from "@/components/hr/not-built";
 import { useToast } from "@/components/common/toast";
 import { ddmmyyyy } from "@/lib/format";
 import { printHtml } from "@/lib/print";
+import { FEATURES, type FeatureId } from "@/lib/features";
 import { listDocRegistry, type DocRow } from "@/lib/registry";
 import { printIcon } from "@/lib/print-icons";
 
-type Tab = "dc1" | "dc2" | "dc3" | "dc4";
+type Tab = "dc1" | "dc2" | "dc3" | "dc4" | "dc5" | "dc6";
 const TABS: [Tab, string, string][] = [
-  ["dc1", "الإقامات", "ti-id"],
+  ["dc1", "🪪 الإقامات", "ti-id"],
   ["dc2", "الجوازات", "ti-world"],
   ["dc3", "التأمين الطبي", "ti-heart-plus"],
   ["dc4", "العقود", "ti-file-certificate"],
+  // the updated design's two extra tabs; our registry API does not return these fields yet (lib/features.ts)
+  ["dc5", "العنوان الوطني", "ti-map-pin"],
+  ["dc6", "شهادة التأمينات", "ti-shield-check"],
 ];
+const WAITING: Partial<Record<Tab, FeatureId>> = { dc5: "docsNationalAddress", dc6: "docsGosiCert" };
 const fD = (d: string | null) => (d ? ddmmyyyy(d) : "—");
 
 /** Legacy dBadge. */
@@ -41,7 +46,7 @@ export default function Page() {
   const [rows, setRows] = useState<DocRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const tables = useRef<Record<Tab, HTMLTableElement | null>>({ dc1: null, dc2: null, dc3: null, dc4: null });
+  const tables = useRef<Record<Tab, HTMLTableElement | null>>({ dc1: null, dc2: null, dc3: null, dc4: null, dc5: null, dc6: null });
 
   useEffect(() => {
     let alive = true;
@@ -77,22 +82,30 @@ export default function Page() {
 
   return (
     <div className="pg on" id="pg-docs">
-      <div className="tbar">
-        <button type="button" id="docsRefreshBtn62" className="btn bsm" style={{ marginRight: 6, background: "var(--bl)", color: "#fff" }} onClick={refresh}>
-          <i className="ti ti-refresh" /> تحديث البيانات
-        </button>
-        {TABS.map(([k, l, ic]) => (
-          <div key={k} className={"tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>
-            <i className={`ti ${ic}`} aria-hidden /> {l}
+      <div className="tbar" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        {TABS.map(([k, l]) => (
+          <div key={k} id={"t_" + k} className={"tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>
+            {l}
           </div>
         ))}
-        <button type="button" className="btn bsm" onClick={printTab} style={{ marginRight: "auto", background: "var(--gr)", color: "#fff" }}>
+        <button type="button" className="btn bsm" onClick={printTab} style={{ marginInlineStart: "auto", background: "var(--gr)", color: "#fff" }}>
           <i className="ti ti-printer" /> طباعة هذا التاب
+        </button>
+        <button type="button" className="btn bsm" id="DOC_REFRESH" onClick={refresh}>
+          <i className="ti ti-refresh" /> تحديث البيانات
         </button>
         <button type="button" className="btn bsm" onClick={printAll}>
           <i className="ti ti-printer" /> طباعة الكل
         </button>
       </div>
+      {WAITING[tab] && (() => {
+        const w = FEATURES[WAITING[tab]!].waits;
+        return (
+          <div className="card">
+            <div className="al alb"><i className="ti ti-hourglass" aria-hidden /><div><strong>غير متاح بعد</strong><div>يُفتح بعد {w?.ar}</div></div></div>
+          </div>
+        );
+      })()}
       {!rows ? (
         <PageState loading={!error} error={error} onRetry={() => setTick((t) => t + 1)} />
       ) : (

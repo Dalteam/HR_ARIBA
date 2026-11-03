@@ -32,6 +32,9 @@ const box = (c: string): React.CSSProperties => ({
   textAlign: "center",
 });
 
+// The updated design: no end-of-service award for consultants, Tamheer and training staff; they are left out and counted.
+const NO_EOS = ["consultant", "tamheer", "training"];
+
 export default function Page() {
   const [rows, setRows] = useState<SalaryBasisRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -49,12 +52,19 @@ export default function Page() {
   };
   useEffect(load, []);
 
-  const all = useMemo(() => current(rows ?? []).filter((e) => e.category !== "hourly"), [rows]);
+  const live = useMemo(() => current(rows ?? []).filter((e) => e.category !== "hourly"), [rows]);
+  const all = useMemo(() => live.filter((e) => !NO_EOS.includes(e.category)), [live]);
+  const nExempt = live.length - all.length;
+  const [picked, setPicked] = useState("");
   const employers = useMemo(
     () => [...new Set(all.filter((e) => !e.exclude_from_eos).map((e) => e.workplace ?? ""))].sort(),
     [all],
   );
-  const emps = all.filter((e) => (employer ? e.workplace === employer : true));
+  const pickList = useMemo(
+    () => all.filter((e) => (employer ? e.workplace === employer : true)).sort((a, b) => a.name_ar.localeCompare(b.name_ar, "ar")),
+    [all, employer],
+  );
+  const emps = useMemo(() => pickList.filter((e) => (picked ? e.id === picked : true)), [pickList, picked]);
 
   const { body, totBase, totEOS } = useMemo(() => {
     const endD = new Date(endDate || new Date().toISOString().slice(0, 10));
@@ -126,7 +136,7 @@ export default function Page() {
             </option>
           ))}
         </select>
-        <select id="eosEmpFilter" value={employer} onChange={(e) => setEmployer(e.target.value)} style={{ fontSize: 12, maxWidth: 180, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--bd)", background: "var(--c2)", color: "var(--tx)" }}>
+        <select id="eosEmpFilter" value={employer} onChange={(e) => { setEmployer(e.target.value); setPicked(""); }} style={{ fontSize: 12, maxWidth: 180, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--bd)", background: "var(--c2)", color: "var(--tx)" }}>
           <option value="">كل جهات العمل</option>
           {employers.map((em) => (
             <option key={em} value={em}>
@@ -134,15 +144,26 @@ export default function Page() {
             </option>
           ))}
         </select>
+        <select id="eosEmpSel" value={picked} onChange={(e) => setPicked(e.target.value)} style={{ fontSize: 12, minWidth: 200, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--bd)", background: "var(--c2)", color: "var(--tx)" }}>
+          <option value="">كل الموظفين</option>
+          {pickList.map((e) => (
+            <option key={e.id} value={e.id}>{(e.emp_no ? e.emp_no + " — " : "") + e.name_ar}</option>
+          ))}
+        </select>
         <button type="button" className="btn bsm" style={{ background: "var(--pu)", color: "#fff" }} onClick={exportEOS}>
           <i className="ti ti-file-spreadsheet" /> Excel
         </button>
       </div>
+      {nExempt > 0 && (
+        <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>
+          <i className="ti ti-info-circle" /> لا تُحسب مكافأة نهاية خدمة للاستشاريين والتمهير والتدريب ({nExempt} موظف مستبعد).
+        </div>
+      )}
       {!rows ? (
         <PageState loading={!error} error={error} onRetry={load} />
       ) : (
         <>
-          <div id="eosKPIs" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 10 }}>
+          <div id="eosKPIs" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 10 }}>
             <div style={box("var(--bl)")}>
               <div style={{ fontSize: 10, color: "var(--mu)" }}>القانون</div>
               <div style={{ fontSize: 13, fontWeight: 800, color: "var(--bl)" }}>{EOS_LAW_NAMES[law]}</div>

@@ -10,6 +10,7 @@ import type { Employee, EmployeeListItem } from "@/lib/api";
 import { request } from "@/lib/api";
 import { getSheet } from "@/lib/settings";
 import { buildEnglish, buildSalaryCertEn } from "@/lib/calc/forms-en";
+import { FEATURES } from "@/lib/features";
 import {
   acctFromIban,
   buildClearance,
@@ -477,6 +478,14 @@ export default function Page() {
           <Field label="تاريخ الاستقالة / الاتفاق (اختياري)"><DateField style={STY} value={ce.ref} onChange={(v) => setCe({ ...ce, ref: v })} /></Field>
           <Field label="ملاحظات (اختياري)"><textarea rows={2} style={STY} value={ce.notes} onChange={(e) => setCe({ ...ce, notes: e.target.value })} /></Field>
           <Buttons label="طباعة إشعار انتهاء العقد" onPrint={() => out(builders.contract_end(), "print")} onSend={() => out(builders.contract_end(), "send")} />
+        </Card>
+
+        {/* the updated design's job-offer letter for a candidate; waits for its step (lib/features.ts) */}
+        <Card title="عرض وظيفي لمرشح" icon="ti-briefcase">
+          <div className="al alb">
+            <i className="ti ti-hourglass" aria-hidden />
+            <div><strong>غير متاح بعد</strong><div>يُفتح بعد {FEATURES.templatesOffer.waits?.ar}</div></div>
+          </div>
         </Card>
 
         <Card title="خطاب تعريف راتب" icon="ti-file-certificate">

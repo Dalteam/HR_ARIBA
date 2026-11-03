@@ -161,13 +161,13 @@ export default function Page() {
   return (
     <div className="pg on" id="pg-slip">
       <div className="card" style={{ padding: 0 }}>
-        <div className="ch" style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div className="ch" style={{ padding: "12px 14px", flexWrap: "wrap", gap: 8 }}>
           <div className="ct" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <i className="ti ti-receipt" />
             <span id="t_slip">كشف الراتب التفصيلي</span>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <select value={empId} onChange={(e) => setEmpId(e.target.value)} style={{ maxWidth: 220 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", alignItems: "center", width: "100%" }}>
+            <select id="SLE" value={empId} onChange={(e) => setEmpId(e.target.value)} style={{ flex: "2 1 0", minWidth: 0 }}>
               <option value="">— اختر موظفاً —</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -175,22 +175,22 @@ export default function Page() {
                 </option>
               ))}
             </select>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ maxWidth: 120 }}>
+            <select id="SLM" value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ flex: "1 1 0", minWidth: 0 }}>
               {MONTHS_AR.slice(1).map((name, i) => (
                 <option key={i + 1} value={i + 1}>
                   {name}
                 </option>
               ))}
             </select>
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ maxWidth: 100 }}>
+            <select id="SLY" value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ flex: "0 1 80px", minWidth: 0 }}>
               {Array.from({ length: 26 }, (_, i) => now.getFullYear() - 15 + i).map((y) => (
                 <option key={y} value={y}>
                   {y}
                 </option>
               ))}
             </select>
-            <button type="button" className="btn bsm" style={{ background: "#014D3D", color: "#fff", whiteSpace: "nowrap" }} onClick={printOfficial}>
-              <i className="ti ti-file-certificate" /> طباعة رسمية
+            <button type="button" className="btn bpl bsm" id="SL_PRINT" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }} disabled={!emp || !rowData} onClick={printOfficial}>
+              <i className="ti ti-printer" /> طباعة رسمية
             </button>
           </div>
         </div>

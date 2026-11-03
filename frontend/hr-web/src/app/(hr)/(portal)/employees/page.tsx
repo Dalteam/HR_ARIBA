@@ -14,6 +14,7 @@ import { initials, sar, sarFixed } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
+import { FEATURES, isReady, type FeatureId } from "@/lib/features";
 
 // The prototype's six category tabs, in order.
 const TABS: [EmployeeTab, MessageKey][] = [
@@ -25,6 +26,8 @@ const TABS: [EmployeeTab, MessageKey][] = [
   ["consultants", "emps.consultant"],
 ];
 const PAGE = 100;
+// the design alternates the two brand greens for the avatars
+const avColor = (id: string) => ([...id].reduce((n, c) => n + c.charCodeAt(0), 0) % 2 ? "#29B35E" : "#014D3D");
 
 export default function EmployeesPage() {
   const { t, lang } = useLocale();
@@ -63,6 +66,10 @@ export default function EmployeesPage() {
     }
   }
 
+  // a button whose step is not done yet says so instead of doing nothing (lib/features.ts)
+  const waiting = (id: FeatureId) =>
+    toast((lang === "en" ? "Not available yet — opens after " + FEATURES[id].waits?.en : "غير متاح بعد — يُفتح بعد " + FEATURES[id].waits?.ar), "info");
+
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
@@ -86,6 +93,11 @@ export default function EmployeesPage() {
             <i className="ti ti-plus" /> <span id="t_add">{t("emps.add")}</span>
           </Link>
         )}
+        {canEdit && (
+          <button type="button" className="btn bsm" id="EI_OPEN" onClick={() => waiting("empImport")} style={{ opacity: isReady("empImport") ? 1 : 0.6 }}>
+            <i className="ti ti-file-import" /> <span>{lang === "en" ? "Import from Excel" : "استيراد من Excel"}</span>
+          </button>
+        )}
       </div>
       <div className="card" style={{ padding: 0 }}>
         <div className="tw">
@@ -98,18 +110,18 @@ export default function EmployeesPage() {
               </tr>
               {list.data?.items.map((e) => (
                 <tr key={e.id} className={e.is_terminated ? "terminated-row" : undefined}>
-                  <td>{e.emp_no}</td>
+                  <td style={{ color: "var(--dm)", fontWeight: 700 }}>{e.emp_no}</td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div className="av" style={{ width: 28, height: 28, background: "#29B35E22", color: "#29B35E", fontSize: 10 }}>{initials(e.name_ar)}</div>
+                      <div className="av" style={{ width: 28, height: 28, background: avColor(e.id) + "22", color: avColor(e.id), fontSize: 10 }}>{initials(e.name_ar)}</div>
                       <div>
                         <div style={{ fontWeight: 600 }}>{nm(e)}</div>
                         <div style={{ fontSize: 10, color: "var(--dm)" }}>{t("emps.empNo", { no: e.emp_no })}</div>
-                        {e.is_terminated && <span className="b ba">{t("emps.terminated")}</span>}
+                        {e.is_terminated && <span style={{ display: "inline-block", marginTop: 3, padding: "2px 6px", borderRadius: 6, background: "#f3e9d0", color: "var(--ariba-dark,#014D3D)", fontSize: 9, fontWeight: 800 }}>{t("emps.terminated")}</span>}
                       </div>
                     </div>
                   </td>
-                  <td>{e.job_title || "—"}</td>
+                  <td style={{ color: "var(--mu)" }}>{e.job_title || "—"}</td>
                   <td><span className="b bb">{lk(e.workplace)}</span></td>
                   <td>{lk(e.department)}</td>
                   <td>{lk(e.nationality)}</td>
@@ -120,10 +132,11 @@ export default function EmployeesPage() {
                   <td style={{ color: "var(--cy)", fontWeight: 600 }}>{e.net_salary === null ? "—" : sarFixed(e.net_salary)}</td>
                   <td>
                     <button type="button" className="btn bsm" onClick={() => setDetails(e.id)} aria-label="view"><i className="ti ti-eye" /></button>{" "}
-                    <Link href={`/employees/${e.id}`} className="btn bsm" aria-label="edit"><i className="ti ti-edit" /></Link>{" "}
+                    {canEdit && <><Link href={`/employees/${e.id}`} className="btn bsm" title={lang === "en" ? "Edit" : "تعديل"} aria-label="edit"><i className="ti ti-edit" /></Link>{" "}</>}
+                    {canEdit && <><button type="button" className="btn bsm" style={{ color: "var(--rd)", opacity: 0.7 }} title={lang === "en" ? "Delete" : "حذف"} onClick={() => waiting("empDelete")}><i className="ti ti-trash" /></button>{" "}</>}
                     {canEdit && !e.is_terminated && (
-                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => setTerminate({ id: e.id, name: nm(e) })} aria-label="end service">
-                        <i className="ti ti-trash" />
+                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} title={lang === "en" ? "End service" : "إنهاء خدمة"} onClick={() => setTerminate({ id: e.id, name: nm(e) })} aria-label="end service">
+                        <i className="ti ti-user-off" />
                       </button>
                     )}
                     {canEdit && e.is_terminated && (

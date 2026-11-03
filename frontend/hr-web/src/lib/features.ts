@@ -30,6 +30,20 @@ export const FEATURES = {
   assets: backend("مرحلة الأصول والعهد", "the assets and custody stage"),
   audit: backend("مرحلة عارض سجل التعديلات", "the audit-log viewer stage"),
   bin: backend("مرحلة سلة المهملات", "the recycle-bin stage"),
+  // ---- buttons inside existing screens (Phase 2b) ----
+  /** employees list: delete an employee (the design archives it to the recycle bin) */
+  empDelete: backend("مرحلة سلة المهملات", "the recycle-bin stage"),
+  /** employees list: import employees from an Excel file */
+  empImport: ui("نقل شاشة الاستيراد من Excel (المرحلة 2c)", "porting the Excel import screen (Phase 2c)"),
+  /** documents: the design's national-address and GOSI-certificate tabs (our registry does not return them yet) */
+  docsNationalAddress: backend("إضافة حقل العنوان الوطني إلى سجل الوثائق", "adding the national address to the documents registry"),
+  docsGosiCert: backend("إضافة حقل شهادة التأمينات إلى سجل الوثائق", "adding the GOSI certificate to the documents registry"),
+  /** reports: the design's custom-report builder, certificates report and comprehensive leave report */
+  reportCustom: ui("نقل منشئ التقارير المخصص (المرحلة 2c)", "porting the custom report builder (Phase 2c)"),
+  reportCerts: backend("مسار يجمع وثائق كل الموظفين (سجل الشهادات)", "a route listing every employee's documents (certificates)"),
+  reportLeaves: ui("نقل تقرير الإجازات الشامل (المرحلة 2c)", "porting the comprehensive leave report (Phase 2c)"),
+  /** templates: the design's job-offer letter for a candidate (a printed document, no backend) */
+  templatesOffer: ui("نقل خطاب العرض الوظيفي (المرحلة 2c)", "porting the job-offer letter (Phase 2c)"),
   // ---- shell features of the design ----
   /** the design's per-section "recent changes" strip above every page */
   sectionAudit: backend("مرحلة عارض سجل التعديلات", "the audit-log viewer stage"),

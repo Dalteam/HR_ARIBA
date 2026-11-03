@@ -444,3 +444,61 @@ zod only checks forms in the browser here).
 
 **Noticed, not changed:** `GET /employees/counts` answers any signed-in account with company-wide
 totals (numbers only).
+
+## Phase 2b progress (restyle the existing screens to the design; not committed)
+
+Method per screen: put the design's page (`ARIBA_HR_React/src/pages/…`) next to ours, keep our data
+layer and privacy rules, copy the design's layout, labels, colours and buttons. A design button whose step
+is not done yet shows "not available yet" with its reason from `lib/features.ts` (never a silent no-op).
+After each screen: `tsc` and lint; a full build at the end of the phase.
+
+| # | Screen | Status | Notes |
+|---|---|---|---|
+| 1 | Dashboard | done | design colours (brand variables, purple payroll tile, bright-green female count), all departments with %, the three side counters with the design's emoji and colours, coloured alert bars, the pending queue listed (name, type, stage, date; refreshed every 20 s; only for accounts allowed to list requests), salary summary = count + total (total only when the API sends it). **Gap:** the design's company-wide "net" total is not in our API |
+| 2 | Employees list | done | muted job title, the design's terminated tag, alternating avatar colours, edit only for editors, end-of-service with the design's icon; **waiting:** delete employee (`empDelete`, recycle-bin stage) and import from Excel (`empImport`, Phase 2c) |
+| 3 | Employee form / details | to do | |
+| 4 | Attendance | next (analysed, plan below) | 85 of the design's 145 labels missing; see "Plan for the remaining 2b screens" |
+| 5 | GPS locations | done | the design's header (title + small add button) and blue info note, its card width; add / edit / delete only for editors (HR, admin), as in the design. Already ours and kept: the card grid, Google Maps link, map preview, linked-employees summary |
+| 6 | Leaves & requests | to do | |
+| 7 | Payroll | to do | |
+| 8 | Salary slip | done | the design's one-row header (employee, month, year in fixed proportions) and its print button (disabled until a slip is shown). The slip body already matched. Not ported: the design's Egyptian-tax breakdown box (our payslip data has no Egyptian tax fields; shown only for Egypt-paid staff) |
+| 9 | End of service | done | the design's employee picker beside the employer filter, KPI tiles that wrap; **changes the totals:** as in the design, consultants, Tamheer and training staff get no end-of-service award and are left out, with a note saying how many |
+| 10 | Settlement | done | already matched (same fields, ids and official print; 47 of the design's 55 labels); added the design's e-mail button (**waiting:** `exportEmail`, sending off) and its «(اختياري)» label. **Remaining:** the design asks Arabic or English before the official print (`askLang`); ours prints Arabic only. **Left out on purpose:** the design's `aiBridge` link (the AI assistant filling this form) |
+| 11 | Documents | done | the design's top bar order (tabs, then print this tab, refresh, print all), tab labels without icons (🪪 on iqamas), and its **six** tabs; **waiting:** national address (`docsNationalAddress`) and social-insurance certificate (`docsGosiCert`): our documents registry does not return those fields yet (a small backend addition) |
+| 12 | Reports | done (rewritten) | the design's model: 11 cards in its order (adds **probation end**, 90 days from the joining date, and **medical insurance**); every report is columns + rows, with the design's column chooser (show / hide / reorder), all or chosen employees, totals, print and Excel. Data from our API as before. **Waiting:** the custom report builder (`reportCustom`, 2c), the comprehensive leave report (`reportLeaves`, 2c), the certificates report (`reportCerts`, needs a route listing every employee's documents). **Gaps:** a per-employee probation extension (no field); the report-language switch (our salary data has no English names). **Changed on purpose:** our old end-of-service report left out two specific people by name in the code; it now follows the design (no award for consultants, Tamheer and training staff; only amounts above zero), so the name list is gone. Alerts now include medical insurance |
+| 13 | Settings | to do | |
+| 14 | Templates | done | already a close port: all eight of the design's documents (onboarding, custody, probation extension, probation end, contract end, clearance, experience, probation evaluation), the salary certificate with Arabic/English, bulk sending and the sent list. Added the design's **job-offer letter** card (**waiting:** `templatesOffer`, 2c). **Not added:** the e-mail button per document (sending off). **Left out on purpose:** the design's `aiBridge` link |
+| 15 | Employee web area `/me` | to do (ours only; restyle to the design's employee look in Phase 3) | |
+
+### Plan for the remaining 2b screens (written 3 Nov 2026, to resume in a fresh session)
+
+The design's sources are in the scratch viewer copy (`ARIBA_HR_React/src/pages/…`); the original folder stays
+read-only. Order and method:
+
+1. **Attendance** (`attendance/index.jsx` 116 + `AttReport.jsx` 355 + `engines/attendance.js` 103 lines).
+   - Port the design's day classifier (present / late / absent / leave / remote / day off / pending) to
+     `src/lib/attendance-engine.ts`. It is fed by OUR `/attendance/range`, approved leaves (`/leave/requests`),
+     `/holidays` and `/settings/attendance` (work days, start time, tolerance).
+   - Then the report builder on top:
+     - presets and the column catalogue (summary, day detail);
+     - sections: KPIs, department summary, rankings, daily trend, weekday analysis, the absence / lateness /
+       early-exit / no-check-out / leave / day-off details, the matrix and the daily detail;
+     - sort, totals, print and Excel.
+   - Saved templates live in the browser, as in the design.
+   - Keep our manual punch editor.
+2. **Leaves & requests** (`leaves/`, 7 files, 600 lines): align the list, filters and request cards. The design's HR
+   leave actions (record, cancel, return to manager, escalation, leave files, snapshots, workflow settings) wait for the
+   "more HR leave actions" backend stage (feature ids to add).
+3. **Payroll** (`payroll/`, 5 files, 616 lines): align the sheet, the columns dialog and the archive with our `/sheets`
+   and `/payroll-archive`. The design's prepare / draft / reopen steps map onto approve / unapprove.
+4. **Employee form** (`employees/EmpForm.jsx` 291, `EmpDetails`, `EmpDocsBox`, `EmpCerts`, `EmpCustody`, `PwReset`):
+   align tabs and fields. Waiting:
+   - custody, for the assets stage;
+   - certificates, for the certificates route;
+   - the "accounts on a temporary password" list (owner decision a), for its backend stage.
+5. **Settings** (`settings/`, 27 files, 1,691 lines): the largest, done card by card. The roles matrix, mail accounts,
+   expiry alerts, flexible hours / Ramadan, the brand colour picker (owner decision c) and apply mode wait for their
+   stages.
+6. **The `/me` employee web area**: restyle to the design's employee look together with Phase 3.
+
+Each block: `tsc`, lint and build, then the tracker updated. Nothing is committed until the owner approves the phase.

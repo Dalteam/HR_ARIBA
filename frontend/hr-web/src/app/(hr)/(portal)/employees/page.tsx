@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast";
 import { DaysBadge } from "@/components/hr/badges";
 import { EmployeeDetails } from "@/components/hr/employee-details";
+import { EmployeeImport } from "@/components/hr/employee-import";
 import { PageState } from "@/components/hr/not-built";
 import { TerminateModal } from "@/components/hr/terminate-modal";
 import { ApiError, type EmployeeTab } from "@/lib/api";
@@ -14,7 +15,7 @@ import { initials, sar, sarFixed } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
-import { FEATURES, isReady, type FeatureId } from "@/lib/features";
+import { FEATURES, type FeatureId } from "@/lib/features";
 
 // The prototype's six category tabs, in order.
 const TABS: [EmployeeTab, MessageKey][] = [
@@ -41,6 +42,7 @@ export default function EmployeesPage() {
   const [page, setPage] = useState(1);
   const [details, setDetails] = useState<string | null>(null);
   const [terminate, setTerminate] = useState<{ id: string; name: string } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const h = setTimeout(() => {
@@ -94,7 +96,7 @@ export default function EmployeesPage() {
           </Link>
         )}
         {canEdit && (
-          <button type="button" className="btn bsm" id="EI_OPEN" onClick={() => waiting("empImport")} style={{ opacity: isReady("empImport") ? 1 : 0.6 }}>
+          <button type="button" className="btn bsm" id="EI_OPEN" onClick={() => setImportOpen(true)}>
             <i className="ti ti-file-import" /> <span>{lang === "en" ? "Import from Excel" : "استيراد من Excel"}</span>
           </button>
         )}
@@ -166,6 +168,7 @@ export default function EmployeesPage() {
         </div>
       )}
       {details && <EmployeeDetails id={details} onClose={() => setDetails(null)} />}
+      {importOpen && <EmployeeImport onClose={() => setImportOpen(false)} onDone={() => list.reload()} />}
       {terminate && (
         <TerminateModal
           {...terminate}

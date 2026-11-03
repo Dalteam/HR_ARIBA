@@ -456,26 +456,184 @@ After each screen: `tsc` and lint; a full build at the end of the phase.
 |---|---|---|---|
 | 1 | Dashboard | done | design colours (brand variables, purple payroll tile, bright-green female count), all departments with %, the three side counters with the design's emoji and colours, coloured alert bars, the pending queue listed (name, type, stage, date; refreshed every 20 s; only for accounts allowed to list requests), salary summary = count + total (total only when the API sends it). **Gap:** the design's company-wide "net" total is not in our API |
 | 2 | Employees list | done | muted job title, the design's terminated tag, alternating avatar colours, edit only for editors, end-of-service with the design's icon; **waiting:** delete employee (`empDelete`, recycle-bin stage) and import from Excel (`empImport`, Phase 2c) |
-| 3 | Employee form / details | to do | |
-| 4 | Attendance | next (analysed, plan below) | 85 of the design's 145 labels missing; see "Plan for the remaining 2b screens" |
+| 3 | Employee form / details | done (3 Nov 2026) | six tabs as in the design (custody added), «↺» on every changed field and «استرجاع الكل», «↩ تراجع», the fingerprint **work locations** box (OUR `/locations/assignments` + `PUT /employees/{id}/work-locations`, saved with «حفظ وتحديث»), document delete, the details window's leaves tab now shows today's balance and the days used in each of the last four years. **Waiting:** custody (`assets`), certificates with title / issuer / dates (`empCerts`), the probation period (`empProbation`), allowances as % of basic (`empAllowPct`), the default-password list (`pwDefaultList`), national address / GOSI fields (`docsNationalAddress`) |
+| 4 | Attendance | done (rewritten; 3 Nov 2026) | the design's layout: the day's four KPI cards and record list (30-second refresh, «⏰ تأخير» / «🚪 خروج مبكر» in hours and minutes, every punch pair of a multi-punch day, location), the monthly card (now from the day engine: absences and total lateness included), and the full **report builder**: summary or daily mode, the design's 47 + 21 columns in groups with presets and column order, templates saved in this browser, all / filtered / hand-picked employees (terminated optional), 15 extra sections (KPI cards, departments, rankings, daily trend with chart, weekdays, absence / lateness / early-exit / no-check-out / leave / day-off details, the matrix, the daily detail, method note), sort, totals, group by department, font size, a sandboxed preview, print on the letterhead, PDF, Excel (one sheet per section) and Word. Add / edit only for HR and admin. **Waiting:** e-mailing the report (`exportEmail`), the stamp (`exportSeal`), the official / Ramadan shift schedule (`attSchedule`, new). See "Phase 2b: attendance" below |
 | 5 | GPS locations | done | the design's header (title + small add button) and blue info note, its card width; add / edit / delete only for editors (HR, admin), as in the design. Already ours and kept: the card grid, Google Maps link, map preview, linked-employees summary |
-| 6 | Leaves & requests | to do | |
-| 7 | Payroll | to do | |
+| 6 | Leaves & requests | done (3 Nov 2026) | the design's six tabs and wording, Arabic and English; decisions in the design's note dialog (no browser pop-ups): approve (on behalf at the manager / CEO stage), final approval (manager and HR stages only, as in the design), reject with a reason; «طلب جديد» only for editors, with «↺» undo per field and the exemption check for consultants / Tamheer / trainees; all-requests table in the design's columns plus the attachments archive; balances as in the design (one employee in detail + the balance equation; the all-employees table goes to print); balance editor with undo per cell / year / all; holidays add / delete only for editors. **Waiting:** return to manager (`lvReturn`), cancel an approved leave (`lvCancel`), undo the last balance save (`lvBalanceUndo`). **Kept from ours:** the pending type filter (the attendance page links to it), the labour-law note, the missing-Eid warning, deleting a request (permanent: no recycle bin yet, the dialog says so) |
+| 7 | Payroll | done (3 Nov 2026) | the design's toolbar (bulk days buttons always there for editors: before, they showed only when a terminated employee could be added), the status bar (📝 draft / 🔒 approved), employer subtotals in the sheet, the design's **Excel with formulas** (`lib/calc/payroll-out.ts`), the printed sheet with its **column chooser** remembered in this browser and our company name, «✓ محفوظ» instead of a toast on every save, other users' edits picked up every 6 s, reopening needs a reason (≥ 5 letters, written to the audit log), the archive loads with the page and «مراجعة» opens the month's rows. Edit for HR and admin; approve / reopen for finance, HR and admin. **Waiting:** «تجهيز للمالية» (`payPrepare`) |
 | 8 | Salary slip | done | the design's one-row header (employee, month, year in fixed proportions) and its print button (disabled until a slip is shown). The slip body already matched. Not ported: the design's Egyptian-tax breakdown box (our payslip data has no Egyptian tax fields; shown only for Egypt-paid staff) |
 | 9 | End of service | done | the design's employee picker beside the employer filter, KPI tiles that wrap; **changes the totals:** as in the design, consultants, Tamheer and training staff get no end-of-service award and are left out, with a note saying how many |
 | 10 | Settlement | done | already matched (same fields, ids and official print; 47 of the design's 55 labels); added the design's e-mail button (**waiting:** `exportEmail`, sending off) and its «(اختياري)» label. **Remaining:** the design asks Arabic or English before the official print (`askLang`); ours prints Arabic only. **Left out on purpose:** the design's `aiBridge` link (the AI assistant filling this form) |
 | 11 | Documents | done | the design's top bar order (tabs, then print this tab, refresh, print all), tab labels without icons (🪪 on iqamas), and its **six** tabs; **waiting:** national address (`docsNationalAddress`) and social-insurance certificate (`docsGosiCert`): our documents registry does not return those fields yet (a small backend addition) |
 | 12 | Reports | done (rewritten) | the design's model: 11 cards in its order (adds **probation end**, 90 days from the joining date, and **medical insurance**); every report is columns + rows, with the design's column chooser (show / hide / reorder), all or chosen employees, totals, print and Excel. Data from our API as before. **Waiting:** the custom report builder (`reportCustom`, 2c), the comprehensive leave report (`reportLeaves`, 2c), the certificates report (`reportCerts`, needs a route listing every employee's documents). **Gaps:** a per-employee probation extension (no field); the report-language switch (our salary data has no English names). **Changed on purpose:** our old end-of-service report left out two specific people by name in the code; it now follows the design (no award for consultants, Tamheer and training staff; only amounts above zero), so the name list is gone. Alerts now include medical insurance |
-| 13 | Settings | to do | |
+| 13 | Settings | done (3 Nov 2026) | the design's ten numbered sections (open state remembered), search and chips; our cards moved into them; **new on OUR routes:** direct-manager permissions with the company-wide team-salary switch (Stage 2), document signing types + the «HR closes» switch (Stage 5, off by default), push switch with the device count (Stage 6); read-only for everyone except HR and admin. **Waiting cards** (each names its stage): brand colours (`brandColors`), letterhead (`letterhead`), official / Ramadan schedule (`attSchedule`), leave policy (`lvCancel`), carry / accrual / special entitlements (`leaveRules`), punch logo (`punchLogo`), workflow and circles (`wfConfig`), mail accounts (`mailSettings`), sending mode (`exportEmail`), expiry alerts (`expiryAlerts`), application page (`cand`), roles matrix (`rolesMatrix`) |
 | 14 | Templates | done | already a close port: all eight of the design's documents (onboarding, custody, probation extension, probation end, contract end, clearance, experience, probation evaluation), the salary certificate with Arabic/English, bulk sending and the sent list. Added the design's **job-offer letter** card (**waiting:** `templatesOffer`, 2c). **Not added:** the e-mail button per document (sending off). **Left out on purpose:** the design's `aiBridge` link |
 | 15 | Employee web area `/me` | to do (ours only; restyle to the design's employee look in Phase 3) | |
+
+### Phase 2b: attendance (3 Nov 2026, not committed)
+
+**Files:**
+
+| File | Change |
+|---|---|
+| `src/app/(hr)/(portal)/attendance/page.tsx` | rewritten on the design's `attendance/index.jsx` |
+| `src/components/hr/attendance-reports.tsx` | rewritten on the design's `AttReport.jsx` (the report builder) |
+| `src/lib/calc/att-reports.ts` | **extended, not replaced** (the plan named a new `attendance-engine.ts`; ours already was the design's classifier, both come from V117, so a second copy was not made): each day now also carries its punch pairs, location, notes and a day-off flag; the design's status names, `fmtHM` and the eight filters moved here. The fields the legacy-parity check compares are unchanged |
+| `src/lib/exporter.ts` | `htmlPdfBlob`: a several-section report as an A4 PDF (simpler than the design's: no "smart" page breaks, a row can be cut at a page edge) |
+| `src/lib/attendance.ts` | `updateAttendance` takes the day as `date`, as the API expects |
+| `src/lib/features.ts` | new `attSchedule` (the design's official / Ramadan schedule), waiting for the flexible-hours stage |
+
+**Fixed (was wrong before this change):** our old page's «تعديل» always sent a *create* request, so editing a
+record added a second one (or was refused with "already checked in"). It now updates the record. **Not verified
+in a browser.**
+
+**Kept from ours, on purpose:**
+- the forgot-punch notice;
+- editing each session of a multi-session day on its own (our API stores sessions; the design rewrites the day);
+- «غائب» today = staff with no record, not on leave and not remote. The design subtracts only present and late,
+  so remote and leave staff counted as absent.
+
+**Fixed from the design:** its «متوسط التأخير» KPI read a total that does not exist and always showed 0.
+
+**Not ported (gaps, nothing invented):**
+- the "direct manager" and "mobile" columns: our employee list does not return them;
+- the official / Ramadan shift schedule (`attSchedule`): required hours come from the number in step 4 (it
+  starts at our settings' shift length); the "scheduled shift" column and the lateness detail's "shift start"
+  use our fixed work start, and stay empty while flexible hours are on (they are on in `ariba_design_port`);
+- work days are Sunday to Thursday, as in the design's fallback (our settings have no work-days field);
+- the ID column shows the **masked** number our API returns, never the full one.
+
+**Checks run (3 Nov 2026):**
+- `npx tsc --noEmit`: exit 0. `npm run lint`: 0 problems. `npm run build`: exit 0, no route added.
+- Read-only on `ariba_design_port` through the 8040 backend:
+  - every call the screen makes → 200 as HR (`EMP010`) and as CEO (`EMP086`);
+  - attendance, range and requests → **403** as an employee (`EMP002`);
+  - our engine on the last five weeks: 27 punch rows grouped into 19 employee-days, 2 of them with several punch
+    pairs, 220 weekend / holiday days flagged, 3 approved leaves placed.
+- Noticed and checked, fine: `/employees` answers an employee with their own record only.
+
+**Not verified:**
+- the look in a browser (needs the owner's eye) and the right-to-left / left-to-right switch;
+- print, PDF, Excel and Word output in a browser;
+- the edit fix against the API (it writes; it needs the owner's browser test on the copy);
+- the legacy-parity check (`tools/legacy-parity`, `npm test`): its own packages (`jsdom`) are not installed,
+  and installing them needs the owner's OK.
+
+### Phase 2b: leaves, payroll, employee form, settings (3 Nov 2026, not committed)
+
+**Owner's instruction (3 Nov 2026):** continue with leaves and all the phases; the owner tests everything at once.
+
+**New files:** `src/components/hr/prompt-modal.tsx` (the design's note / confirm dialog), `src/lib/calc/payroll-out.ts`
+(the payroll Excel with formulas and the printed sheet with its column chooser).
+
+**Changed on purpose:**
+- leaves: «اعتماد نهائي» is no longer offered at the CEO stage (the design offers it at the manager and HR stages only);
+- leaves → balances: the on-screen all-employees table and its six totals are gone, as in the design; the same
+  table is printed from the 🖨 button;
+- payroll: the year list runs 2011–2086, as in the design.
+
+**Checks run:**
+- `tsc` exit 0, lint 0 problems and `npm run build` exit 0 after each screen.
+- `tools/legacy-parity` (owner's OK to install its packages, 3 Nov 2026; `npm ci --ignore-scripts`, 0
+  vulnerabilities): **all suites match**, attendance 40/40.
+
+**Not verified:** every screen in a browser; payroll Excel opened in Excel; the printed payroll sheet; the 6-second
+refresh with two users; saving work locations, manager permissions, document signing and push from the new cards.
+
+## Phase 2c: the new hr-web screens our API already serves (3 Nov 2026, not committed)
+
+| Screen | Route | Built on | Notes |
+|---|---|---|---|
+| Announcements & greetings | `/announcements` | Stage 7: `/announcements`, `/occasions`, `/settings/greetings`, `/settings/announcements` | the design's four tabs (send, automatic greetings, occasions, sent log); closes FOLLOW_UPS #43. **Adapted:** our API knows 8 occasions, the design's others (Eid, Ramadan, National Day, recovery, condolence, appreciation) are sent as «other» with the design's wording; `{name}` / `{years}` are taken out before sending (our API sends one text to everyone); «one company» goes to that company's current employees by name (the API wants the company's internal id, which hr-web does not receive), so a later joiner of that company does not see it; hiding an item also deletes its bell entries (our rule). **Waiting:** HR's own greeting texts and per-person names (`annTemplates`) |
+| Targets | `/targets` | Stage 3: `/targets` | one employee, one period (annual / quarterly / monthly), add / edit / delete; the employee is told of new and deleted targets (our API) |
+| Evaluation | `/evaluation` | Stage 3: `/evaluations/…` | HR reads approved evaluations and approves submitted ones when HR is the configured approver (the default); «not found» when there is nothing HR may see. **Waiting:** HR writing an evaluation (`evalHrWrite`, owner decision b) |
+| Team & tasks | `/team` | Stage 4: `/team/availability`, `/tasks` | availability (private leave types arrive only as «إجازة»), tasks and meeting invitations, inbox / sent, 90-second refresh. «Back to work» skips Friday and Saturday only (the design also skips official holidays) |
+| Insurance calculator | `/insurance-calculator` | OUR payroll engine + `/settings/gosi-rates` + documents registry | the same rows, days and rates as the payroll; days editable per row; Excel, official print, the GOSI file (Excel / CSV) |
+| Salary calculator | `/salary-calculator` | the design's formulas + `/settings/gosi-rates` | four modes; the employee rate comes from OUR GOSI settings for the date (the design also has a built-in schedule; ours keeps one source). **Waiting:** «إنشاء عرض وظيفي» (`templatesOffer`) |
+| Tax calculator | `/tax-calculator` | arithmetic only | as in the design |
+| Salary transfer file | `/salary-transfer` | the month's saved payroll sheet + documents registry | payment-method and employer filters, ID and IBAN checks (mod-97), Excel and CSV |
+| Provisions report | `/provisions` | OUR payroll engine + `/leave/used-through` | end of service and leave value if every current employee left at month end, and the increase over last month |
+
+**New helpers:** `src/lib/goals.ts`, `src/components/hr/goals.tsx`, `src/lib/calc/month.ts`.
+
+**Checks run:** `tsc` 0, lint 0, `npm run build` exit 0, legacy parity all suites match. Read-only on
+`ariba_design_port` as HR (`EMP010`): every route these screens call answers 200 with the expected fields
+(`/settings/gosi-rates` returns fractions, e.g. 0.1075, as the salary calculator assumes).
+
+**Not verified:** every screen in a browser; sending an announcement, saving a target, sending a task (they write;
+part of the owner's test on the copy); the insurance and provisions figures against a hand calculation.
+
+### Phase 2c, continued: two report tools (3 Nov 2026, not committed)
+
+- **Custom report builder** and **comprehensive leave report** open from the reports page's tool cards
+  (`src/components/hr/report-builder.tsx`, `src/components/hr/extra-reports.tsx`), with the design's grouped columns,
+  presets, column order, templates in this browser, employees all / filtered / picked, preview and the export dialog
+  (`ExportDialog` from `page-export.tsx`, now exported). The leave report adds the design's search, sort, group by
+  department, totals and low-balance highlight, and its year ledger comes from `/leave/balances/{id}` per employee
+  (six at a time).
+- **Gaps (no list route returns them):** mobile, e-mail, religion, direct manager, number of dependents, bank account
+  number. The certificates report still waits (`reportCerts`).
+
+### Still to do in Phase 2c (not started; each is its own round)
+
+| Item | Feature id | Why it was left |
+|---|---|---|
+| Job-offer letter | `templatesOffer` | a printed document with the salary calculator's figures; the design's `forms/extraCards.jsx` |
+| Stamp / signature on exports | `exportSeal` | the design's seal studio (drag-and-drop canvas) |
+
+### Phase 2c: import employees from Excel (3 Nov 2026, not committed)
+
+- **Where:** «استيراد من Excel» on the employees list (`EI_OPEN`) opens `src/components/hr/employee-import.tsx`,
+  the design's `pages/employees/Import.jsx`: pick an `.xlsx` / `.csv` file, choose a sheet when there is more than
+  one, check the column mapping («— تجاهل —» drops a column), see the four counts and a preview of the first 300
+  rows with each row's reason, download the template (the design's 35 Arabic labels, written by our own
+  `buildXlsx`), then «استيراد n».
+- **The reader is ours and has no library:** `src/lib/import-xlsx.ts` is the design's `lib/importXlsx.js`, typed —
+  a zip reader over the browser's `DecompressionStream`, `sharedStrings`, date styles and `DOMParser` for `.xlsx`;
+  `,` `;` or tab for `.csv`, quoted cells, Arabic-Indic digits, any date order and Excel serial dates. Its header
+  dictionary and conversions are unchanged except that the choices come back as OUR codes (`matching` /
+  `non_matching` / `non_saudi`, `mudad` / `bank_transfer` / …, `SAR` / `USD` / …).
+- **Every row is checked before anything is written** (`src/lib/employee-import.ts`): the master lists are
+  resolved to ids by name (nationality, employer, department, and the direct manager by employee name), and the
+  API's own rules are applied first — a name of at least two letters, an employer that exists, a joining date, an
+  ID of ten digits, a fixed contract with its months. A bad e-mail, mobile or IBAN is dropped with a warning
+  instead of failing the row. A row that breaks a blocking rule shows as «مرفوض» and is never sent.
+- **Writes:** a new employee goes through `POST /employees`; an existing one through `PATCH /employees/{id}` (the
+  design's «تحديث الموظفين الموجودين» checkbox) that carries only the columns the file has, so an empty cell never
+  blanks a saved value. Number / e-mail / ID uniqueness stays the API's job: its 409 is listed per row under the
+  preview, and the dialog stays open when anything failed.
+- **Two honest differences:** an existing employee is recognised by employee number only — our list masks the ID
+  and shows no e-mail, the design matched all three — and the list's tab (category) is derived from the employee
+  type for a new record only, so an existing record keeps the category HR chose. The dialog states the first one.
+- **Also:** the design's «غير خاضع» (exempt) GOSI cell has no equivalent in our settings, so it is left out with a
+  warning; employee numbers are normalised to our `empNNN` shape (`10`, `010`, `EMP-010` → `emp010`).
+- **Checks run:** `tsc` 0, lint 0, `npm run build` exit 0, legacy parity all suites match. The reader ran against
+  the owner's real `employees_import_template.xlsx` (35 columns, all 35 mapped, dates read) and sample CSV text;
+  `planRows` ran over eight sample rows (new, existing → skip, duplicate inside the file, missing employer,
+  9-digit ID, bad e-mail dropped, fixed contract without months, a Saudi on the non-Saudi system) plus the
+  employee-number shapes — every row came out with the intended action.
+- **Not verified:** the dialog in a browser, and a real import writing to `ariba_design_port` (the owner's test on
+  the copy); a workbook with several sheets or without shared strings was not tried.
+
+## Phase 3: the employee app (3 Nov 2026, started, not committed)
+
+- **Done:** the design's **idle guard** (`src/components/idle-guard.tsx`, wired in `app/_layout.tsx`): 5 minutes without a
+  touch → a 3-minute countdown with «تمديد الجلسة» / «تسجيل الخروج» → sign-out; coming back from the background after
+  the whole 8 minutes signs out at once. React Native only (no new package), so it works in Expo Go and on the web.
+- **Not done:** the screen-by-screen layout comparison of the ten tabs (needs the owner's eye on a phone, and the
+  design can only be read as code); the design's business card, leave cancel / edit and balance snapshots wait for
+  their backend stages (owner's list, decision 2).
+- **Checks:** `npx tsc --noEmit` shows **two errors that were already on the branch** (unchanged files):
+  `src/components/sig-pad.tsx` line 52 (`touchAction` is not a React Native style) and `src/lib/diag.ts` line 3 (an
+  untyped parameter). Not fixed here; noted for a small separate fix. `expo lint` was not run (it would create lint
+  configuration files).
 
 ### Plan for the remaining 2b screens (written 3 Nov 2026, to resume in a fresh session)
 
 The design's sources are in the scratch viewer copy (`ARIBA_HR_React/src/pages/…`); the original folder stays
 read-only. Order and method:
 
-1. **Attendance** (`attendance/index.jsx` 116 + `AttReport.jsx` 355 + `engines/attendance.js` 103 lines).
+1. **Attendance** (done 3 Nov 2026, see above) (`attendance/index.jsx` 116 + `AttReport.jsx` 355 + `engines/attendance.js` 103 lines).
    - Port the design's day classifier (present / late / absent / leave / remote / day off / pending) to
      `src/lib/attendance-engine.ts`. It is fed by OUR `/attendance/range`, approved leaves (`/leave/requests`),
      `/holidays` and `/settings/attendance` (work days, start time, tolerance).

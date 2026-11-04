@@ -53,12 +53,12 @@ def test_the_list_limit_is_clamped_to_1_1000_with_300_by_default():
     assert (audit_log.DEFAULT_LIMIT, audit_log.MAX_LIMIT) == (300, 1000)
 
 
-@pytest.mark.parametrize("role", ["hr", "admin", "admin_manager", "ceo", "finance"])
+@pytest.mark.parametrize("role", ["hr", "admin", "admin_manager", "ceo", "finance", "chairman"])
 def test_every_audit_viewer_may_read(role):
     audit_log._viewer({"role": role})
 
 
-@pytest.mark.parametrize("role", ["employee", "manager", "chairman", ""])
+@pytest.mark.parametrize("role", ["employee", "manager", ""])
 def test_others_cannot_read_the_log(role):
     with pytest.raises(ApiError) as exc:
         audit_log._viewer({"role": role})

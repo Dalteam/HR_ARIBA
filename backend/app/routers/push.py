@@ -89,7 +89,7 @@ def delete_push_token(request: Request, body: dict[str, Any] | None = None,
 def get_push_settings(actor: dict[str, Any] = Depends(canonical.current_actor),
                       db: Session = Depends(get_db)):
     """`{enabled, devices}` — the switch and how many live devices are registered (T4)."""
-    canonical._require(actor, *canonical.HR_READ_ROLES)
+    canonical._perm(actor, "settings")
     return push.settings(db)
 
 
@@ -98,7 +98,7 @@ def update_push_settings(body: dict[str, Any], request: Request,
                          actor: dict[str, Any] = Depends(canonical.current_actor),
                          db: Session = Depends(get_db)):
     """Save the switch; a body that is not a boolean is refused rather than read as `false` (T4)."""
-    canonical._require(actor, *canonical.HR_ROLES)
+    canonical._perm(actor, "settings", "edit")
     if not isinstance(body.get("enabled"), bool):
         raise ApiError(422, "invalid_request", "enabled must be true or false")
     canonical._set_app_setting(db, push.CFG_KEY, {"enabled": body["enabled"]}, actor)

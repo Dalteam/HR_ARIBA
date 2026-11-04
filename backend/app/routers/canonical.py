@@ -33,6 +33,7 @@ from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
 from app.services import html_safety
+from app.services import permissions as perms
 from app.services import push as push_tokens
 from app.services import team_scope
 from app.services.request_envelope import Attachment, RequestInput
@@ -41,10 +42,12 @@ router = APIRouter()
 _hasher = PasswordHasher()
 SESSION_HOURS = 8
 SESSION_MAX_HOURS = 24
-HR_ROLES = {"hr", "admin", "admin_manager"}
+# Who belongs to HR for the bell pool, goals and the other rules that are about people, not about the matrix.
+# Every access check of the HR side goes through `_perm` / `_can` (Stage 11, services/permissions.py).
+HR_ROLES = {"hr", "admin", "admin_manager", "chairman"}
 HR_READ_ROLES = HR_ROLES | {"ceo"}
 PAYROLL_ROLES = HR_READ_ROLES | {"finance"}
-SALARY_ROLES = {"finance", "hr", "admin"}
+SALARY_ROLES = {"finance", "hr", "admin", "chairman"}
 
 
 def _rows(db: Session, sql: str, **params: Any) -> list[dict[str, Any]]:
@@ -146,8 +149,8 @@ def _public_employee(row: dict[str, Any], actor: dict[str, Any], list_view: bool
     data = e["data"]
     employer, department, nationality = e["employer"], e["department"], e["nationality"]
     own = actor.get("employee_id") == e["employee_id"]
-    may_view_salary = actor.get("role") in SALARY_ROLES or own
-    may_view_ids = actor.get("role") in HR_ROLES or own
+    may_view_salary = _can(actor, "payroll") or own
+    may_view_ids = _can(actor, "employees", "edit") or own
     national_id = data.get("iqamaNo") or data.get("iqama_no")
     masked_id = ("*" * max(0, len(str(national_id))-4) + str(national_id)[-4:]) if national_id and may_view_ids else ("******" + str(national_id)[-4:] if national_id else None)
     if list_view:
@@ -221,7 +224,7 @@ def _employee_detail(db: Session, row: dict[str, Any], actor: dict[str, Any]) ->
     manager = ({"id": mgr["employee_id"], "emp_no": str((mgr.get("data") or {}).get("empNo") or mgr.get("username") or mgr["employee_id"]),
                 "name_ar": mgr["name_ar"], "name_en": mgr["name_en"]} if mgr else None)
     has_account = bool(_row(db, "SELECT 1 AS x FROM public.ariba_auth_accounts WHERE employee_id=:e LIMIT 1", e=row["employee_id"]))
-    return emap.employee_out(row, may_salary=actor.get("role") in SALARY_ROLES or own, may_ids=actor.get("role") in HR_ROLES or own,
+    return emap.employee_out(row, may_salary=_can(actor, "payroll") or own, may_ids=_can(actor, "employees", "edit") or own,
                              manager=manager, has_account=has_account, rules=gosi_calc.rules_from_settings(_gosi_settings(db)), today=today_riyadh())
 
 
@@ -304,6 +307,8 @@ def _authenticate(db: Session, authorization: str | None, allow_pending: bool = 
         raise ApiError(403, "password_change_required", "You must change your temporary password first")
     emp = _row(db, "SELECT name_ar FROM public.employee_directory WHERE employee_id=:eid", eid=session.get("employee_id")) if session.get("employee_id") else None
     session["name_ar"] = (emp or {}).get("name_ar") or session["username"]
+    # the role's 19 levels travel with the actor, so every check below is a lookup (Stage 11)
+    session["perms"] = perms.levels_for(session.get("role"), perms.load(db))
     return session
 
 
@@ -316,12 +321,22 @@ def _require(actor: dict[str, Any], *roles: str) -> None:
         raise ApiError(403, "forbidden", "Not authorized")
 
 
+def _can(actor: dict[str, Any], modules: str | tuple[str, ...], need: str = "view") -> bool:
+    """The permission matrix: does the actor's role reach `need` on any of `modules`? (the design's ariba_can)"""
+    return perms.allows(actor, modules, need)
+
+
+def _perm(actor: dict[str, Any], modules: str | tuple[str, ...], need: str = "view") -> None:
+    if not _can(actor, modules, need):
+        raise ApiError(403, "forbidden", "Not authorized")
+
+
 def _employee_scope(db: Session, actor: dict[str, Any], employee_id: str) -> dict[str, Any]:
     row = _row(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} WHERE d.employee_id=:eid", eid=employee_id)
     if not row:
         raise ApiError(404, "not_found", "Employee not found")
     role, own = actor.get("role"), actor.get("employee_id")
-    if role in HR_READ_ROLES:
+    if _can(actor, ("employees", "staff")):
         return row
     if role == "manager" and (employee_id == own or row.get("manager_id") == own):
         return row
@@ -477,11 +492,9 @@ def my_employee(actor: dict[str, Any] = Depends(current_actor), db: Session = De
 
 @router.get("/employees")
 def employees(tab: str = "all", q: str = "", workplace_id: str | None = None, page: int = 1, page_size: int = 100, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    if actor["role"] == "finance":
-        raise ApiError(403, "forbidden", "Not authorized")
     rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} ORDER BY d.employee_id")
     role, own = actor["role"], actor.get("employee_id")
-    if role not in HR_READ_ROLES:
+    if not _can(actor, ("employees", "staff")):
         rows = [r for r in rows if r["employee_id"] == own or (role == "manager" and r.get("manager_id") == own)]
     items = [_employee_dict(r) for r in rows]
     needle = q.strip().lower()
@@ -501,7 +514,7 @@ def employees(tab: str = "all", q: str = "", workplace_id: str | None = None, pa
 @router.get("/employees/counts")
 def employee_counts(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM}")
-    visible = rows if actor["role"] in HR_READ_ROLES else [r for r in rows if r["employee_id"] == actor.get("employee_id") or (actor["role"] == "manager" and r.get("manager_id") == actor.get("employee_id"))]
+    visible = rows if _can(actor, ("employees", "staff")) else [r for r in rows if r["employee_id"] == actor.get("employee_id") or (actor["role"] == "manager" and r.get("manager_id") == actor.get("employee_id"))]
     active = [r for r in visible if r.get("active")]
     saudis = sum(1 for r in active if str(r.get("nationality") or "").lower() in {"saudi", "saudi arabia", "سعودي", "سعودية"})
     return {"all": len(visible), "active": len(active), "terminated": len(visible)-len(active), "tamheer": 0, "training": 0, "consultants": 0, "saudi": saudis, "expat": len(active)-saudis, "saudization_pct": round(saudis*100/len(active),1) if active else 0}
@@ -620,7 +633,7 @@ def _store_figures(db: Session, data: dict[str, Any], top: dict[str, Any], old: 
 @router.post("/employees", status_code=201)
 def create_employee(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """New employee in employee_directory: legacy-style numeric id/empNo (next free number), username EMP###."""
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees", "edit")
     if not str(body.get("name_ar") or "").strip() or not body.get("workplace_id") or not body.get("join_date"):
         raise ApiError(422, "validation_error", "Name, workplace and join date are required")
     nums = [int(x["v"]) for x in _rows(db, "SELECT data->>'empNo' AS v FROM public.employee_directory") if str(x["v"] or "").isdigit()]
@@ -650,7 +663,7 @@ def create_employee(body: dict[str, Any], request: Request, actor: dict[str, Any
 @router.patch("/employees/{employee_id}")
 def update_employee(employee_id: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """Only the fields sent are changed; every other legacy key in data is kept."""
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees", "edit")
     old = _employee_scope(db, actor, employee_id)
     data, top = emap.apply_input(dict(old.get("data") or {}), body)
     _validate_manager(db, employee_id, top.get("manager_id", old.get("manager_id")))
@@ -678,7 +691,7 @@ def update_employee(employee_id: str, body: dict[str, Any], request: Request, ac
 
 @router.post("/employees/{employee_id}/terminate")
 def terminate_employee(employee_id: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees_admin", "edit")
     old = _employee_scope(db, actor, employee_id)
     data = dict(old.get("data") or {})
     data.update({"isTerminated": True, "term": True, "lastDay": body.get("termination_date"),
@@ -693,7 +706,7 @@ def terminate_employee(employee_id: str, body: dict[str, Any], request: Request,
 
 @router.post("/employees/{employee_id}/reactivate")
 def reactivate_employee(employee_id: str, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees_admin", "edit")
     old = _employee_scope(db, actor, employee_id)
     data = dict(old.get("data") or {})
     data.update({"isTerminated": False, "term": False, "notEmployed": False})
@@ -706,7 +719,7 @@ def reactivate_employee(employee_id: str, request: Request, actor: dict[str, Any
 
 @router.post("/employees/salary-preview")
 def salary_preview(body: dict[str, Any], actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *SALARY_ROLES)
+    _perm(actor, "payroll", "view")
     """Live total / GOSI / net while HR edits the salary tab. Nothing is saved."""
     data, _ = emap.apply_input({}, {k: v for k, v in body.items() if k not in ("nationality_id",)})
     nat = body.get("nationality_id")
@@ -737,7 +750,7 @@ def locations(actor: dict[str, Any] = Depends(current_actor), db: Session = Depe
 
 @router.post("/locations", status_code=201)
 def create_location(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "locations", "edit")
     loc_id = str(body.get("id") or uuid.uuid4())
     employer = str(body.get("employer") or "all").strip()
     employer_id = None if employer.lower() == "all" else _lookup_id(db, "employers", employer)
@@ -756,7 +769,7 @@ def create_location(body: dict[str, Any], request: Request, actor: dict[str, Any
 
 @router.patch("/locations/{location_id}")
 def update_location(location_id: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "locations", "edit")
     row = _row(db, """SELECT w.*,coalesce(e.name,'all') AS employer FROM public.work_locations w
         LEFT JOIN public.employers e ON e.id=w.employer_id WHERE w.id=:id""", id=location_id)
     if not row:
@@ -780,7 +793,7 @@ def update_location(location_id: str, body: dict[str, Any], request: Request, ac
 
 @router.delete("/locations/{location_id}", status_code=204)
 def deactivate_location(location_id: str, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "locations", "edit")
     result = db.execute(text("UPDATE public.work_locations SET active=false,updated_at=now() WHERE id=:id"), {"id": location_id})
     if result.rowcount == 0:
         raise ApiError(404, "not_found", "Work location not found")
@@ -790,7 +803,7 @@ def deactivate_location(location_id: str, request: Request, actor: dict[str, Any
 
 @router.get("/locations/assignments")
 def location_assignments(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "locations", "view")
     rows = _rows(db, "SELECT employee_id,name_ar,data FROM public.employee_directory ORDER BY name_ar")
     # Only employees linked to specific locations (same contract as before: employee_id, name_ar, location_ids).
     return [{"employee_id": r["employee_id"], "name_ar": r["name_ar"], "location_ids": ids}
@@ -799,7 +812,7 @@ def location_assignments(actor: dict[str, Any] = Depends(current_actor), db: Ses
 
 @router.put("/employees/{employee_id}/work-locations")
 def set_employee_locations(employee_id: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, ("employees", "locations"), "edit")
     row = _employee_scope(db, actor, employee_id)
     data = dict(row.get("data") or {})
     ids = body.get("location_ids") or body.get("work_location_ids") or []
@@ -836,7 +849,7 @@ def company_settings(actor: dict[str, Any] = Depends(current_actor), db: Session
 
 @router.put("/settings/company")
 def update_company_settings(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     setting = _row(db, "SELECT value FROM public.ariba_app_settings WHERE key='company_names'")
     value = dict((setting or {}).get("value") or {})
     value.update({"coAr": body.get("company_name_ar", value.get("coAr", "")),
@@ -855,7 +868,7 @@ def attendance_settings(actor: dict[str, Any] = Depends(current_actor), db: Sess
 
 @router.put("/settings/attendance")
 def update_attendance_settings(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     shift_duration = body.get("shift_duration_minutes")
     if shift_duration is None:
         shift_duration = round(float(body.get("shift_hours", 8)) * 60)
@@ -925,14 +938,14 @@ def _app_links_row(db: Session) -> dict[str, Any]:
 @router.get("/settings/app-links")
 def get_app_links(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """The links the notification e-mails point at, and the PUBLIC_APP_URL fallback."""
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "settings", "view")
     return _app_links_row(db)
 
 
 @router.put("/settings/app-links")
 def update_app_links(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor),
                      db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     value = {"hr": _clean_app_link(body.get("hr"), "hr"), "emp": _clean_app_link(body.get("emp"), "emp")}
     _set_app_setting(db, "app_links", value, actor)
     _write_audit(db, actor, request, "settings", "update", "ariba_app_settings", "app_links")
@@ -949,7 +962,7 @@ def _manager_types(value: Any) -> list[str]:
 @router.get("/settings/doc-sign")
 def doc_sign_settings(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """`{hr_closes, manager_types}` — who closes a letter, and which types need a manager (S10)."""
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "settings", "view")
     return _doc_sign_cfg(db)
 
 
@@ -957,7 +970,7 @@ def doc_sign_settings(actor: dict[str, Any] = Depends(current_actor), db: Sessio
 def update_doc_sign_settings(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor),
                             db: Session = Depends(get_db)):
     """Save either field; the one the body omits keeps its stored value (S10)."""
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     cfg = _doc_sign_cfg(db)
     if "hr_closes" in body:
         cfg["hr_closes"] = body.get("hr_closes") is True
@@ -993,13 +1006,13 @@ def _gosi_settings(db: Session) -> dict[str, Any]:
 
 @router.get("/settings/gosi")
 def get_gosi(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, ("settings", "payroll"), "view")
     return _gosi_settings(db)
 
 
 @router.put("/settings/gosi")
 def update_gosi(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     try:
         cap, age = float(body["wageCap"]), int(body["ageThreshold"])
         periods = [{"date": date.fromisoformat(str(p["date"])[:10]).isoformat(), **{f: float(p.get(f) or 0) for f in _GOSI_FIELDS}}
@@ -1041,7 +1054,7 @@ def lookup_delete_unavailable(kind: str, item_id: str, actor: dict[str, Any] = D
 
 @router.get("/settings/accounts")
 def accounts(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "permissions", "view")
     rows = _rows(db, """SELECT a.id AS user_id,a.employee_id,d.name_ar,a.username,a.role,a.active AS is_active,a.must_change AS must_change_password
         FROM public.ariba_auth_accounts a LEFT JOIN public.employee_directory d ON d.employee_id=a.employee_id ORDER BY a.username""")
     return rows
@@ -1049,7 +1062,7 @@ def accounts(actor: dict[str, Any] = Depends(current_actor), db: Session = Depen
 
 @router.post("/settings/payroll-exclusion", status_code=204)
 def payroll_exclusion(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "payroll", "edit")
     eid = str(body.get("employee_id") or "")
     row = _employee_scope(db, actor, eid)
     data = dict(row.get("data") or {})
@@ -1067,7 +1080,7 @@ _FEMALE_NAMES = ("منى", "زينب", "ريم", "بدريه", "ساره", "نو
 @router.get("/dashboard")
 def dashboard(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     all_rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM}")
-    visible = all_rows if actor["role"] in HR_READ_ROLES else [r for r in all_rows if r["employee_id"] == actor.get("employee_id") or (actor["role"] == "manager" and r.get("manager_id") == actor.get("employee_id"))]
+    visible = all_rows if _can(actor, ("employees", "staff")) else [r for r in all_rows if r["employee_id"] == actor.get("employee_id") or (actor["role"] == "manager" and r.get("manager_id") == actor.get("employee_id"))]
     active = [r for r in visible if r.get("active")]
     terminated = [r for r in visible if not r.get("active")]
     def group_count(rows: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
@@ -1086,7 +1099,7 @@ def dashboard(actor: dict[str, Any] = Depends(current_actor), db: Session = Depe
         female = g in {"أنثى", "f", "female"} or any(name.startswith(fn) for fn in _FEMALE_NAMES)
         gender_counts["female" if female else "male"] += 1
     pending = db.scalar(text("SELECT count(*) FROM public.workflow_requests WHERE status='pending'")) or 0
-    payroll_allowed = actor["role"] in SALARY_ROLES
+    payroll_allowed = _can(actor, "payroll")
     # Legacy totSal: basic + housing + transport of the current employees.
     payroll_total = sum(_num((r.get("data") or {}).get(k)) for r in active for k in ("salary", "housingAllowance", "transportAllowance")) if payroll_allowed else None
     summary_row = _row(db, "SELECT pay_year,pay_month FROM public.payroll_periods WHERE approved ORDER BY pay_year DESC,pay_month DESC LIMIT 1")
@@ -1144,7 +1157,7 @@ def _attendance_row(db: Session, row: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/attendance")
 def hr_attendance(day: date | None = None, date_: date | None = Query(None, alias="date"), actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "attendance", "view")
     day = day or date_
     if day is None:
         raise ApiError(422, "validation_error", "date is required")
@@ -1154,14 +1167,14 @@ def hr_attendance(day: date | None = None, date_: date | None = Query(None, alia
 
 @router.get("/attendance/range")
 def hr_attendance_range(date_from: date, date_to: date, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "attendance", "view")
     rows = _rows(db, "SELECT * FROM public.attendance WHERE date BETWEEN :start AND :end ORDER BY date,employee_id,time_in", start=date_from, end=date_to)
     return [_attendance_row(db, row) for row in rows]
 
 
 @router.get("/attendance/summary")
 def hr_attendance_summary(month: str, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "attendance", "view")
     try:
         year, number = (int(part) for part in month.split("-", 1))
         start, end = date(year, number, 1), date(year + (number == 12), 1 if number == 12 else number + 1, 1)
@@ -1187,7 +1200,7 @@ def hr_attendance_summary(month: str, actor: dict[str, Any] = Depends(current_ac
 
 @router.post("/attendance", status_code=201)
 def create_attendance(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "attendance", "edit")
     eid = str(body.get("employee_id") or "")
     _employee_scope(db, actor, eid)
     if body.get("time_out") is None and _row(
@@ -1207,7 +1220,7 @@ def create_attendance(body: dict[str, Any], request: Request, actor: dict[str, A
 
 @router.patch("/attendance/{record_id}")
 def update_attendance(record_id: uuid.UUID, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "attendance", "edit")
     allowed = {"date": "work_date", "time_in": "time_in", "time_out": "time_out", "location_id": "location_id",
                "status": "status", "notes": "notes", "late_minutes": "late_minutes", "early_minutes": "early_minutes"}
     changes = {column: body[key] for key, column in allowed.items() if key in body}
@@ -1238,7 +1251,7 @@ def update_attendance(record_id: uuid.UUID, body: dict[str, Any], request: Reque
 
 @router.delete("/attendance/{record_id}", status_code=204)
 def delete_attendance(record_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "attendance", "edit")
     result = db.execute(text("DELETE FROM public.attendance WHERE id=:id"), {"id": record_id})
     if not result.rowcount:
         raise ApiError(404, "not_found", "Attendance record not found")
@@ -1552,7 +1565,7 @@ def _can_act(db: Session, actor: dict[str, Any], item: dict[str, Any]) -> bool:
     if item.get("status") != "pending" or str(item.get("request_type", "")).startswith("template:"):
         return False
     role, stage = actor.get("role"), item.get("current_stage")
-    if role in {"admin", "admin_manager"}:
+    if role in {"admin", "admin_manager", "chairman"}:
         return True
     if stage == "manager":
         manager = _row(db, "SELECT manager_id FROM public.employee_directory WHERE employee_id=:e", e=item["employee_id"])
@@ -2107,7 +2120,7 @@ def letter_html(letter_id: uuid.UUID, actor: dict[str, Any] = Depends(current_ac
     The bytes are the cleaned ones (S12: `POST /letters` and both sign routes sanitize before writing),
     so this route adds the header, not a second pass: `DISPLAY_CSP` makes a letter written before that
     rule existed inert in a browser too, and `nosniff` keeps a browser from guessing another type."""
-    row = _row(db, "SELECT d.file_data,d.mime_type,d.file_name FROM public.ariba_documents d JOIN public.workflow_requests r ON d.request_id=r.id WHERE r.id=:id AND (r.employee_id=:eid OR :role=ANY(:roles)) LIMIT 1", id=letter_id, eid=actor.get("employee_id"), role=actor["role"], roles=list(HR_READ_ROLES))
+    row = _row(db, "SELECT d.file_data,d.mime_type,d.file_name FROM public.ariba_documents d JOIN public.workflow_requests r ON d.request_id=r.id WHERE r.id=:id AND (r.employee_id=:eid OR :staff) LIMIT 1", id=letter_id, eid=actor.get("employee_id"), staff=_can(actor, "forms"))
     if not row:
         raise ApiError(404, "not_found", "Letter not found")
     return HTMLResponse(bytes(row["file_data"]).decode("utf-8", errors="replace"),
@@ -2361,7 +2374,7 @@ def approve_letter(request_id: uuid.UUID, request: Request, actor: dict[str, Any
     `rejected`, or `hr_closes` off) answers `409 not_waiting_for_hr`, one that is already closed
     answers `409 already_closed`, and an employee or a manager gets `403` from the role gate — the
     answers the other HR letter routes already give (D20–D22, D25)."""
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, ("requests", "settings", "employees"))  # the design's HR letter step: ariba_can(...,'requests|settings|employees','view')
     row = _row(db, "SELECT * FROM public.workflow_requests WHERE id=:id AND request_type LIKE 'template:%'",
                id=request_id)
     if not row:
@@ -2397,7 +2410,7 @@ def list_documents(employee_id: str, actor: dict[str, Any] = Depends(current_act
 
 @router.post("/employees/{employee_id}/documents")
 async def upload_document(employee_id: str, request: Request, file: UploadFile = File(...), type: str = Form("other"), actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "attachments", "edit")
     _employee_scope(db, actor, employee_id)
     _require_lookup(db, "document_types", type, "document type")
     data = await file.read(get_settings().max_upload_bytes + 1)
@@ -2450,7 +2463,7 @@ def document_content(document_id: uuid.UUID, request: Request, actor: dict[str, 
     if not row:
         raise ApiError(404, "not_found", "Document not found")
     me, owner = actor.get("employee_id"), row["employee_id"]
-    if actor.get("role") in HR_READ_ROLES or (me and owner == me):
+    if _can(actor, ("documents", "attachments")) or (me and owner == me):
         pass  # HR's screens and the owner's own paper: no audit row (S9)
     elif me and _manager_may_open(db, me, row):
         _write_audit(db, actor, request, "documents", "open", "document", row["id"],
@@ -2468,7 +2481,7 @@ def delete_document(document_id: uuid.UUID, request: Request, actor: dict[str, A
     if not document:
         raise ApiError(404, "not_found", "Document not found")
     _employee_scope(db, actor, document["employee_id"])
-    if actor["role"] not in HR_ROLES and document.get("uploaded_by") != actor.get("employee_id"):
+    if not _can(actor, "attachments", "edit") and document.get("uploaded_by") != actor.get("employee_id"):
         raise ApiError(403, "forbidden", "Not authorized to delete this document")
     snapshot = {k: v for k, v in document.items() if k != "file_data"}
     snapshot["file_data_base64"] = base64.b64encode(bytes(document["file_data"])).decode("ascii")
@@ -2481,7 +2494,7 @@ def delete_document(document_id: uuid.UUID, request: Request, actor: dict[str, A
 
 @router.put("/employees/{employee_id}/photo", status_code=204)
 async def upload_photo(employee_id: str, request: Request, file: UploadFile = File(...), actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "attachments", "edit")
     row = _employee_scope(db, actor, employee_id)
     _require_lookup(db, "document_types", "photo", "document type")
     content = await file.read(get_settings().max_upload_bytes + 1)
@@ -2508,7 +2521,7 @@ def get_photo(employee_id: str, actor: dict[str, Any] = Depends(current_actor), 
 
 @router.delete("/employees/{employee_id}/photo", status_code=204)
 def delete_photo(employee_id: str, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "attachments", "edit")
     row = _employee_scope(db, actor, employee_id)
     db.execute(text("DELETE FROM public.ariba_documents WHERE employee_id=:eid AND document_type='photo'"), {"eid": employee_id})
     data = dict(row.get("data") or {})
@@ -2609,7 +2622,7 @@ _SETTING_SHEETS = {"company_logo", "hr_signer"}
 def list_sheets(prefix: str = "pay_", actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     if not prefix.startswith("pay"):
         return []
-    _require(actor, *PAYROLL_ROLES)
+    _perm(actor, "payroll", "view")
     months = {(r["pay_year"], r["pay_month"]) for r in _rows(db, "SELECT DISTINCT pay_year,pay_month FROM public.payroll_archives_v2")}
     months |= {(r["pay_year"], r["pay_month"]) for r in _rows(db, "SELECT DISTINCT pay_year,pay_month FROM public.employee_payrolls")}
     out = []
@@ -2631,7 +2644,7 @@ def get_sheet(key: str, actor: dict[str, Any] = Depends(current_actor), db: Sess
     ym = _pay_key(key)
     if ym is None:
         raise ApiError(422, "invalid_key", "Invalid sheet key")
-    if actor.get("role") not in PAYROLL_ROLES:
+    if not _can(actor, "payroll"):
         raise ApiError(403, "forbidden", "Not authorized")
     rows, approved, approved_at, updated_at = _month_rows(db, *ym)
     return {"key": key, "data": rows if rows else None, "approved": approved, "approved_at": approved_at, "updated_at": updated_at}
@@ -2640,7 +2653,7 @@ def get_sheet(key: str, actor: dict[str, Any] = Depends(current_actor), db: Sess
 @router.put("/sheets/{key}")
 def put_sheet(key: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     if key in _SETTING_SHEETS:
-        _require(actor, *HR_ROLES)
+        _perm(actor, "settings", "edit")
         data = body.get("data")
         if key == "company_logo":
             value = {"data": data, "name": "logo", "updated": int(datetime.now(UTC).timestamp() * 1000)} if data else None
@@ -2656,7 +2669,7 @@ def put_sheet(key: str, body: dict[str, Any], request: Request, actor: dict[str,
     ym = _pay_key(key)
     if ym is None:
         raise ApiError(422, "invalid_key", "Invalid sheet key")
-    _require(actor, "finance", "hr", "admin", "admin_manager")
+    _perm(actor, "payroll", "edit")
     year, month = ym
     rows = body.get("data") or []
     _, approved, _, _ = _month_rows(db, year, month)
@@ -2684,7 +2697,7 @@ def put_sheet(key: str, body: dict[str, Any], request: Request, actor: dict[str,
 
 @router.post("/sheets/{key}/approve")
 def approve_sheet(key: str, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, "finance", "hr", "admin", "admin_manager")
+    _perm(actor, "payroll_approve", "edit")
     ym = _pay_key(key)
     if ym is None:
         raise ApiError(422, "invalid_key", "Invalid payroll sheet key")
@@ -2705,7 +2718,7 @@ def approve_sheet(key: str, request: Request, actor: dict[str, Any] = Depends(cu
 
 @router.post("/sheets/{key}/unapprove")
 def reopen_payroll(key: str, request: Request, body: dict[str, Any] | None = None, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, "finance", "hr", "admin", "admin_manager")
+    _perm(actor, "payroll_approve", "edit")
     ym = _pay_key(key)
     if ym is None:
         raise ApiError(422, "invalid_key", "Invalid payroll sheet key")
@@ -2720,7 +2733,7 @@ def reopen_payroll(key: str, request: Request, body: dict[str, Any] | None = Non
 
 @router.get("/payroll-archive")
 def payroll_archive(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *PAYROLL_ROLES)
+    _perm(actor, "payroll", "view")
     return _rows(db, """SELECT a.pay_year AS year,a.pay_month AS month,p.approved_at,jsonb_array_length(a.rows) AS employees,
         coalesce((SELECT sum((item->>'totalDue')::numeric) FROM jsonb_array_elements(a.rows) item),0) AS total,
         coalesce((SELECT sum((item->>'netSAR')::numeric) FROM jsonb_array_elements(a.rows) item),0) AS net_sar
@@ -2737,7 +2750,7 @@ def _num(v: Any) -> float:
 
 @router.get("/salary/basis")
 def salary_basis(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *SALARY_ROLES)
+    _perm(actor, "payroll", "view")
     rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} ORDER BY d.name_ar")
     result = []
     for row in rows:
@@ -2779,7 +2792,7 @@ def salary_basis(actor: dict[str, Any] = Depends(current_actor), db: Session = D
 
 @router.get("/registry/documents")
 def document_registry(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "documents", "view")
     rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} WHERE d.active ORDER BY d.employee_id")
     today = today_riyadh()
     out = []
@@ -2798,7 +2811,7 @@ def document_registry(actor: dict[str, Any] = Depends(current_actor), db: Sessio
 
 @router.get("/leave/requests")
 def hr_leave_requests(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "leaves", "view")
     return _rows(db, "SELECT * FROM public.workflow_requests WHERE request_type NOT LIKE 'template:%' ORDER BY created_at DESC")
 
 
@@ -2865,7 +2878,7 @@ def _workflow_out(db: Session, row: dict[str, Any]) -> dict[str, Any]:
 @router.get("/requests")
 def list_hr_requests(status: str | None = None, type: str | None = None, employee_id: str | None = None,
                      pending_now: bool = False, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "requests", "view")
     sql = "SELECT * FROM public.workflow_requests WHERE request_type NOT LIKE 'template:%'"
     params: dict[str, Any] = {}
     if pending_now or status == "pending":
@@ -2885,7 +2898,7 @@ def list_hr_requests(status: str | None = None, type: str | None = None, employe
 
 @router.post("/requests", status_code=201)
 def create_hr_request(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "requests", "edit")
     employee_id = str(body.get("employee_id") or "")
     employee = _employee_scope(db, actor, employee_id)
     req_type = str(body.get("type") or "")
@@ -2932,10 +2945,10 @@ def _hr_decide(db: Session, actor: dict[str, Any], request: Request, request_id:
         raise ApiError(422, "invalid_action", "Action must be approve or reject")
     if action == "reject" and not str(reason or "").strip():
         raise ApiError(422, "reason_required", "A rejection reason is required")
-    if actor["role"] not in HR_ROLES:
+    if not _can(actor, "requests", "edit"):
         raise ApiError(403, "forbidden", "Not authorized")
     if allow_override:
-        if actor["role"] not in {"admin", "admin_manager"} and actor.get("employee_id") not in _stage_people(db, "hr"):
+        if actor["role"] not in {"admin", "admin_manager", "chairman"} and actor.get("employee_id") not in _stage_people(db, "hr"):
             raise ApiError(403, "forbidden", "Not authorized as a configured HR approver")
     elif stage != "hr" or not _can_act(db, actor, item):
         raise ApiError(403, "forbidden", "This request is not assigned to this HR approver")
@@ -2963,7 +2976,7 @@ def hr_override_request(request_id: uuid.UUID, body: dict[str, Any], request: Re
 
 @router.post("/requests/{request_id}/final-approve")
 def hr_final_approve(request_id: uuid.UUID, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "requests", "edit")
     item = _row(db, "SELECT current_stage,status FROM public.workflow_requests WHERE id=:id", id=request_id)
     if not item or item["status"] != "pending":
         raise ApiError(404, "not_found", "Pending request not found")
@@ -2986,7 +2999,7 @@ def hr_reject_request(request_id: uuid.UUID, body: dict[str, Any], request: Requ
 
 @router.delete("/requests/{request_id}", status_code=204)
 def hr_delete_request(request_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "requests", "edit")
     row = _row(db, "SELECT * FROM public.workflow_requests WHERE id=:id", id=request_id)
     if not row:
         raise ApiError(404, "not_found", "Request not found")
@@ -3010,7 +3023,7 @@ def list_holidays(actor: dict[str, Any] = Depends(current_actor), db: Session = 
 
 @router.post("/holidays", status_code=201)
 def create_holiday(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     row = _row(db, "INSERT INTO public.public_holidays(id,name,name_en,holiday_date,days,recurring) VALUES(:id,:name,:name_en,:day,:days,:recurring) RETURNING id,name AS name_ar,name_en,holiday_date AS start_date,days,recurring AS is_recurring,updated_at",
                id=str(body.get("id") or uuid.uuid4()), name=body.get("name_ar") or body.get("name") or "", name_en=body.get("name_en"),
                day=body.get("start_date"), days=body.get("days") or 1, recurring=bool(body.get("is_recurring")))
@@ -3021,7 +3034,7 @@ def create_holiday(body: dict[str, Any], request: Request, actor: dict[str, Any]
 
 @router.delete("/holidays/{holiday_id}", status_code=204)
 def delete_holiday(holiday_id: str, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "settings", "edit")
     result = db.execute(text("DELETE FROM public.public_holidays WHERE id=:id"), {"id": holiday_id})
     if not result.rowcount:
         raise ApiError(404, "not_found", "Holiday not found")
@@ -3053,7 +3066,7 @@ def _balance_detail(db: Session, employee_id: str) -> dict[str, Any]:
 
 @router.get("/leave/balances")
 def leave_balances(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "leaves", "view")
     emps = [e for e in cdata.employees(db) if not e.is_terminated]
     book = cdata.leave_book(db, today_riyadh(), emps)
     return [_balance_row(book, e) for e in emps]
@@ -3061,14 +3074,14 @@ def leave_balances(actor: dict[str, Any] = Depends(current_actor), db: Session =
 
 @router.get("/leave/employees/{employee_id}")
 def leave_balance_detail(employee_id: str, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "leaves", "view")
     return _balance_detail(db, employee_id)
 
 
 @router.put("/leave/employees/{employee_id}")
 def update_leave_balance(employee_id: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """Legacy saveLeaveBalanceAdjustment: replace every year's figures in data.leaveYearOverrides (same normalisation)."""
-    _require(actor, *HR_ROLES)
+    _perm(actor, "leaves", "edit")
     row = _row(db, "SELECT employee_id,data FROM public.employee_directory WHERE employee_id=:id", id=employee_id)
     if not row:
         raise ApiError(404, "not_found", "Employee not found")
@@ -3102,7 +3115,7 @@ def update_leave_balance(employee_id: str, body: dict[str, Any], request: Reques
 @router.post("/leave/used-through")
 def used_through(body: list[dict[str, Any]], actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """Payroll «ما تم استحقاقه»: annual leave days taken up to each end date. Key = "<employee_id>|<end>"."""
-    _require(actor, *HR_READ_ROLES, "finance")
+    _perm(actor, ("leaves", "payroll"), "view")
     emps = {e.id: e for e in cdata.employees(db)}
     book = cdata.leave_book(db, today_riyadh(), list(emps.values()))
     out: dict[str, float] = {}
@@ -3121,7 +3134,7 @@ def holidays(actor: dict[str, Any] = Depends(current_actor), db: Session = Depen
 
 @router.get("/letters")
 def letter_status(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_READ_ROLES)
+    _perm(actor, "forms", "view")
     return _rows(db, """SELECT r.id,r.employee_id,r.request_type AS type,r.payload->>'title' AS title,r.status,
         (SELECT a.comment FROM public.workflow_actions a WHERE a.request_id=r.id AND a.action='rejected' ORDER BY a.created_at DESC LIMIT 1) AS rejection_reason,
         r.created_at,r.completed_at AS responded_at,d.name_ar AS employee_name FROM public.workflow_requests r
@@ -3130,7 +3143,7 @@ def letter_status(actor: dict[str, Any] = Depends(current_actor), db: Session = 
 
 @router.post("/letters")
 def send_letter(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "forms", "edit")
     employee_id = str(body.get("employee_id") or "")
     _employee_scope(db, actor, employee_id)
     title = str(body.get("title") or "").strip()
@@ -3158,7 +3171,7 @@ def send_letter(body: dict[str, Any], request: Request, actor: dict[str, Any] = 
 
 @router.delete("/letters/{letter_id}", status_code=204)
 def delete_letter(letter_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "forms", "edit")
     db.execute(text("DELETE FROM public.ariba_documents WHERE request_id=:id"), {"id": letter_id})
     # the chain row must not outlive its letter, or `/me/sign/pending` would list a deleted one (S7)
     db.execute(text("DELETE FROM public.ariba_doc_signing WHERE request_id=:id"), {"id": letter_id})
@@ -3184,15 +3197,33 @@ def change_password(body: dict[str, Any], request: Request, actor: dict[str, Any
     return result
 
 
+def _role_grant(actor: dict[str, Any], role: str) -> None:
+    """P1 / P2: only admin and chairman give a role other than employee; only admin makes admin or chairman."""
+    if actor.get("role") not in perms.FULL_ROLES:
+        raise ApiError(403, "forbidden", "تغيير الأدوار للمدير (Admin) ورئيس المجلس فقط")
+    if role in perms.FULL_ROLES and actor.get("role") != "admin":
+        raise ApiError(403, "only_admin_can_grant_admin", "فقط Admin يمنح دور Admin أو رئيس المجلس")
+
+
+def _keep_an_admin(db: Session, target: dict[str, Any], role: str, active: bool) -> None:
+    """P2: the last active admin account can be neither demoted nor switched off."""
+    if target.get("role") != "admin" or (role == "admin" and active):
+        return
+    others = db.scalar(text("""SELECT count(*) FROM public.ariba_auth_accounts
+        WHERE role='admin' AND active AND id<>:id"""), {"id": target["id"]})
+    if not others:
+        raise ApiError(409, "last_admin", "لا يمكن إيقاف أو تغيير آخر حساب Admin")
+
+
 @router.post("/auth/users")
 def create_account(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees_admin", "edit")
     employee_id = str(body.get("employee_id") or "")
     emp = _employee_scope(db, actor, employee_id)
     role = str(body.get("role") or "employee")
     _require_lookup(db, "roles", role, "role")
-    if role == "admin" and actor["role"] != "admin":
-        raise ApiError(403, "forbidden", "Only admin can create admin accounts")
+    if role != "employee":
+        _role_grant(actor, role)
     if _row(db, "SELECT 1 AS x FROM public.ariba_auth_accounts WHERE employee_id=:eid", eid=employee_id):
         raise ApiError(409, "account_exists", "This employee already has an account")
     username = str(emp.get("username") or emp.get("data", {}).get("empNo") or employee_id).lower()
@@ -3208,15 +3239,18 @@ def create_account(body: dict[str, Any], request: Request, actor: dict[str, Any]
 
 @router.patch("/auth/users/{user_id}")
 def update_account(user_id: uuid.UUID, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees_admin", "edit")
     target = _row(db, "SELECT * FROM public.ariba_auth_accounts WHERE id=:id", id=user_id)
     if not target:
         raise ApiError(404, "not_found", "Account not found")
     role = body.get("role", target["role"])
     active = body.get("is_active", target["active"])
     _require_lookup(db, "roles", str(role), "role")
-    if role != target["role"] and actor["role"] != "admin":
-        raise ApiError(403, "forbidden", "Only admin can change roles")
+    if role != target["role"]:
+        _role_grant(actor, str(role))
+        if str(target["id"]) == str(actor.get("account_id")):
+            raise ApiError(403, "own_role", "لا يمكنك تغيير دورك بنفسك")
+    _keep_an_admin(db, target, str(role), bool(active))
     db.execute(text("UPDATE public.ariba_auth_accounts SET role=:role,active=:active,updated_at=now() WHERE id=:id"), {"role": role, "active": active, "id": user_id})
     if not active:
         db.execute(text("DELETE FROM public.ariba_sessions WHERE account_id=:id"), {"id": user_id})
@@ -3229,7 +3263,7 @@ def update_account(user_id: uuid.UUID, body: dict[str, Any], request: Request, a
 
 @router.post("/auth/users/{user_id}/temporary-password")
 def temporary_password(user_id: uuid.UUID, request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees_admin", "edit")
     account = _row(db, "SELECT * FROM public.ariba_auth_accounts WHERE id=:id", id=user_id)
     if not account:
         raise ApiError(404, "not_found", "Account not found")
@@ -3245,7 +3279,7 @@ def temporary_password(user_id: uuid.UUID, request: Request, actor: dict[str, An
 
 @router.get("/auth/users/by-employee/{employee_id}")
 def account_by_employee(employee_id: str, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
-    _require(actor, *HR_ROLES)
+    _perm(actor, "employees_admin", "edit")
     account = _row(db, "SELECT * FROM public.ariba_auth_accounts WHERE employee_id=:eid", eid=employee_id)
     if not account:
         raise ApiError(404, "not_found", "Account not found")

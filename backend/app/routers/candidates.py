@@ -78,11 +78,11 @@ _EMAIL = re.compile(r"^\S+@\S+\.\S+$")
 
 
 def _reader(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *canonical.HR_READ_ROLES)
+    canonical._perm(actor, ("employees", "employees_admin"))
 
 
 def _writer(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *canonical.HR_ROLES)
+    canonical._perm(actor, ("employees", "employees_admin"), "edit")
 
 
 def _truthy(value: Any) -> bool:

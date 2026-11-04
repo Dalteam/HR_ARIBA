@@ -31,8 +31,9 @@ def refused(exc_info, status: int, code: str) -> None:
 
 # ------------------------------------------------------------------------------------------------ role gates
 
-@pytest.mark.parametrize("role", ["hr", "admin", "admin_manager", "finance"])
-def test_the_four_editing_roles_may_read_and_write(role):
+@pytest.mark.parametrize("role", ["hr", "admin", "admin_manager", "finance", "chairman"])
+def test_the_editing_roles_may_read_and_write(role):
+    """The client's matrix (Stage 11): assets edit for hr, admin_manager, finance; admin and chairman always."""
     assets._reader({"role": role})
     assets._editor({"role": role})
 
@@ -45,7 +46,7 @@ def test_the_ceo_reads_but_never_writes():
     refused(exc, 403, "forbidden")
 
 
-@pytest.mark.parametrize("role", ["employee", "manager", "chairman", ""])
+@pytest.mark.parametrize("role", ["employee", "manager", ""])
 def test_everyone_else_is_refused(role):
     """AS1."""
     for gate in (assets._reader, assets._editor):

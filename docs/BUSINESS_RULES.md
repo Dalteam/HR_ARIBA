@@ -981,6 +981,109 @@ finance use this portal).
 | AS6 | edit / delete / custody on an unknown id | 404; on a non-uuid id, 422 |
 | AS7 | custody to an employee who does not exist | 404 |
 
+## Roles and permissions matrix — Stage 11, rules approved by the owner 4 Nov 2026 (`services/permissions.py`, `routers/permissions.py`, no migration)
+
+The design's «الصلاحيات والأشخاص» card (`reference/hr-v1`: `pages/settings/PermsCard.jsx`, `RolesCard.jsx`; its
+database functions `ariba_can`, `ariba_perms_matrix`, `ariba_perms_set`, `ariba_hr_list_roles`,
+`ariba_hr_set_role`). Owner's rules (4 Nov 2026): the admin edits it; the HR portal is used by HR and finance;
+finance as in the reference.
+
+### Today (measured 4 Nov 2026)
+
+- About 100 HR-side checks across the API use **fixed role lists** in the code (`HR_ROLES` = hr, admin,
+  admin_manager; `HR_READ_ROLES` adds ceo; `SALARY_ROLES` = finance, hr, admin; …). `ariba_role_perms` (76 rows in
+  `ariba_src`, the client's own matrix) is **never read**.
+- Accounts in `ariba_src`: admin 4, ceo 1, **chairman 1**, finance 2, employee 102 (16 active). No `hr` or
+  `admin_manager` accounts.
+- **`chairman` is in no list, so the chairman cannot use the HR side at all.** In the design, chairman = admin.
+
+### The model (the design's, unchanged)
+
+- 19 modules × levels `none / view / edit`, one row per (role, module) in `ariba_role_perms`. A missing row
+  is `none`.
+- **`admin` and `chairman` always have `edit` on everything** (not stored, not editable).
+- The matrix edits four roles: `hr`, `admin_manager`, `finance`, `ceo`. `employee` and `manager` have no HR
+  side; their own data stays governed by today's rules (and `ariba_manager_perms` for managers, Stage 2).
+- A route that names several modules passes when **any** of them reaches the level (the design's `a|b`).
+
+### What each module guards in OUR API
+
+| Module | view | edit |
+|---|---|---|
+| `staff` | open the HR portal: dashboard, lookups, the shell | — |
+| `employees` | employee list, details, counts, business cards, candidates (with `employees_admin`) | add / edit employees, work locations, business cards, candidates' accept / reject, invites |
+| `employees_admin` | — | terminate, reactivate, accounts and temporary passwords, the recycle bin, delete employee (later stage) |
+| `attachments` | an employee's documents (with `documents`) | upload / delete documents and the photo |
+| `attendance` | attendance, ranges, summary | add / edit / delete attendance |
+| `locations` | location assignments | add / edit / delete locations |
+| `leaves` | leave requests, balances | edit balances |
+| `requests` | the requests list | HR submits, final-approves, deletes requests |
+| `payroll` | sheets, payroll archive, salary basis, salary preview | edit sheets, payroll exclusion |
+| `payroll_prepare` | — | prepare the month (its own later stage) |
+| `payroll_approve` | — | approve / unapprove a payroll sheet |
+| `settlement` | (computed in the browser) | — |
+| `documents` | the documents registry | — |
+| `forms` | letters list | create / delete / approve letters |
+| `reports` | (computed in the browser) | — |
+| `settings` | settings pages | company, attendance, GOSI, app links, doc-sign, push, holidays, manager perms, team salary, apply mode |
+| `permissions` | the matrix and the accounts list | **admin and chairman only** (below) |
+| `audit` | the audit log (finance keeps its four-module lock, Stage 9) | the purge request |
+| `assets` | the register | add / edit / custody / delete (Stage 10) |
+
+Salary figures on employee records are shown to roles with **`payroll` ≥ view** (today: finance, hr, admin).
+
+### Rules this stage adds
+
+- **P1** Only `admin` and `chairman` change the matrix and anyone's role (owner, 4 Nov 2026). The client's rows
+  give `hr` and `ceo` `permissions: edit`; we keep their rows but **cap `permissions` at `view`** for every role in
+  the matrix, so nobody else can edit it.
+- **P2** Only `admin` may make someone `admin` or `chairman` (the design's `ONLY_ADMIN_CAN_GRANT_ADMIN`). Nobody can
+  change their own role. The last active `admin` cannot be demoted.
+- **P3** `admin` and `chairman` columns are not editable; levels outside `none / view / edit` and modules outside
+  the 19 are 422.
+- **P4** Every matrix change and role change writes an audit row (module `security`) with old and new values.
+- **P5** The portal reads `GET /me/permissions` (my role's 19 levels) to show menu entries and buttons; the API
+  checks every call itself, as today.
+- **P6** Goals, targets, evaluations, tasks and announcements keep their Stage 3, 4, 7 rules (HR = roles with
+  `employees: edit`, plus admin / chairman). Nothing about managers or employees changes.
+
+### What changes for real accounts with the client's matrix (to confirm)
+
+| Role | Gains | Loses |
+|---|---|---|
+| `admin` | nothing (already full) | nothing |
+| `chairman` (1 account) | **everything, like admin** | — |
+| `finance` (2) | read-only: employees (with salary), documents, attendance, locations, leaves, requests, letters | nothing |
+| `ceo` (1) | **sees salaries and payroll sheets** (`payroll: view`); **may approve payroll sheets** (`payroll_approve: edit`) | nothing that it uses today |
+| `hr` / `admin_manager` (0 accounts) | as their rows say; note `hr` has `payroll_approve: view` only, so an `hr` account could no longer approve sheets | — |
+
+### Routes added
+
+    GET  /permissions          the matrix: roles, modules, levels, can_edit
+    PUT  /permissions          {role, module, level} — admin / chairman only
+    GET  /permissions/accounts active accounts with name and role
+    PUT  /permissions/accounts/{employee_id}  {role} — admin / chairman only (P2)
+    GET  /me/permissions       my role's levels for the 19 modules
+
+### Decisions (owner, 4 Nov 2026)
+
+- **Q1** Chairman = full access like admin: **yes**.
+- **Q2** The CEO's salary and payroll access: **match the design** (the client's matrix: `payroll: view`,
+  `payroll_approve: edit`). Note: `ariba_src` is the client's 7 Oct snapshot, in which the CEO still has
+  `payroll_approve: none`; the 14 Oct change is only in their 29 Oct dump (FOLLOW_UPS #49).
+- **Q3** The client's matrix is the starting point: **yes** (the stored rows; `DEFAULTS` in code mirror the 29 Oct dump
+  and are used only where no rows can be read).
+
+### Built as
+
+- Every HR-side check calls `canonical._perm(actor, modules, need)`; the actor carries its role's 19 levels from
+  sign-in (`actor["perms"]`, the matrix cached 30 s and cleared on every change).
+- The design's HR letter step (`POST /letters/{id}/approve`) uses its own rule, `requests|settings|employees: view`,
+  so the CEO keeps closing letters (D20) — and finance, which has `requests: view`, may close one too.
+- Measured on two fresh copies, 180 routes × 8 roles: admin, manager and employee **unchanged**; chairman +98 routes;
+  finance +19 (the reads above, plus payroll exclusion and the letter step); ceo +3 (salary basis, salary preview,
+  accounts list); hr −2 (payroll approve / reopen); admin_manager +2 / −15 — all exactly the client's matrix.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

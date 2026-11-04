@@ -40,11 +40,11 @@ MAX_DESIGN_BYTES = 1_500_000
 
 
 def _reader(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *canonical.HR_READ_ROLES)
+    canonical._perm(actor, "employees")
 
 
 def _writer(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *canonical.HR_ROLES)
+    canonical._perm(actor, "employees", "edit")
 
 
 def _table_ready(db: Session) -> bool:
@@ -106,7 +106,7 @@ def list_bizcards(actor: dict[str, Any] = Depends(canonical.current_actor), db: 
     return {"design": canonical._app_setting(db, DESIGN_KEY), "cfg": canonical._app_setting(db, CFG_KEY) or {},
             "logo": canonical._app_setting(db, "company_logo"), "names": canonical._app_setting(db, "company_names"),
             "overrides": _overrides(db), "employees": _employees(db),
-            "can_edit": actor.get("role") in canonical.HR_ROLES}
+            "can_edit": canonical._can(actor, "employees", "edit")}
 
 
 

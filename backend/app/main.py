@@ -14,7 +14,7 @@ from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
 from app.routers import announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals, health, manager
-from app.routers import public, push, recycle_bin, tasks
+from app.routers import permissions, public, push, recycle_bin, tasks
 from app.services import notify_email
 
 API_PREFIX = "/api/v1"
@@ -113,6 +113,9 @@ def create_app() -> FastAPI:
     # Fixed assets and custody (Stage 10): /assets and /assets/{id}/custody, on the design's two tables that
     # were already in the schema (no migration).
     app.include_router(assets.router, prefix=API_PREFIX)
+    # Roles and permissions (Stage 11): the matrix (/permissions), the accounts' roles, and /me/permissions. Every
+    # HR-side check reads the same matrix through canonical._perm (services/permissions.py); no migration.
+    app.include_router(permissions.router, prefix=API_PREFIX)
     return app
 
 

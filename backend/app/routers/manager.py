@@ -277,7 +277,7 @@ def list_manager_perms(actor: dict[str, Any] = Depends(canonical.current_actor),
     `team_salary_visible` is returned next to the per-manager flags because HR has to see both:
     a manager may hold `view_team_salary` while the company-wide setting still hides the salary.
     """
-    canonical._require(actor, *canonical.HR_READ_ROLES)
+    canonical._perm(actor, ("settings", "permissions"))
     rows = canonical._rows(db, """SELECT m.employee_id,m.name_ar,jt.name AS job,count(t.employee_id) AS team,p.perms
         FROM public.employee_directory m
         JOIN public.employee_directory t ON t.manager_id=m.employee_id AND t.active
@@ -298,7 +298,7 @@ def list_manager_perms(actor: dict[str, Any] = Depends(canonical.current_actor),
 def set_manager_perms(manager_id: str, body: dict[str, Any], request: Request,
                       actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
     """Grant / revoke a manager's permissions. Only the keys in the body change."""
-    canonical._require(actor, *canonical.HR_ROLES)
+    canonical._perm(actor, "settings", "edit")
     if not canonical._row(db, "SELECT employee_id FROM public.employee_directory WHERE employee_id=:m", m=manager_id):
         raise ApiError(404, "not_found", "Employee not found")
     source = body.get("perms") if isinstance(body.get("perms"), dict) else body
@@ -314,7 +314,7 @@ def set_manager_perms(manager_id: str, body: dict[str, Any], request: Request,
 @router.get("/settings/team-salary")
 def get_team_salary(actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
     """Whether managers may see the team's salary (`false` until HR turns it on)."""
-    canonical._require(actor, *canonical.HR_READ_ROLES)
+    canonical._perm(actor, ("settings", "permissions"))
     return {"visible": team_scope.team_salary_visible(db)}
 
 
@@ -322,7 +322,7 @@ def get_team_salary(actor: dict[str, Any] = Depends(canonical.current_actor), db
 def set_team_salary(body: dict[str, Any], request: Request,
                     actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
     """Turn the team's salary on or off for every manager whose `view_team_salary` is granted."""
-    canonical._require(actor, *canonical.HR_ROLES)
+    canonical._perm(actor, "settings", "edit")
     visible = team_scope.set_team_salary_visible(db, bool(body.get("visible")), actor.get("username"))
     canonical._write_audit(db, actor, request, "settings", "update", "ariba_app_settings",
                            team_scope.TEAM_SALARY_SETTING, details={"visible": visible})

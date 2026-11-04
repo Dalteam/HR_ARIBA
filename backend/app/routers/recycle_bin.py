@@ -45,7 +45,7 @@ RESTORABLE = ("employee", "workflow_request", "hr_leave")
 
 
 def _editor(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *BIN_ROLES)
+    canonical._perm(actor, "employees_admin", "edit")
 
 
 def _uuid(value: Any, field: str) -> str:

@@ -36,9 +36,9 @@ from app.routers import canonical
 
 router = APIRouter(tags=["assets"])
 
-#: `assets:edit` in the design's `ariba_role_perms` (hr, admin_manager, finance) plus `admin`.
-EDIT_ROLES = ("hr", "admin", "admin_manager", "finance")
-#: `assets:view` adds the CEO: the list and the inventory, no writes.
+#: The client's starting matrix for `assets` (Stage 11 reads the live one): edit for hr, admin_manager,
+#: finance (+ admin, chairman), view for the CEO. The checks below go through `canonical._perm`.
+EDIT_ROLES = ("hr", "admin", "admin_manager", "finance", "chairman")
 READ_ROLES = EDIT_ROLES + ("ceo",)
 
 CATEGORIES = ("computers", "electronics", "vehicles", "furniture", "equipment", "software", "other")
@@ -54,11 +54,11 @@ TEXT_LIMITS = {"serial_no": 120, "model": 120, "location": 200, "condition": 200
 
 
 def _reader(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *READ_ROLES)
+    canonical._perm(actor, "assets")
 
 
 def _editor(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *EDIT_ROLES)
+    canonical._perm(actor, "assets", "edit")
 
 
 def _invalid(message: str) -> ApiError:
@@ -197,7 +197,7 @@ def list_assets(actor: dict[str, Any] = Depends(canonical.current_actor), db: Se
     _reader(actor)
     assets = canonical._rows(db, _SELECT + " ORDER BY a.asset_no")
     log = canonical._rows(db, "SELECT * FROM public.ariba_asset_custody_log ORDER BY id DESC LIMIT :n", n=LOG_LIMIT)
-    can_edit = actor.get("role") in EDIT_ROLES
+    can_edit = canonical._can(actor, "assets", "edit")
     return {"assets": assets, "log": log, "can_edit": can_edit, "people": _people(db) if can_edit else []}
 
 

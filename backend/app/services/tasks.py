@@ -68,7 +68,7 @@ NAMED_LEAVE_TYPES = ("annual", "remote")
 #: What a leave whose type is not named is called; `app/tasks.tsx` labels it «إجازة».
 PRIVATE_LEAVE = "private"
 #: Read access to everybody, like the other HR reads (`canonical.HR_READ_ROLES`).
-HR_READ_ROLES = ("hr", "admin", "admin_manager", "ceo")
+HR_READ_ROLES = ("hr", "admin", "admin_manager", "ceo", "chairman")
 #: The person-scoped refusal (`403`), the same sentence the team and goals screens show.
 FORBIDDEN = "ليست لديك صلاحية على هذا الموظف"
 #: A row that is not the caller's is not "forbidden": it does not exist for them.

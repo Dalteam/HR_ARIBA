@@ -60,8 +60,9 @@ APPROVER_STAGES = ("hr", "ceo")
 DEFAULT_APPROVER = "hr"
 #: The roles that hold each stage - the same resolution `routers/canonical.py` uses for an override.
 STAGE_ROLES = {"hr": ("hr", "admin", "admin_manager"), "ceo": ("ceo",)}
-#: The roles that administer targets (they may read and write targets, never write an evaluation).
-HR_ROLES = ("hr", "admin", "admin_manager")
+#: The roles that administer targets (they may read and write targets, never write an evaluation). The chairman
+#: counts as admin (Stage 11, owner 4 Nov 2026).
+HR_ROLES = ("hr", "admin", "admin_manager", "chairman")
 
 #: The app's `ratingOf`, in order.
 RATINGS = ((90, "ممتاز"), (75, "جيد جداً"), (60, "جيد"), (50, "مقبول"))

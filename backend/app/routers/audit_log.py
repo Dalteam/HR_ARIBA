@@ -39,9 +39,9 @@ from app.routers import canonical
 
 router = APIRouter(tags=["audit"])
 
-#: Who reads the log: `ariba_can(role,'audit','view')` in `ariba_role_perms` (hr/finance edit, ceo and
-#: admin_manager view) plus `admin`, which the matrix always allows.
-AUDIT_ROLES = ("hr", "admin", "admin_manager", "ceo", "finance")
+#: Who reads the log: `audit: view` in the permission matrix (Stage 11; hr / finance edit, ceo and
+#: admin_manager view, admin and chairman always). Kept as the client's starting list for reference.
+AUDIT_ROLES = ("hr", "admin", "admin_manager", "ceo", "finance", "chairman")
 
 #: The only modules `finance` may read (the design's `fin_mods`). A salary change in `employees`, a hire or
 #: a permission change is not finance's to read.
@@ -57,7 +57,7 @@ _MONTH = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
 
 
 def _viewer(actor: dict[str, Any]) -> None:
-    canonical._require(actor, *AUDIT_ROLES)
+    canonical._perm(actor, "audit")
 
 
 def _modules_query(db: Session, limit: int) -> list[dict[str, Any]]:

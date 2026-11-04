@@ -13,7 +13,8 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import announcements, canonical, goals, health, manager, public, push, tasks
+from app.routers import announcements, apply, audit_log, bizcards, candidates, canonical, goals, health, manager
+from app.routers import public, push, recycle_bin, tasks
 from app.services import notify_email
 
 API_PREFIX = "/api/v1"
@@ -100,6 +101,15 @@ def create_app() -> FastAPI:
     # Announcements and greetings (Stage 7): the home card (/me/announcements) and HR's side
     # (/announcements, /occasions, /settings/greetings, /settings/announcements), on migration 003.
     app.include_router(announcements.router, prefix=API_PREFIX)
+    # The four screens the design had and we did not (Stage 9): the audit log and its two-person purge
+    # (/audit-log), the recycle bin (/recycle-bin), the candidates list, invites and medical form
+    # (/candidates), the public application form (/public/apply — the second token-free surface), and
+    # business cards (/bizcards, /me/bizcard). One migration behind two of them: 004_four_screens.sql.
+    app.include_router(audit_log.router, prefix=API_PREFIX)
+    app.include_router(recycle_bin.router, prefix=API_PREFIX)
+    app.include_router(candidates.router, prefix=API_PREFIX)
+    app.include_router(apply.router, prefix=API_PREFIX)
+    app.include_router(bizcards.router, prefix=API_PREFIX)
     return app
 
 

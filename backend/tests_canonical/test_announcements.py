@@ -118,7 +118,10 @@ def test_n4_the_card_has_exactly_the_seven_keys():
     secret = row(audience="employees", employee_ids=["e1", "e2", "e3"], employer_id=None)
     items = ann.visible([secret], "e1", None, NOW)
     assert len(items) == 1 and set(items[0]) == set(ann.CARD_KEYS)
-    assert "e2" not in str(items) and "employees" not in str(items)
+    # The audience and the other recipients never reach the card. Compare whole values, not a substring of the
+    # rendered dict: a uuid4 can contain "e2" (this assertion used to fail once in every few runs).
+    assert "employees" not in items[0].values()
+    assert all(value not in (["e1", "e2", "e3"], "e2", "e3") for value in items[0].values())
 
 
 def test_n7_greeting_window_is_24_hours_from_now_in_riyadh():

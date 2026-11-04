@@ -11,7 +11,7 @@ import type { Role } from "@/lib/api";
 import { EMP_LOGIN, HR_LOGIN, canAccess, homeFor, isEmployeeApp, isPublicApply } from "@/lib/routes";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/session";
 
-const ROLES: Role[] = ["employee", "manager", "finance", "hr", "ceo", "admin"];
+const ROLES: Role[] = ["employee", "manager", "finance", "hr", "ceo", "admin", "admin_manager", "chairman"];
 
 function roleFromToken(token: string | undefined): Role | null {
   if (!token) return null;

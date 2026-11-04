@@ -32,9 +32,9 @@ const avColor = (id: string) => ([...id].reduce((n, c) => n + c.charCodeAt(0), 0
 
 export default function EmployeesPage() {
   const { t, lang } = useLocale();
-  const { hasRole } = useAuth();
+  const { can: may } = useAuth();
   const toast = useToast();
-  const canEdit = hasRole("hr", "admin");
+  const canEdit = may("employees", "edit");
   const [tab, setTab] = useState<EmployeeTab>("all");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");

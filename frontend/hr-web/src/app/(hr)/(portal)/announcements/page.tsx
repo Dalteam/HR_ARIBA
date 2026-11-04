@@ -52,8 +52,8 @@ type AnnRow = { id: string; kind: "announcement" | "greeting"; occasion: string 
 type OccRow = { id: string; employee_id: string; name: string; occasion: string; occ_date: string; yearly: boolean; note: string | null };
 
 export default function Page() {
-  const { hasRole } = useAuth();
-  const can = hasRole("hr", "admin");
+  const { can: may } = useAuth();
+  const can = may("employees", "edit");
   const [tab, setTab] = useState("send");
   const [emps, setEmps] = useState<EmployeeListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);

@@ -109,9 +109,9 @@ const setField = (r: PayRow, k: string, v: unknown) => {
 
 export default function Page() {
   const toast = useToast();
-  const { hasRole } = useAuth();
-  const canEdit = hasRole("hr", "admin");
-  const canApprove = hasRole("finance", "hr", "admin");
+  const { can: may } = useAuth();
+  const canEdit = may("payroll", "edit");
+  const canApprove = may("payroll_approve", "edit");
   const now = new Date();
   const [basis, setBasis] = useState<SalaryBasisRow[] | null>(null);
   const [rates, setRates] = useState<Awaited<ReturnType<typeof getGosiRates>> | null>(null);

@@ -7,7 +7,7 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000
 
 // --------------------------------------------------------------------------- types
 
-export type Role = "employee" | "manager" | "finance" | "hr" | "ceo" | "admin";
+export type Role = "employee" | "manager" | "finance" | "hr" | "ceo" | "admin" | "admin_manager" | "chairman";
 export type EmployeeCategory = "active" | "tamheer" | "training" | "consultant" | "hourly";
 export type WpsType = "wps" | "trainee" | "tamheer" | "external" | "consultant" | "no_wps" | "remote";
 export type GosiSystem = "matching" | "non_matching" | "non_saudi";

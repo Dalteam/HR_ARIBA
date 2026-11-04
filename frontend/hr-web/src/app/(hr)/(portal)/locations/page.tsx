@@ -22,8 +22,8 @@ const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", paddi
 
 export default function Page() {
   const toast = useToast();
-  const { hasRole } = useAuth();
-  const canEdit = hasRole("hr", "admin");
+  const { can: may } = useAuth();
+  const canEdit = may("locations", "edit");
   const [locs, setLocs] = useState<Location[] | null>(null);
   const [workplaces, setWorkplaces] = useState<{ id: string; name_ar: string }[]>([]);
   const [error, setError] = useState<string | null>(null);

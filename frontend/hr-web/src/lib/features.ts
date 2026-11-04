@@ -89,7 +89,8 @@ export const FEATURES = {
   /** the daily expiry-alerts run */
   expiryAlerts: backend("مرحلة تنبيهات الانتهاء", "the expiry-alerts stage"),
   /** the editable role × page permission matrix */
-  rolesMatrix: backend("مرحلة مصفوفة الأدوار والصلاحيات", "the roles and permissions matrix stage"),
+  /** Stage 11: `backend/app/routers/permissions.py` + components/hr/perms-card.tsx and lib/permissions.ts */
+  rolesMatrix: { status: "ready" } as Feature,
   // ---- shell features of the design ----
   /** the design's per-section «recent changes» strip above every page (the log itself is ready at /audit-log) */
   sectionAudit: backend("شريط «آخر التعديلات» أعلى كل صفحة", "the per-section recent-changes strip"),

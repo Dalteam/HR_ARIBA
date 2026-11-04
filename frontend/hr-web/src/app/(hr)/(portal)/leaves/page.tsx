@@ -85,8 +85,8 @@ export default function Page() {
 function RequestsPage() {
   const toast = useToast();
   const { en, T } = useT();
-  const { hasRole } = useAuth();
-  const can = hasRole("hr", "admin");
+  const { can: may } = useAuth();
+  const can = may(["leaves", "requests"], "edit");
   // deep link from the attendance page: /leaves?tab=lv1&type=forgot_punch
   const params = useSearchParams();
   const tq = params.get("tab") as Tab | null;

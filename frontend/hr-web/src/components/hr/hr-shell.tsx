@@ -54,7 +54,7 @@ const BUILD_STAMP = process.env.NEXT_PUBLIC_BUILD_STAMP ?? "";
 
 export function HrShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, signOut, reload } = useAuth();
+  const { user, signOut, reload, perms } = useAuth();
   const { lang, setLang } = useLocale();
   const en = lang === "en";
   const T = (ar: string, en_: string) => (en ? en_ : ar);
@@ -88,11 +88,11 @@ export function HrShell({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const next: Partial<Record<BadgeId, number>> = {};
     const jobs: Promise<unknown>[] = [];
-    if (canAccess("/employees", user.role))
+    if (canAccess("/employees", user.role, perms))
       jobs.push(request<EmployeeCounts>("/employees/counts").then((c) => { next.emp = c.active; }).catch(() => undefined));
-    if (canAccess("/leaves", user.role))
+    if (canAccess("/leaves", user.role, perms))
       jobs.push(request<unknown[]>("/requests", { query: { status: "pending" } }).then((r) => { next.lv = r.length; }).catch(() => undefined));
-    if (canAccess("/documents", user.role))
+    if (canAccess("/documents", user.role, perms))
       jobs.push(
         listDocRegistry()
           .then((rows) => {
@@ -105,7 +105,7 @@ export function HrShell({ children }: { children: React.ReactNode }) {
           .catch(() => undefined),
       );
     void Promise.all(jobs).then(() => setBadges(next));
-  }, [user, tick]);
+  }, [user, perms, tick]);
 
   // the collapsible menu: remembered on a desktop, closed on a phone, Escape and the backdrop close it
   const setClosed = (c: boolean, save: boolean) => {
@@ -151,7 +151,9 @@ export function HrShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const info = pageTitle(pathname);
-  const items = HR_NAV.filter((n) => !("id" in n) || !user || canAccess(n.href, user.role));
+  const items = HR_NAV.filter((n) => !("id" in n) || !user || canAccess(n.href, user.role, perms));
+  // a page typed in by address that the matrix closes to this role (the proxy cannot read the matrix)
+  const blocked = !!user && !canAccess(pathname, user.role, perms);
   // a section title stays only when an item follows it
   const visible = items.filter((n, i) => "id" in n || (items[i + 1] && "id" in items[i + 1]));
   const isOn = (n: NavItem) => pathname === n.href || pathname.startsWith(n.href + "/");
@@ -249,7 +251,14 @@ export function HrShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="con" key={tick}>
-            {children}
+            {blocked ? (
+              <div className="al alb" style={{ margin: 16 }}>
+                <i className="ti ti-lock" />
+                <div>{T("لا تملك صلاحية لهذه الصفحة. يمكن لمدير النظام تعديل الصلاحيات من الإعدادات.", "You have no access to this page. The administrator can change permissions in Settings.")}</div>
+              </div>
+            ) : (
+              children
+            )}
           </div>
         </div>
       </div>

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PageState } from "@/components/hr/not-built";
 import { PasswordDialog } from "@/components/common/password-dialog";
 import { PasswordReveal } from "@/components/hr/password-reveal";
+import { PermsCard } from "@/components/hr/perms-card";
 import { useToast } from "@/components/common/toast";
 import { request } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -51,6 +52,8 @@ const ROLE_LABELS: Record<string, string> = {
   hr: "موارد بشرية",
   ceo: "رئيس تنفيذي",
   admin: "مدير عام (كل الصلاحيات)",
+  admin_manager: "المدير الإداري",
+  chairman: "رئيس مجلس الإدارة (كل الصلاحيات)",
 };
 const GOSI_HEAD = ["يطابق أقل من العمر", "يطابق العمر فأكثر", "شركة يطابق أقل", "شركة يطابق فأكثر", "لا يطابق موظف أقل", "لا يطابق موظف فأكثر", "لا يطابق شركة أقل", "لا يطابق شركة فأكثر", "غير سعودي شركة"];
 const hhmm = (t: string) => (t || "").slice(0, 5);
@@ -79,8 +82,8 @@ function readImage(file: File, maxW: number): Promise<string> {
 
 export default function Page() {
   const toast = useToast();
-  const { hasRole } = useAuth();
-  const ro = !hasRole("hr", "admin");
+  const { can: may } = useAuth();
+  const ro = !may("settings", "edit");
   const [company, setCompany] = useState<Company | null>(null);
   const [att, setAtt] = useState<AttendanceSettings | null>(null);
   const [gosi, setGosi] = useState<GosiSettings | null>(null);
@@ -194,7 +197,7 @@ export default function Page() {
     access: [
       <PasswordsCard key="pwd" emps={emps} />,
       W("ti-user-plus", "صفحة التقديم العامة للوظائف", "Public job-application page", ["تشغيل وإيقاف صفحة التقديم وتغيير رابطها.", "Switching the application page on or off and rotating its link."], "cand", "apl"),
-      W("ti-shield-lock", "مصفوفة الصلاحيات حسب الدور", "Permission matrix by role", ["تحديد ما يراه ويعدّله كل دور في كل صفحة.", "Setting what each role may see and change on every page."], "rolesMatrix", "pm"),
+      <PermsCard key="pm" />,
       <RolesCard key="rl" emps={emps} accounts={accounts} run={run} />,
       <ManagerPermsCard key="mp" run={run} />,
     ],

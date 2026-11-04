@@ -214,8 +214,8 @@ export default function Page() {
   const { lang } = useLocale();
   const en = lang === "en";
   const T = (a: string, b: string) => (en ? b : a);
-  const { hasRole } = useAuth();
-  const can = hasRole("hr", "admin");
+  const { can: may } = useAuth();
+  const can = may("attendance", "edit");
   const [emps, setEmps] = useState<E[] | null>(null);
   const [terms, setTerms] = useState<E[]>([]);
   const [locs, setLocs] = useState<{ id: string; name: string }[]>([]);

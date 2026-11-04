@@ -1145,6 +1145,26 @@ has «تشغيل الآن», and alerts go to the bell only while e-mail is off.
 - **E6** Two new tables (`ariba_alert_log`, `ariba_alert_daily`) by migration 005; without it the API still starts,
   the daily pass skips itself and «تشغيل الآن» answers 503 `migration_required`.
 
+## The employee's own leave actions — Stage 14, approved by the owner 4 Nov 2026 (`routers/me_leave.py`, migration `006_leave_cancel_type.sql`)
+
+The design's employee side of `leave_policy` (`reference/hr-v1` SQL `26_leave_cancel.sql`, `31_leave_advance_policy.sql`).
+Owner (4 Nov 2026, decision 6): match the reference. Each action sits behind its switch in Settings ▸ إلغاء وتعديل
+واسترجاع الإجازات, all on by default except `allow_advance_balance`.
+
+- **M1** `emp_cancel_pending`: the employee cancels their own **pending** leave; it ends «ملغاة» (kept in the history,
+  `payload.cancelled.kind = 'employee'`) and whoever it waits for is told. Deleting a non-approved request (V124) still works.
+- **M2** `emp_edit_pending`: the employee changes the dates of their own **pending** leave; days are counted again
+  (working days for annual leave), the annual balance is re-checked, the old dates are kept in `payload.edited`, and
+  whoever it waits for is told.
+- **M3** `emp_request_cancel_approved`: for an **approved** leave the employee sends a `leave_cancel` request (one
+  pending at a time per leave); it goes to the direct manager (HR when there is none) and ends at HR. Once approved,
+  the leave it names is cancelled and its days return (`payload.cancelled.kind = 'request'`).
+- **M4** `allow_advance_balance`: annual leave may use the rest of this year's entitlement before it accrues, in the
+  employee's request and in M2.
+- **M5** Someone else's request is **404**; a request that is not a leave is 409; a switched-off action is 403
+  `feature_disabled`. `GET /me/leave-policy` tells the screens which buttons to show (the API checks each action).
+- **M6** The request type `leave_cancel` is added by migration 006; without it only M3 answers 503.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

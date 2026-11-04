@@ -113,6 +113,35 @@ def return_to_manager(request_id: uuid.UUID, body: dict[str, Any], request: Requ
 
 # --------------------------------------------------------------------------------------------- L2 cancel
 
+def is_leave(db: Session, request_id: Any) -> bool:
+    return bool(db.scalar(text("SELECT 1 FROM public.leave_requests WHERE workflow_request_id=:r LIMIT 1"), {"r": request_id}))
+
+
+def do_cancel(db: Session, row: dict[str, Any], by: str | None, account_id: Any, reason: str, kind: str) -> tuple[str, str]:
+    """The design's ariba_leave_do_cancel: the request ends «ملغاة» (rejected, with who / when / why / what it was
+    kept on it), the bells of the others are cleared and the employee is told. Returns (label, span). No commit.
+
+    `kind` is who cancelled: `hr` (L2), `employee` (a pending leave, Stage 14) or `request` (an approved
+    `leave_cancel` request, Stage 14)."""
+    request_id = row["id"]
+    payload = dict(row.get("payload") or {})
+    payload["cancelled"] = {"by": by, "at": datetime.now(UTC).isoformat(), "kind": kind, "reason": reason,
+                            "was": row["status"]}
+    db.execute(text("""UPDATE public.workflow_requests SET current_stage='rejected', payload=CAST(:p AS jsonb),
+        updated_at=now() WHERE id=:id"""), {"p": json.dumps(payload, ensure_ascii=False, default=str), "id": request_id})
+    db.execute(text("""INSERT INTO public.workflow_actions(request_id, actor_account_id, stage, action, comment)
+        VALUES (:r, :a, :s, 'rejected', :c)"""),
+        {"r": request_id, "a": account_id, "s": "employee" if kind == "employee" else "hr", "c": reason})
+    _mark_read(db, request_id, "stage IS DISTINCT FROM 'employee'")
+    label = escalation.request_label(db, row["request_type"])
+    span = f"من {(row.get('payload') or {}).get('from', '')} إلى {(row.get('payload') or {}).get('to', '')}"
+    if kind != "employee":  # the employee who cancelled their own request needs no bell for it
+        back = " وإعادة أيامها إلى رصيدك" if row["status"] == "approved" else ""
+        canonical._insert_notification(db, row["employee_id"], request_id, "تم إلغاء الإجازة",
+                                       f"تم إلغاء {label} {span}{back}. السبب: {reason}", "employee", "decision")
+    return label, span
+
+
 @router.post("/requests/{request_id}/cancel")
 def cancel_leave(request_id: uuid.UUID, body: dict[str, Any], request: Request,
                  actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
@@ -121,23 +150,11 @@ def cancel_leave(request_id: uuid.UUID, body: dict[str, Any], request: Request,
         raise ApiError(403, "feature_disabled", "إلغاء الإجازات المعتمدة موقوف من الإعدادات")
     reason = _note(body, "reason") or "إلغاء من الموارد البشرية"
     row = _request(db, request_id)
-    if not db.scalar(text("SELECT 1 FROM public.leave_requests WHERE workflow_request_id=:r LIMIT 1"), {"r": request_id}):
+    if not is_leave(db, request_id):
         raise ApiError(409, "not_a_leave", "هذا الطلب ليس إجازة")
     if row["status"] == "rejected":
         raise ApiError(409, "already_closed", "الطلب مرفوض أو ملغى بالفعل")
-    payload = dict(row.get("payload") or {})
-    payload["cancelled"] = {"by": actor.get("employee_id"), "at": datetime.now(UTC).isoformat(), "kind": "hr",
-                            "reason": reason, "was": row["status"]}
-    db.execute(text("""UPDATE public.workflow_requests SET current_stage='rejected', payload=CAST(:p AS jsonb),
-        updated_at=now() WHERE id=:id"""), {"p": json.dumps(payload, ensure_ascii=False, default=str), "id": request_id})
-    db.execute(text("""INSERT INTO public.workflow_actions(request_id, actor_account_id, stage, action, comment)
-        VALUES (:r, :a, 'hr', 'rejected', :c)"""), {"r": request_id, "a": actor.get("account_id"), "c": reason})
-    _mark_read(db, request_id, "stage IS DISTINCT FROM 'employee'")
-    label = escalation.request_label(db, row["request_type"])
-    span = f"من {(row.get('payload') or {}).get('from', '')} إلى {(row.get('payload') or {}).get('to', '')}"
-    back = " وإعادة أيامها إلى رصيدك" if row["status"] == "approved" else ""
-    canonical._insert_notification(db, row["employee_id"], request_id, "تم إلغاء الإجازة",
-                                   f"تم إلغاء {label} {span}{back}. السبب: {reason}", "employee", "decision")
+    label, span = do_cancel(db, row, actor.get("employee_id"), actor.get("account_id"), reason, "hr")
     canonical._write_audit(db, actor, request, "leaves", "إلغاء إجازة وإرجاع الرصيد", "employee", row["employee_id"],
                            summary=f"إلغاء {label} {span}", details={"request": str(request_id), "was": row["status"],
                                                                      "reason": reason})

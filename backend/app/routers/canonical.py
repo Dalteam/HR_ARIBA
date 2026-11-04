@@ -1470,7 +1470,9 @@ HOURLY_TYPES = {"permission", "maternity_permission", "early_leave", "perm", "pe
 # `ariba_app_settings['workflow_config'].final_by_type`. This default only applies when that setting is
 # missing: the setting wins, so the chain is data, not code (docs/FOLLOW_UPS.md #23).
 DEFAULT_FINAL_BY_TYPE = {"unpaid": "hr", "salary_advance": "hr", "iban_change": "hr",
-                         "profile_edit": "hr", "document": "hr"}
+                         "profile_edit": "hr", "document": "hr",
+                         # Stage 14: an employee's request to cancel an approved leave ends at HR, as in the design
+                         "leave_cancel": "hr"}
 FINAL_STAGES = {"hr", "ceo"}
 # The fields a «تعديل بياناتي» request may change (the rest of the employee record stays HR-only).
 PROFILE_FIELDS = {"mobile", "email", "address", "city", "nameEn", "emergencyName", "emergencyPhone",
@@ -1653,7 +1655,24 @@ def _override(db: Session, actor: dict[str, Any], item: dict[str, Any], reason: 
         return
     db.execute(text(done), {"r": rid})
     _set_permission_status(db, rid, "approved")
+    _on_completed(db, actor, item)
     _insert_notification(db, item["employee_id"], rid, "تمت الموافقة النهائية", "تمت الموافقة على طلبك بالكامل بواسطة الموارد البشرية نيابة عن المسؤول", "employee", "decision")
+
+
+def _annual_available(db: Session, employee_id: str, today: date) -> float:
+    """The annual days an employee may request now (Stage 14: with `leave_policy.allow_advance_balance` on, the rest
+    of this year's entitlement counts too)."""
+    from app.routers import me_leave  # imported late: me_leave imports this module
+
+    return me_leave.available_days(db, employee_id, today)
+
+
+def _on_completed(db: Session, actor: dict[str, Any], item: dict[str, Any]) -> None:
+    """What a finally approved request does beyond its status (Stage 14: a `leave_cancel` cancels its leave)."""
+    if item.get("request_type") == "leave_cancel":
+        from app.routers import me_leave  # imported late: me_leave imports this module
+
+        me_leave.apply_leave_cancel(db, item, actor.get("account_id"))
 
 
 def _advance(db: Session, actor: dict[str, Any], item: dict[str, Any], action: str, reason: str | None, stage: str | None = None) -> None:
@@ -1680,6 +1699,7 @@ def _advance(db: Session, actor: dict[str, Any], item: dict[str, Any], action: s
         _set_permission_status(db, rid, "approved")
         if item["request_type"] == "forgot_punch":
             _apply_forgot_punch(db, item)
+        _on_completed(db, actor, item)
         _insert_notification(db, item["employee_id"], rid, "تمت الموافقة النهائية", "تمت الموافقة على طلبك بالكامل", "employee", "decision")
     else:
         if nxt in {"hr", "ceo"}:
@@ -1798,7 +1818,7 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
         emps = cdata.employees(db, employee_id=eid)
         book = cdata.leave_book(db, today, emps)
         days = book.count_workdays(f, to) if t == "annual" else (to - f).days + 1
-        if t == "annual" and days > book.current(emps[0]):
+        if t == "annual" and days > _annual_available(db, eid, today):
             raise ApiError(422, "exceeds_balance", "يتجاوز الرصيد المتاح")
         payload.update({"from": f.isoformat(), "to": to.isoformat(), "days": days})
     elif t in HOURLY_TYPES:

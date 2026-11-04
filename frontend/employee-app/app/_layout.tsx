@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { DataProvider } from "@/lib/data";
 import { NotificationsProvider } from "@/lib/notifications";
 import { Loading, ToastProvider } from "@/components/ui";
+import { IdleGuard } from "@/components/idle-guard";
 import { fonts, ThemeProvider, useTheme } from "@/theme";
 import { LangProvider } from "@/i18n";
 
@@ -37,7 +38,10 @@ function Gate() {
   return (
     <>
       <StatusBar style={t.dark ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.bg } }} />
+      {/* the updated design's idle guard: 5 minutes without a touch → a 3-minute countdown → sign-out */}
+      <IdleGuard>
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.bg } }} />
+      </IdleGuard>
     </>
   );
 }

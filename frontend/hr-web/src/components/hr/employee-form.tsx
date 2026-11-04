@@ -15,6 +15,7 @@ import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
 import { DependentsTab } from "./dependents-tab";
+import { EmpCustody } from "./emp-custody";
 import { DateField } from "@/components/common/date-time-field";
 
 type Tab = "ft1" | "ft2" | "ft3" | "ft4" | "ft6" | "ft5";
@@ -491,13 +492,7 @@ export function EmployeeForm({
         )}
       </form>
 
-      {tab === "ft6" && (
-        <div id="AS_EMPCARD" style={{ padding: 10 }}>
-          <div className="ct" style={{ marginBottom: 8 }}><i className="ti ti-package" /> {T("العهدة المسجّلة على الموظف", "Custody registered to the employee")}</div>
-          <div className="al alb"><i className="ti ti-hourglass" /><div><strong>{T("غير متاح بعد", "Not available yet")}</strong><div>{T("يُفتح بعد ", "Opens after ")}{lang === "en" ? FEATURES.assets.waits?.en : FEATURES.assets.waits?.ar}</div></div></div>
-          <div style={{ fontSize: 11, color: "var(--mu)", marginTop: 6 }}>{T("التسليم والاستلام من صفحة \"الأصول والعهد\".", "Hand-over and return happen on the assets & custody page.")}</div>
-        </div>
-      )}
+      {tab === "ft6" && <EmpCustody employeeId={employee?.id ?? null} lang={lang} />}
 
       {tab === "ft5" &&
         (employee ? (

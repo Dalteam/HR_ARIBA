@@ -32,13 +32,15 @@ export const HR_ROUTES = [
   "/targets",
   "/evaluation",
   "/team",
-  "/assets",
   "/audit-log",
   "/recycle-bin",
 ] as const;
 
 const HR_READERS: Role[] = ["hr", "ceo", "admin"];
 const FINANCE_READERS: Role[] = ["finance", "hr", "admin"];
+// Assets & custody: `assets` is edit for hr / admin / finance and view for the CEO (BUSINESS_RULES § Fixed assets).
+export const ASSETS_ROUTE = "/assets";
+const ASSETS_READERS: Role[] = ["hr", "ceo", "admin", "finance"];
 
 export const HR_LOGIN = "/login";
 export const EMP_LOGIN = "/me/login";
@@ -59,6 +61,7 @@ export function isEmployeeApp(path: string): boolean {
 
 export function canAccess(path: string, role: Role): boolean {
   if (isEmployeeApp(path)) return true;
+  if (under(path, ASSETS_ROUTE)) return ASSETS_READERS.includes(role);
   if (FINANCE_ROUTES.some((p) => under(path, p))) return FINANCE_READERS.includes(role);
   if (HR_ROUTES.some((p) => under(path, p))) return HR_READERS.includes(role);
   return true;

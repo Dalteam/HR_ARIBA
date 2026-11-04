@@ -36,7 +36,8 @@ export const FEATURES = {
   taxcalc: { status: "ready" } as Feature,
   wps: { status: "ready" } as Feature,
   prov: { status: "ready" } as Feature,
-  assets: backend("مرحلة الأصول والعهد", "the assets and custody stage"),
+  /** Stage 10: `backend/app/routers/assets.py` (backend-new-ui) + the assets page and the employee form's custody tab */
+  assets: { status: "ready" } as Feature,
   audit: { status: "ready" } as Feature,
   bin: { status: "ready" } as Feature,
   // ---- buttons inside existing screens (Phase 2b) ----
@@ -104,8 +105,9 @@ export const FEATURES = {
   occasionsAuto: { status: "ready" } as Feature,
   /** the notification bell in the top bar */
   bell: { status: "ready" } as Feature,
-  /** «نسيت كلمة المرور؟» on the sign-in screen: /auth/password-recovery comes with Stage 8 */
-  passwordRecovery: { status: "ready" } as Feature,
+  /** «نسيت كلمة المرور؟» on the sign-in screen: /auth/password-recovery comes with Stage 8, parked on the
+   *  `stage-8-on-hold` branch (owner, 4 Nov 2026) until e-mail can be sent */
+  passwordRecovery: backend("استعادة كلمة المرور (المرحلة 8، موقوفة حتى تفعيل البريد)", "password recovery (Stage 8, on hold until e-mail is switched on)"),
 } satisfies Record<string, Feature>;
 
 export type FeatureId = keyof typeof FEATURES;

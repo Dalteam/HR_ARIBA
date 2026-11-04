@@ -283,6 +283,34 @@ unclear:**
      prototype from the client's first commit, archive only, served by nothing) still contains its old
      assistant. Removing that folder is part of the #47 history decision.
 
+## Owner decisions (4 Nov 2026)
+
+1. **Roles and permissions matrix: the admin edits it.** The HR portal is used by HR and finance, and both may
+   see salaries. (Today `GET /employees` refuses the `finance` role; the matrix stage decides how that opens.)
+   **Finance, follow-up the same day: match the reference.** Its `ariba_role_perms` give finance *view* on
+   employees, attachments, attendance, locations, leaves, requests, documents, forms and reports (read-only, no
+   add / edit / delete buttons), *none* on `employees_admin`, settings and permissions, and *edit* on payroll,
+   payroll prepare / approve, settlement, assets and the audit log. (The owner first suggested "the list with
+   the salary only"; the reference shows the whole employee record read-only. Flag this again at the matrix
+   stage.) The 76 rows are in `ariba_src.ariba_role_perms`.
+2. **HR writes evaluations, and no one approves them after HR.** This replaces the 3 Nov proposal of a second
+   approver; the Stage 3 rule "HR never writes evaluations" changes in that stage, rules first, with an audit row.
+3. **Delete an employee: allowed for HR and admin** (the recycle bin keeps the snapshot).
+4. **Automatic registration of applicants: as in the design.** The design has an on/off switch on the
+   candidates page (`candidate_auto`: employer, department, contract type), **off by default**; the client's
+   data never turned it on.
+5. **Leave rules: HR changes them, as in the design.** The design has no approval step: anyone who may edit
+   Settings saves them and they apply to every employee and year at once (years edited by hand excepted).
+   Defaults as in the design: carry-over off unless set, accrual by calendar days, and the four leave-policy
+   switches (employee cancels / edits a pending request, employee asks to cancel an approved leave, HR cancels
+   an approved leave) on.
+   Confirmed by the owner the same day ("match reference/hr-v1").
+6. **Expiry alerts (owner, same day: as recommended):** the backend runs the daily check by itself (no Railway
+   scheduler, no extra cost), HR also gets «تشغيل الآن», and alerts go to the bell only while e-mail is off. The
+   reference's settings card decides the kinds, the days before and the recipients (HR, the employee).
+7. **Stage 8 (password recovery) is on hold.** It is committed on its own branch `stage-8-on-hold` (`c68433b`),
+   not on `backend-new-ui`; `passwordRecovery` in `features.ts` is back to "not available yet".
+
 ## The three decisions waiting for the owner (and others)
 
 **Answered by the owner, 3 Nov 2026** (the options below are kept as the record):

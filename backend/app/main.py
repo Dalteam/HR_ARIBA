@@ -13,7 +13,7 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import announcements, apply, audit_log, bizcards, candidates, canonical, goals, health, manager
+from app.routers import announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals, health, manager
 from app.routers import public, push, recycle_bin, tasks
 from app.services import notify_email
 
@@ -110,6 +110,9 @@ def create_app() -> FastAPI:
     app.include_router(candidates.router, prefix=API_PREFIX)
     app.include_router(apply.router, prefix=API_PREFIX)
     app.include_router(bizcards.router, prefix=API_PREFIX)
+    # Fixed assets and custody (Stage 10): /assets and /assets/{id}/custody, on the design's two tables that
+    # were already in the schema (no migration).
+    app.include_router(assets.router, prefix=API_PREFIX)
     return app
 
 

@@ -912,6 +912,75 @@ unless HR turns on `/settings/announcements` `{email: true}` (`ariba_app_setting
   **never** e-mailed (A12).
 - **D6:** may the CEO read the HR list? **No** (default kept).
 
+## Fixed assets and custody — Stage 10, rules written 4 Nov 2026 (`routers/assets.py`, no migration)
+
+The design's «الأصول الثابتة والعهد» screen and the employee form's «العهدة» tab. The owner's rule (4 Nov
+2026): **match the reference** (`reference/hr-v1`: `pages/finance/Assets.jsx`, `pages/employees/EmpCustody.jsx`
+and its database functions `ariba_assets_list / _upsert / _delete`, `ariba_asset_custody`).
+
+**Tables:** `ariba_assets` and `ariba_asset_custody_log` already exist in `ariba_src` with the reference's
+columns, checks, the `ariba_asset_seq` numbering and `ON DELETE CASCADE` from the log to the asset. Both are
+empty. Both were already in the `models.py` allowlist. **No migration.**
+
+### Who may do what (the reference's `ariba_role_perms`, module `assets`)
+
+| Role | Level | Means |
+|---|---|---|
+| `hr`, `admin`, `admin_manager`, `finance` | edit | list, add, edit, assign / return custody, delete |
+| `ceo` | view | list and the annual inventory only; every write is 403 |
+| `manager`, `employee`, anyone else | none | 403 on every route (the screen and the employee form's tab say «لا تملك صلاحية») |
+
+Cost and depreciation are company figures, not salaries, so `finance` sees them (owner, 4 Nov 2026: HR and
+finance use this portal).
+
+### Routes
+
+    GET    /assets                    {assets, log (newest 1000 custody moves), can_edit, people}
+    POST   /assets                    add; the server numbers it AST-0001, AST-0002, … from ariba_asset_seq
+    PUT    /assets/{id}               edit
+    DELETE /assets/{id}               delete; a snapshot (the row + its custody moves) goes to the recycle bin
+    POST   /assets/{id}/custody       {employee_id | null, date, notes}: hand over, or return to the company
+
+### Rules the routes enforce (the reference's checks, before the database's)
+
+- **A1** name required (trimmed), acquisition date required, cost ≥ 0, salvage value between 0 and the cost,
+  useful life 1–1200 months (the screen sends years × 12).
+- **A2** category is one of `computers, electronics, vehicles, furniture, equipment, software, other`; status is
+  one of `active, sold, disposed, lost`. Depreciation is straight-line only.
+- **A3** a status other than `active` needs a disposal date on or after the acquisition date; going back to
+  `active` clears the disposal date and value (the reference's update does exactly this).
+- **A4** custody: every hand-over first logs a `return` for the current holder (if any), then an `assign` for the
+  new one; `employee_id: null` returns it to the company. The employee must exist (404 otherwise).
+- **A5** delete puts a snapshot in `ariba_deleted_items` (`kind = 'asset'`). As in the reference, the bin
+  keeps it **as an archive only**: it shows under «أخرى» and is not restorable. The reference's screen advises
+  changing the status of a sold or lost asset instead of deleting it.
+- **A6** every add, edit, custody move and delete writes one `ariba_audit_log` row, module `assets`.
+- **A7** depreciation, the register totals and the annual inventory are computed in the browser from the list,
+  exactly as the reference does (`monthsDep`, `accDep`, `yearReport`); the server stores, never computes.
+- An unknown asset id is **404**; a malformed one is 422.
+- **A8** `people` (who custody can go to) is sent to the editing roles only: active employees, with id,
+  number and names and **nothing else**. `finance` may not list employees (`GET /employees` refuses it),
+  so this is the only list of names it gets. The CEO gets an empty list.
+
+### Deliberate differences from the reference
+
+- The reference ignores `status` when an asset is first added (it is always `active`). Ours accepts the status
+  sent with a new asset, under the same A3 check, so the form's status field is not silently dropped.
+- The reference also accepts an employee number or username for custody; ours takes the `employee_id` the
+  screen already has.
+
+### The refusals the negative tests pin
+
+| # | Who / what | Expected |
+|---|---|---|
+| AS1 | `employee`, `manager` → any assets route | 403 |
+| AS2 | `ceo` → list | 200; `can_edit` false |
+| AS3 | `ceo` → add, edit, custody, delete | 403 |
+| AS4 | no name, no date, negative cost, salvage above cost, life 0 or 1201, unknown category or status | 422 |
+| AS5 | status `sold` without a disposal date, or with one before the acquisition date | 422 |
+| AS6 | edit / delete / custody on an unknown id | 404; on a non-uuid id, 422 |
+| AS7 | custody to an employee who does not exist | 404 |
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

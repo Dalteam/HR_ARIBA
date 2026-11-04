@@ -561,12 +561,13 @@ export default function Page() {
     { g: "الإجمالي", t: "إجمالي المستحق", render: (r) => <b style={{ color: "var(--bl)" }}>{money(r.totalDue)}</b> },
     { g: "الاستقطاعات", t: "سلف / غياب", render: (r) => input(r, "loanDeduct", 64, "number", "0.01", true) },
     { t: "تأمينات موظف", render: (r) => (
-        <span>
+        // amount above, «بدون خصم» below: side by side the label spilled into the «أخرى» column next to it
+        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
           <span style={{ color: r.noInsDeduct ? "var(--dm)" : "var(--am)", textDecoration: r.noInsDeduct ? "line-through" : "none" }}>
             {money(r.insEmp)}
           </span>
           {!locked && (
-            <label title="لا يُخصم من الموظف" style={{ fontSize: 9, color: "var(--mu)", marginInlineStart: 4 }}>
+            <label title="لا يُخصم من الموظف" style={{ fontSize: 9, color: "var(--mu)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 3 }}>
               <input type="checkbox" checked={!!r.noInsDeduct} onChange={(e) => update(String(r.id), "noInsDeduct", e.target.checked)} /> بدون خصم
             </label>
           )}

@@ -29,7 +29,7 @@ export const FEATURES = {
   goals: { status: "ready" } as Feature,
   eval: { status: "ready" } as Feature,
   /** evaluation: HR writes an evaluation (owner decision b; its own backend stage, rules first) */
-  evalHrWrite: backend("مرحلة «الموارد البشرية تكتب التقييم»", "the HR-writes-evaluations stage"),
+  evalHrWrite: { status: "ready" } as Feature,
   team: { status: "ready" } as Feature,
   insc: { status: "ready" } as Feature,
   salcalc: { status: "ready" } as Feature,

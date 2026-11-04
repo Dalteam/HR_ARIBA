@@ -2,17 +2,16 @@
 
 // The updated design's targets and evaluation pages (its pages/goals/index.jsx, goals/TargetsEditor.jsx,
 // goals/EvalForm.jsx, goals/PeriodPick.jsx) on OUR Stage 3 routes. HR adds, edits and deletes targets (never its own);
-// HR reads approved evaluations and approves submitted ones when HR is the configured approver (the default). Writing
-// an evaluation stays with the direct manager until the "HR writes evaluations" stage (owner decision b, lib/features.ts
-// `evalHrWrite`); refusals of the API are shown as they come (an unknown or unseen evaluation is «not found»).
+// HR approves submitted evaluations when HR is the configured approver (the default), and since Stage 15 writes them
+// too (owner, 4 Nov 2026): HR's evaluation is final at once, with no approval after HR, and never its own. Refusals of
+// the API are shown as they come (an unknown or unseen evaluation is «not found»).
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast";
 import { PageState } from "@/components/hr/not-built";
 import { PromptModal } from "@/components/hr/prompt-modal";
 import { ApiError, type EmployeeListItem } from "@/lib/api";
 import { listAllEmployees } from "@/lib/employees";
-import { FEATURES, isReady } from "@/lib/features";
-import { approveEvaluation, curKey, deleteTarget, getEvaluation, keyLabel, listTargets, MONTHS, pct, PT, ratingOf, saveTarget, type Evaluation, type PeriodType, type Target } from "@/lib/goals";
+import { approveEvaluation, curKey, deleteTarget, getEvaluation, keyLabel, listTargets, MONTHS, pct, PT, ratingOf, saveEvaluation, saveTarget, type Evaluation, type PeriodType, type Target } from "@/lib/goals";
 
 function PeriodPick({ type, keyv, onChange }: { type: PeriodType; keyv: string; onChange: (t: PeriodType, k: string) => void }) {
   const y = keyv.slice(0, 4);
@@ -128,9 +127,51 @@ function TargetsEditor({ employee, type, keyv, onPeriod }: { employee: EmployeeL
 
 const SB: Record<Evaluation["status"], [string, string]> = { draft: ["ba", "مسودة"], pending: ["bb", "بانتظار الاعتماد"], approved: ["bg", "معتمد"] };
 
+/** Stage 15: the evaluation form HR fills (the design's EvalForm) — seeded from the saved evaluation or the period's targets. */
+type Row = { target_id?: string; title: string; target?: number | null; unit?: string; actual?: number | null; weight: string; score: string; comment: string };
+const seedRows = (ev: Evaluation | null, targets: Target[]): Row[] =>
+  ev && ev.items.length
+    ? ev.items.map((it) => ({ target_id: it.target_id, title: it.title, target: it.target, unit: it.unit, actual: it.actual, weight: String(it.weight ?? 1), score: String(it.score ?? 0), comment: it.comment || "" }))
+    : targets.map((t) => ({ target_id: t.id, title: t.title, target: t.target_value, unit: t.unit || "", actual: t.actual_value, weight: String(t.weight || 1), score: String(Math.min(100, pct(t) ?? 0)), comment: "" }));
+
+function EvalForm({ ev, targets, busy, onSave }: { ev: Evaluation | null; targets: Target[]; busy: boolean; onSave: (rows: Row[], comments: string, submit: boolean) => void }) {
+  const [rows, setRows] = useState<Row[]>(() => seedRows(ev, targets));
+  const [comments, setComments] = useState(ev?.comments || "");
+  const [ask, setAsk] = useState(false);
+  const set = (i: number, k: keyof Row, v: string) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const total = rows.reduce((s, r) => s + (Number(r.weight) || 1), 0);
+  const overall = total ? Math.round((rows.reduce((s, r) => s + (Number(r.score) || 0) * (Number(r.weight) || 1), 0) / total) * 10) / 10 : 0;
+  return (
+    <div id="EV_FORM" style={{ marginTop: 10 }}>
+      {rows.map((r, i) => (
+        <div key={i} className="ev-item" style={{ border: "1px solid var(--bd)", borderRadius: 10, padding: 10, marginBottom: 8, display: "grid", gap: 6 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {r.target_id ? <b style={{ flex: 1, minWidth: 160, fontSize: 13 }}>{r.title}</b>
+              : <input style={{ flex: 1, minWidth: 160 }} placeholder="عنوان البند" value={r.title} onChange={(e) => set(i, "title", e.target.value)} />}
+            {r.target_id && <span style={{ fontSize: 11, color: "var(--mu)" }}>المطلوب {r.target ?? "—"} {r.unit} · المنجز {r.actual ?? 0}</span>}
+            <label style={{ fontSize: 11 }}>الدرجة % <input type="number" min={0} max={100} value={r.score} onChange={(e) => set(i, "score", e.target.value)} style={{ width: 70 }} /></label>
+            <label style={{ fontSize: 11 }}>الوزن <input type="number" min={0} value={r.weight} onChange={(e) => set(i, "weight", e.target.value)} style={{ width: 60 }} /></label>
+            {!r.target_id && <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>✕</button>}
+          </div>
+          <input placeholder="ملاحظة على البند (اختياري)" value={r.comment} onChange={(e) => set(i, "comment", e.target.value)} />
+        </div>
+      ))}
+      <button type="button" className="btn bsm" onClick={() => setRows((rs) => [...rs, { title: "", weight: "1", score: "0", comment: "" }])}>+ بند جديد</button>
+      <div style={{ marginTop: 10 }}><label>ملاحظات عامة</label><textarea rows={2} value={comments} onChange={(e) => setComments(e.target.value)} style={{ width: "100%" }} /></div>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12 }}>النتيجة: <b style={{ color: "var(--gr)" }}>{overall}%</b> <span className="b bg">{ratingOf(overall)}</span></span>
+        <button type="button" className="btn" disabled={busy || !rows.length} onClick={() => onSave(rows, comments, false)}>حفظ كمسودة</button>
+        <button type="button" className="btn bpl" id="EV_HR_FINAL" disabled={busy || !rows.length} onClick={() => setAsk(true)}>✓ اعتماد نهائي وإبلاغ الموظف</button>
+        <span style={{ fontSize: 11, color: "var(--mu)" }}>تقييم الموارد البشرية نهائي فور اعتماده — لا يحتاج موافقة بعدها.</span>
+      </div>
+      {ask && <PromptModal noInput title="اعتماد التقييم" message="اعتماد هذا التقييم نهائياً؟ يصل الموظف إشعار بالنتيجة ولا يمكن تعديله بعدها." confirmText="اعتماد" onClose={() => setAsk(false)} onConfirm={() => { setAsk(false); onSave(rows, comments, true); }} />}
+    </div>
+  );
+}
+
 function EvalView({ employee, type, keyv, onPeriod }: { employee: EmployeeListItem; type: PeriodType; keyv: string; onPeriod: (t: PeriodType, k: string) => void }) {
   const toast = useToast();
-  const [d, setD] = useState<{ evaluation: Evaluation | null; targets: Target[]; can_approve: boolean } | { missing: string } | null>(null);
+  const [d, setD] = useState<{ evaluation: Evaluation | null; targets: Target[]; can_approve: boolean; can_write?: boolean } | { missing: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState(false);
   const load = useCallback(() => {
@@ -153,7 +194,23 @@ function EvalView({ employee, type, keyv, onPeriod }: { employee: EmployeeListIt
       setBusy(false);
     }
   }
-  const waits = "غير متاح بعد — يُفتح بعد " + FEATURES.evalHrWrite.waits?.ar;
+  async function hrSave(rows: Row[], comments: string, submit: boolean) {
+    setBusy(true);
+    try {
+      await saveEvaluation(employee.id, type, keyv, {
+        items: rows.map((r) => ({ target_id: r.target_id, title: r.title.trim(), target: r.target, unit: r.unit, actual: r.actual, weight: Number(r.weight) || 1, score: Number(r.score) || 0, comment: r.comment.trim() })),
+        comments: comments.trim(),
+        submit,
+      });
+      toast(submit ? "✅ اعتُمد التقييم وأُرسلت النتيجة للموظف" : "✓ حُفظ التقييم كمسودة", "ok");
+      load();
+    } catch (e) {
+      toast(err(e) || "تعذر الحفظ", "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const writer = !!d && !("missing" in d) && !!d.can_write && d.evaluation?.status !== "approved";
   return (
     <div id="EV_BOX">
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
@@ -165,8 +222,9 @@ function EvalView({ employee, type, keyv, onPeriod }: { employee: EmployeeListIt
       </div>
       {!d && <div style={{ color: "var(--mu)", padding: 14 }}>…</div>}
       {d && "missing" in d && <div className="al alb">{d.missing}</div>}
-      {d && !("missing" in d) && !d.evaluation && <div className="al alb">لا يوجد تقييم لهذه الفترة {PT[type]} {keyLabel(type, keyv)} بعد — يكتبه المدير المباشر من تطبيقه ثم يرسله للاعتماد.</div>}
-      {d && !("missing" in d) && d.evaluation && (
+      {d && !("missing" in d) && !d.evaluation && !writer && <div className="al alb">لا يوجد تقييم لهذه الفترة {PT[type]} {keyLabel(type, keyv)} بعد — يكتبه المدير المباشر من تطبيقه ثم يرسله للاعتماد.</div>}
+      {writer && !("missing" in d!) && <EvalForm key={(d.evaluation?.id ?? "new") + type + keyv} ev={d.evaluation} targets={d.targets} busy={busy} onSave={(r, c, s) => void hrSave(r, c, s)} />}
+      {d && !("missing" in d) && d.evaluation && !writer && (
         <>
           {d.evaluation.items.map((it, i) => (
             <div key={i} className="ev-item" style={{ border: "1px solid var(--bd)", borderRadius: 10, padding: 10, marginBottom: 8 }}>
@@ -186,11 +244,6 @@ function EvalView({ employee, type, keyv, onPeriod }: { employee: EmployeeListIt
           {d.evaluation.status === "approved" && <div className="al alg" style={{ marginTop: 10 }}>التقييم معتمد ومُبلَّغ للموظف.</div>}
         </>
       )}
-      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" className="btn" style={{ opacity: isReady("evalHrWrite") ? 1 : 0.6 }} title={waits} onClick={() => toast(waits, "info")}>حفظ كمسودة</button>
-        <button type="button" className="btn bpl" style={{ opacity: isReady("evalHrWrite") ? 1 : 0.6 }} title={waits} onClick={() => toast(waits, "info")}>إرسال للاعتماد</button>
-        <span style={{ fontSize: 11, color: "var(--mu)" }}>كتابة التقييم من الموارد البشرية: {waits}</span>
-      </div>
       {ask && <PromptModal noInput title="اعتماد التقييم" message="اعتماد التقييم نهائياً؟ سيصل الموظف إشعار بالنتيجة." confirmText="اعتماد" onClose={() => setAsk(false)} onConfirm={() => void approve()} />}
     </div>
   );

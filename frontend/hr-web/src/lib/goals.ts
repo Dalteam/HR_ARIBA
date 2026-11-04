@@ -28,5 +28,8 @@ export const saveTarget = (t: Partial<Target> & { employee_id: string; period_ty
   request<{ target: Target }>("/targets", { method: "POST", body: t });
 export const deleteTarget = (id: string) => request<{ ok: true }>(`/targets/${id}`, { method: "DELETE" });
 export const getEvaluation = (employeeId: string, type: PeriodType, key: string) =>
-  request<{ evaluation: Evaluation | null; targets: Target[]; can_approve: boolean }>(`/evaluations/${employeeId}/${type}/${key}`);
+  request<{ evaluation: Evaluation | null; targets: Target[]; can_approve: boolean; can_write?: boolean }>(`/evaluations/${employeeId}/${type}/${key}`);
+/** Stage 15: HR writes an evaluation; `submit` from HR is final at once (owner, 4 Nov 2026). */
+export const saveEvaluation = (employeeId: string, type: PeriodType, key: string, body: { items: EvalItem[]; comments: string; submit: boolean }) =>
+  request<{ evaluation: Evaluation }>(`/evaluations/${employeeId}/${type}/${key}`, { method: "PUT", body });
 export const approveEvaluation = (id: string) => request<{ evaluation: Evaluation }>(`/evaluations/${id}/approve`, { method: "POST" });

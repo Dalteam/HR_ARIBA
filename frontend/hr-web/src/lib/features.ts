@@ -11,13 +11,18 @@ export interface Feature {
   waits?: { ar: string; en: string };
 }
 
-const ui = (ar: string, en: string): Feature => ({ status: "ui", waits: { ar, en } });
 const backend = (ar: string, en: string): Feature => ({ status: "backend", waits: { ar, en } });
 
+// Every entry is `ready` or waits for its own backend stage now: the `ui` status stays in the type for a
+// screen ported later, but nothing in this list waits for hr-web work any more (Phase 2c closed the last one,
+// `exportSeal`, with the seal studio).
+
 export const FEATURES = {
-  // ---- the design's menu entries that we did not have (Phase 2c ports the `ui` ones) ----
-  cand: backend("مرحلة المرشحين وصفحة التقديم العامة", "the candidates and public application-page stage"),
-  bizc: backend("مرحلة بطاقات العمل", "the business-cards stage"),
+  // ---- the design's menu entries that we did not have (Phase 3 wires the last four: audit, bin, candidates,
+  // business cards — their screens and routes are in `backend/app/routers/{audit_log,recycle_bin,candidates,
+  // bizcards}.py` and `src/lib/{audit,bin,candidates,bizcards}.ts`) ----
+  cand: { status: "ready" } as Feature,
+  bizc: { status: "ready" } as Feature,
   ann: { status: "ready" } as Feature,
   /** announcements: HR's own wording for the automatic birthday / anniversary greetings, and {name} per employee */
   annTemplates: backend("نصوص التهاني التلقائية وإدراج اسم كل موظف", "custom greeting texts and each employee's name in a greeting"),
@@ -32,11 +37,12 @@ export const FEATURES = {
   wps: { status: "ready" } as Feature,
   prov: { status: "ready" } as Feature,
   assets: backend("مرحلة الأصول والعهد", "the assets and custody stage"),
-  audit: backend("مرحلة عارض سجل التعديلات", "the audit-log viewer stage"),
-  bin: backend("مرحلة سلة المهملات", "the recycle-bin stage"),
+  audit: { status: "ready" } as Feature,
+  bin: { status: "ready" } as Feature,
   // ---- buttons inside existing screens (Phase 2b) ----
-  /** employees list: delete an employee (the design archives it to the recycle bin) */
-  empDelete: backend("مرحلة سلة المهملات", "the recycle-bin stage"),
+  /** employees list: delete an employee (the design archives it to the recycle bin; the bin screen exists, the
+   *  `DELETE /employees/{id}` route that would put a row in it does not yet) */
+  empDelete: backend("مسار حذف موظف إلى سلة المهملات", "a delete-employee route that archives to the recycle bin"),
   /** employees list: import employees from an Excel file */
   empImport: { status: "ready" } as Feature,
   /** documents: the design's national-address and GOSI-certificate tabs (our registry does not return them yet) */
@@ -84,16 +90,16 @@ export const FEATURES = {
   /** the editable role × page permission matrix */
   rolesMatrix: backend("مرحلة مصفوفة الأدوار والصلاحيات", "the roles and permissions matrix stage"),
   // ---- shell features of the design ----
-  /** the design's per-section "recent changes" strip above every page */
-  sectionAudit: backend("مرحلة عارض سجل التعديلات", "the audit-log viewer stage"),
+  /** the design's per-section «recent changes» strip above every page (the log itself is ready at /audit-log) */
+  sectionAudit: backend("شريط «آخر التعديلات» أعلى كل صفحة", "the per-section recent-changes strip"),
   /** the design registers new applicants as employees automatically while HR has the portal open */
-  candidateAuto: backend("مرحلة المرشحين", "the candidates stage"),
+  candidateAuto: backend("التسجيل التلقائي للمرشحين كموظفين", "automatic registration of applicants as employees"),
   /** fingerprint / Face ID sign-in on the web (WebAuthn); not in the owner's list of stages yet */
   biometric: backend("مرحلة الدخول بالبصمة (WebAuthn) — لم تُجدول بعد", "a WebAuthn sign-in stage (not scheduled yet)"),
   /** sending an export by e-mail; e-mail stays off until a sender is approved (FOLLOW_UPS #7) */
   exportEmail: backend("تفعيل إرسال البريد", "e-mail sending being switched on"),
-  /** the stamp / signature overlay on an exported PDF (the design's seal studio) */
-  exportSeal: ui("نقل استوديو الختم مع شاشة النماذج (المرحلة 2b)", "porting the seal studio with the templates screen (Phase 2b)"),
+  /** the stamp / signature overlay on an exported PDF (the design's seal studio, Phase 2c) */
+  exportSeal: { status: "ready" } as Feature,
   /** the daily automatic greetings run, which our /occasions/run-auto already serves (HR only, switch off) */
   occasionsAuto: { status: "ready" } as Feature,
   /** the notification bell in the top bar */

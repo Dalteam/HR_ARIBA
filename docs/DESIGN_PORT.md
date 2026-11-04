@@ -4,7 +4,21 @@ Bringing the updated design into `frontend/hr-web` (exactly) and `frontend/emplo
 identity kept). Kept here, not in `docs/FOLLOW_UPS.md`, so this branch merges cleanly with `backend-new-ui`.
 **No personal data in this file**: ids like "employee 2" and counts only.
 
-## Phase 0: setup (3 Nov 2026)
+## Phase 3 (part 2): the four screens that waited on a backend (4 Nov 2026, not committed)
+
+The design's last four menu entries — سجل التعديلات, سلة المهملات, المرشحون + صفحة التقديم, بطاقات العمل — are
+built end to end. Backend on `backend-new-ui` (5 new modules, 31 routes, migration `004_four_screens.sql`,
+`tests_canonical/test_four_screens.py`); screens on this branch. `audit`, `bin`, `cand` and `bizc` are `ready`
+in `src/lib/features.ts`. What was verified live (`ariba_local`, 4 Nov 2026): 17 audit + purge checks,
+17 recycle-bin + card checks, 38 candidate + public-form checks, all passing, plus 453 backend tests. The
+decisions and the seven places this port differs from the design are §0 of `docs/DESIGN_PORT_FOUR_SCREENS.md`;
+the walkthrough for the owner is §M of `docs/DESIGN_PORT_TEST_PLAN.md`.
+
+Not carried over, each still naming its own gap in `features.ts`: the per-section «آخر التعديلات» strip
+(`sectionAudit`), automatic registration of applicants (`candidateAuto`), the delete-employee route that
+archives to the bin (`empDelete`), and the business card's drag-and-resize element editor.
+
+
 
 | Item | State |
 |---|---|
@@ -457,7 +471,7 @@ After each screen: `tsc` and lint; a full build at the end of the phase.
 | 1 | Dashboard | done | design colours (brand variables, purple payroll tile, bright-green female count), all departments with %, the three side counters with the design's emoji and colours, coloured alert bars, the pending queue listed (name, type, stage, date; refreshed every 20 s; only for accounts allowed to list requests), salary summary = count + total (total only when the API sends it). **Gap:** the design's company-wide "net" total is not in our API |
 | 2 | Employees list | done | muted job title, the design's terminated tag, alternating avatar colours, edit only for editors, end-of-service with the design's icon; **waiting:** delete employee (`empDelete`, recycle-bin stage) and import from Excel (`empImport`, Phase 2c) |
 | 3 | Employee form / details | done (3 Nov 2026) | six tabs as in the design (custody added), «↺» on every changed field and «استرجاع الكل», «↩ تراجع», the fingerprint **work locations** box (OUR `/locations/assignments` + `PUT /employees/{id}/work-locations`, saved with «حفظ وتحديث»), document delete, the details window's leaves tab now shows today's balance and the days used in each of the last four years. **Waiting:** custody (`assets`), certificates with title / issuer / dates (`empCerts`), the probation period (`empProbation`), allowances as % of basic (`empAllowPct`), the default-password list (`pwDefaultList`), national address / GOSI fields (`docsNationalAddress`) |
-| 4 | Attendance | done (rewritten; 3 Nov 2026) | the design's layout: the day's four KPI cards and record list (30-second refresh, «⏰ تأخير» / «🚪 خروج مبكر» in hours and minutes, every punch pair of a multi-punch day, location), the monthly card (now from the day engine: absences and total lateness included), and the full **report builder**: summary or daily mode, the design's 47 + 21 columns in groups with presets and column order, templates saved in this browser, all / filtered / hand-picked employees (terminated optional), 15 extra sections (KPI cards, departments, rankings, daily trend with chart, weekdays, absence / lateness / early-exit / no-check-out / leave / day-off details, the matrix, the daily detail, method note), sort, totals, group by department, font size, a sandboxed preview, print on the letterhead, PDF, Excel (one sheet per section) and Word. Add / edit only for HR and admin. **Waiting:** e-mailing the report (`exportEmail`), the stamp (`exportSeal`), the official / Ramadan shift schedule (`attSchedule`, new). See "Phase 2b: attendance" below |
+| 4 | Attendance | done (rewritten; 3 Nov 2026) | the design's layout: the day's four KPI cards and record list (30-second refresh, «⏰ تأخير» / «🚪 خروج مبكر» in hours and minutes, every punch pair of a multi-punch day, location), the monthly card (now from the day engine: absences and total lateness included), and the full **report builder**: summary or daily mode, the design's 47 + 21 columns in groups with presets and column order, templates saved in this browser, all / filtered / hand-picked employees (terminated optional), 15 extra sections (KPI cards, departments, rankings, daily trend with chart, weekdays, absence / lateness / early-exit / no-check-out / leave / day-off details, the matrix, the daily detail, method note), sort, totals, group by department, font size, a sandboxed preview, print on the letterhead, PDF, Excel (one sheet per section) and Word. Add / edit only for HR and admin. **Waiting:** e-mailing the report (`exportEmail`), the official / Ramadan shift schedule (`attSchedule`, new). The stamp (`exportSeal`) is done — see "Phase 2c: the seal studio". See "Phase 2b: attendance" below |
 | 5 | GPS locations | done | the design's header (title + small add button) and blue info note, its card width; add / edit / delete only for editors (HR, admin), as in the design. Already ours and kept: the card grid, Google Maps link, map preview, linked-employees summary |
 | 6 | Leaves & requests | done (3 Nov 2026) | the design's six tabs and wording, Arabic and English; decisions in the design's note dialog (no browser pop-ups): approve (on behalf at the manager / CEO stage), final approval (manager and HR stages only, as in the design), reject with a reason; «طلب جديد» only for editors, with «↺» undo per field and the exemption check for consultants / Tamheer / trainees; all-requests table in the design's columns plus the attachments archive; balances as in the design (one employee in detail + the balance equation; the all-employees table goes to print); balance editor with undo per cell / year / all; holidays add / delete only for editors. **Waiting:** return to manager (`lvReturn`), cancel an approved leave (`lvCancel`), undo the last balance save (`lvBalanceUndo`). **Kept from ours:** the pending type filter (the attendance page links to it), the labour-law note, the missing-Eid warning, deleting a request (permanent: no recycle bin yet, the dialog says so) |
 | 7 | Payroll | done (3 Nov 2026) | the design's toolbar (bulk days buttons always there for editors: before, they showed only when a terminated employee could be added), the status bar (📝 draft / 🔒 approved), employer subtotals in the sheet, the design's **Excel with formulas** (`lib/calc/payroll-out.ts`), the printed sheet with its **column chooser** remembered in this browser and our company name, «✓ محفوظ» instead of a toast on every save, other users' edits picked up every 6 s, reopening needs a reason (≥ 5 letters, written to the audit log), the archive loads with the page and «مراجعة» opens the month's rows. Edit for HR and admin; approve / reopen for finance, HR and admin. **Waiting:** «تجهيز للمالية» (`payPrepare`) |
@@ -468,7 +482,7 @@ After each screen: `tsc` and lint; a full build at the end of the phase.
 | 12 | Reports | done (rewritten) | the design's model: 11 cards in its order (adds **probation end**, 90 days from the joining date, and **medical insurance**); every report is columns + rows, with the design's column chooser (show / hide / reorder), all or chosen employees, totals, print and Excel. Data from our API as before. **Waiting:** the custom report builder (`reportCustom`, 2c), the comprehensive leave report (`reportLeaves`, 2c), the certificates report (`reportCerts`, needs a route listing every employee's documents). **Gaps:** a per-employee probation extension (no field); the report-language switch (our salary data has no English names). **Changed on purpose:** our old end-of-service report left out two specific people by name in the code; it now follows the design (no award for consultants, Tamheer and training staff; only amounts above zero), so the name list is gone. Alerts now include medical insurance |
 | 13 | Settings | done (3 Nov 2026) | the design's ten numbered sections (open state remembered), search and chips; our cards moved into them; **new on OUR routes:** direct-manager permissions with the company-wide team-salary switch (Stage 2), document signing types + the «HR closes» switch (Stage 5, off by default), push switch with the device count (Stage 6); read-only for everyone except HR and admin. **Waiting cards** (each names its stage): brand colours (`brandColors`), letterhead (`letterhead`), official / Ramadan schedule (`attSchedule`), leave policy (`lvCancel`), carry / accrual / special entitlements (`leaveRules`), punch logo (`punchLogo`), workflow and circles (`wfConfig`), mail accounts (`mailSettings`), sending mode (`exportEmail`), expiry alerts (`expiryAlerts`), application page (`cand`), roles matrix (`rolesMatrix`) |
 | 14 | Templates | done | already a close port: all eight of the design's documents (onboarding, custody, probation extension, probation end, contract end, clearance, experience, probation evaluation), the salary certificate with Arabic/English, bulk sending and the sent list. Added the design's **job-offer letter** card (4 Nov 2026: `templatesOffer` is ready — a printed letter for a candidate, so it never goes through `/letters`). **Not added:** the e-mail button per document (sending off). **Left out on purpose:** the design's `aiBridge` link |
-| 15 | Employee web area `/me` | to do (ours only; restyle to the design's employee look in Phase 3) | |
+| 15 | Employee web area `/me` | built (Phase 3, 4 Nov 2026) | all eight tabs on the `/me/*` routes the Expo app uses, in the design's employee look; the design's shell over the area (hero clock, punch button, tiles) is the one piece left | |
 
 ### Phase 2b: attendance (3 Nov 2026, not committed)
 
@@ -574,11 +588,35 @@ part of the owner's test on the copy); the insurance and provisions figures agai
 - **Gaps (no list route returns them):** mobile, e-mail, religion, direct manager, number of dependents, bank account
   number. The certificates report still waits (`reportCerts`).
 
-### Still to do in Phase 2c (not started; its own round)
+### Phase 2c: the seal studio on exports (4 Nov 2026, not committed)
 
-| Item | Feature id | Why it was left |
-|---|---|---|
-| Stamp / signature on exports | `exportSeal` | the design's seal studio (drag-and-drop canvas) |
+The last Phase 2c item (`exportSeal`): the design's `lib/sealStudio.js`, ported whole.
+
+- **`src/lib/seal.ts` (new)** — the places themselves, with no React in them: `sealState()` opens on the signer saved
+  in Settings (`hr_signer`) at this form's saved places, `overlayHtml()` writes the A4 layer in millimetres, and
+  `savePositions()` / `saveFlags()` / `sealAuto()` use the design's own store keys (`ariba_seal_pos`,
+  `ariba_seal_flags`, `ariba_seal_auto2`), so each form keeps its own places and the last choices in this browser.
+  `previewDoc()` wraps a piece of a report in a real A4 page for the preview.
+- **`src/components/hr/seal-studio.tsx` (new)** — the studio: a scaled A4 preview in an iframe with the stamp,
+  the signature and the name/title sitting on top of it; drag any of them with the mouse or a finger, then the
+  side panel has the title and name, three show/hide switches, size and tilt sliders, «إعادة ضبط المواضع»,
+  «بدون ختم», «تطبيق الختم» and «استعمل هذه المواضع تلقائياً». `useSealStudio()` returns the element and an
+  `askSeal(html, title)` promise, so a caller keeps its own download flow.
+- **`src/lib/exporter.ts`** — `ExportSpec.overlay` and `htmlPdfBlob(html, { overlay })`: the layer is rendered once
+  as a transparent 794×1123 sheet and drawn over **page 1** of the PDF, exactly as the design's `pdfBlob` did
+  (a landscape table has no place for it, so it is offered for portrait only).
+- **Where it is offered:** «ختم / توقيع (قابل للتحريك)» in `components/hr/page-export.tsx` (every page's table
+  export) and in the attendance report's export dialog (`components/hr/attendance-reports.tsx`) — the two places
+  that used to say «غير متاح بعد». `lib/features.ts` `exportSeal` is `ready`, and the `ui` status has no entry left.
+- **Kept from ours:** the signer is the one saved in Settings. The design could also name any employee as the
+  signer; we store a single signature and stamp (`hr_signer`, V120), so that list would show a name with no
+  signature of his. Forms printed through `lib/calc/forms.ts` keep their own V120 signature block — the studio sits
+  on top of an export, it does not replace the block on the letterhead.
+
+### Still to do in Phase 2c
+
+Nothing. `exportEmail` was never a Phase 2c item: it waits for a sender to be approved (FOLLOW_UPS #7) and still
+says so in both export dialogs.
 
 ### Phase 2c: import employees from Excel (3 Nov 2026, not committed)
 
@@ -647,13 +685,108 @@ part of the owner's test on the copy); the insurance and provisions figures agai
 - **Done:** the design's **idle guard** (`src/components/idle-guard.tsx`, wired in `app/_layout.tsx`): 5 minutes without a
   touch → a 3-minute countdown with «تمديد الجلسة» / «تسجيل الخروج» → sign-out; coming back from the background after
   the whole 8 minutes signs out at once. React Native only (no new package), so it works in Expo Go and on the web.
-- **Not done:** the screen-by-screen layout comparison of the ten tabs (needs the owner's eye on a phone, and the
-  design can only be read as code); the design's business card, leave cancel / edit and balance snapshots wait for
-  their backend stages (owner's list, decision 2).
+- **Not done:** the visual pass on a phone (colours, spacing, the hero — the design can only be read as code); it
+  follows the code-to-code comparison written below. The design's business card, leave cancel / edit and balance
+  snapshots wait for their backend stages (owner's list, decision 2).
 - **Checks:** `npx tsc --noEmit` shows **two errors that were already on the branch** (unchanged files):
   `src/components/sig-pad.tsx` line 52 (`touchAction` is not a React Native style) and `src/lib/diag.ts` line 3 (an
   untyped parameter). Not fixed here; noted for a small separate fix. `expo lint` was not run (it would create lint
   configuration files).
+
+### The ten tabs, screen by screen (code-to-code, 3 Nov 2026)
+
+The design can only be read as code (`ARIBA_Employee_React/src/employee`, `goals/`, `pages/team/`), so this compares
+file to file: layout blocks, labels, empty states. Ours is `frontend/employee-app` (Expo + React Native). "Same" means
+every block of the design's screen has our equivalent; the notes say where ours differs and why.
+
+| Design tab | Their file (lines) | Ours (lines) | Verdict |
+|---|---|---|---|
+| الرئيسية | `Home.jsx` (95) | `app/(tabs)/index.tsx` (333) | **same blocks, richer.** Announcement card · hero (avatar, greeting, live clock, date, punch ring and button, location chip, «رجوع للعمل») · three tiles (leave balance, year-end balance, remote days left) · quick actions · «بياناتي» · latest approved salary · work locations. Ours swaps their four quick actions for a full service grid (every request type), turns their pending-requests and waiting-signature cards into «طلباتك الجارية» plus the dock's badges, and shows the job title in «بياناتي» where they show the direct manager. |
+| الحضور | `Att.jsx` (90) | `app/(tabs)/attendance.tsx` (156) | **same:** live clock and date, location badge, today's status with check-in / check-out / «رجوع للعمل» / forgot punch, the last 31 days, and the period lookup. Ours colours the states and spells out the location verdict (inside · outside with the distance · no work location · permission off). |
+| طلباتي | `Leaves.jsx` (178) | `app/(tabs)/leaves.tsx` (69) + `components/composer.tsx` (264) | **same, moved.** Their inline form (type tiles, `workdays` preview, remaining balance, attachment, upcoming holidays) is our «+» sheet: all 22 types in four groups, attachment, holidays. The tab itself is the list — grouped by day, with statuses, delete and the delegation card. Their per-request hide and cancel-leave wait for the backend stage. |
+| الراتب | `Pay.jsx` (95) | `app/(tabs)/salary.tsx` (93) | **same:** the current salary from HR, the newest approved payslip (the V119 rows and the older payload shape), the earlier approved months, the bank details. Ours shares a PDF where theirs prints the page. |
+| فريقي | `Team.jsx` (72) + `MgrTeam.jsx` (107) | `app/(tabs)/team.tsx` (100) | **same, plus the permission gate:** direct reports, what HR lets the manager see (data, salary, leaves), targets and evaluation, on-behalf requests for a member who delegated, the team's requests with their stage, and a button to the tasks screen in place of their floating «المهام» button. |
+| ملفي | `Prof.jsx` (85) + `ProfileRequests.jsx` (192) | `app/(tabs)/profile.tsx` (147) + `profile-edit` / `iban-change` / `upload-document` | **same:** hero, personal data with «طلب تعديل», job and contract, leave balances, salary, bank with «طلب تغيير الآيبان», «وثائقي» with «رفع مستند», theme, language, security, employer and work locations. Waiting: the business card (`MyCard.jsx`), document renewal (`DocRenew`) and document metadata (issuer, issue date) — backend stages; and their «منذ بداية الخدمة» rows only exist on the HR-only `/leave/balances`. |
+| عمل إضافي | `Overtime.jsx` (44) | `app/(tabs)/overtime.tsx` (64) | **same:** date, hours, reason, optional attachment, the list with its statuses. Ours refuses less than half an hour, which is the API's own rule. |
+| المستندات | `Docs.jsx` (101) + `MgrSignDocs.jsx` (51) | `app/(tabs)/documents.tsx` (171) | **same:** documents awaiting my signature (view, sign with the signature kept on the device, approve without signing, reject with a reason) and the manager's queue once the employee has signed. |
+| الموافقات | `Approvals.jsx` (47) | `app/(tabs)/approvals.tsx` (73) | **same:** the queue with the type, the details, the on-behalf note, HR's return note, the attachments, approve / reject with a reason, and the approval path. Their `MgrSignDocs` also sits in this tab; ours keeps signing in one place (المستندات). |
+| أهدافي | `goals/MyGoals.jsx` + `EvalForm` + `TargetsEditor` + `PeriodPick` | `app/(tabs)/goals.tsx` (64) + `team-goals.tsx` (186) | **same:** my targets and my evaluation; the manager edits targets and writes the evaluation from فريقي, which is all our API allows (HR never writes one, decision 2). |
+
+Ours also has an eleventh tab, «المزيد», and twelve screens the design does not have (tasks, team goals, profile edit,
+IBAN change, upload, letters, documents, change password, submit-for, …). So the **structure** parity of the ten tabs
+is complete; what is left is the visual pass on a phone (colours, spacing, the hero) and the items below.
+
+### What the comparison found (3 Nov 2026)
+
+1. **The request-day preview is not the server's rule.** Their `workdays()` counts Sunday–Thursday minus the official
+   holidays; our composer shows **calendar** days. The API counts the days itself (`request_days`: workdays for annual
+   leave, calendar days for every other type), so nothing wrong is ever stored — only our «سيتبقى» line can be off, and
+   an annual request can look affordable when it is not (the API then answers «يتجاوز الرصيد المتاح»). Fixing it needs
+   the holiday list, which an employee cannot read today: `GET /holidays` is HR-only, and `/me/leave` publishes only
+   the next four. **Small backend stage:** let `/me/leave` return the whole announced list.
+2. **The design's «منذ بداية الخدمة» balance rows** come from `/leave/balances` (HR-only). Left out of the app, not
+   faked.
+3. **Signing** lives in المستندات here and in الموافقات there. Kept ours: one place to sign.
+4. The two `tsc` errors that were already on the branch are still there (noted above).
+
+### The employee web area `/me` (hr-web), started 3 Nov 2026
+
+The same employee app on the web (`frontend/hr-web/src/app/(employee)/me/*`). Until this round only «الرئيسية» and
+«ملفي» were built; the other seven tabs answered «هذه الشاشة لم تُبنَ بعد». Built now, on the same `/me/*` routes the
+Expo app uses and in the design's shape:
+
+- **الراتب** — `me/(app)/salary/page.tsx` over a new `lib/me.ts` (the employee area's own calls and types): the current
+  salary from HR, the newest approved payslip (both payload shapes, optional rows only when they exist), the earlier
+  months opening in place, and the bank card.
+- **طلباتي** — `me/(app)/leaves/page.tsx`: my requests with their stage (awaiting the direct manager · HR · CEO ·
+  approved · rejected with the reason), delete for a request that is not approved, and a new request for the eleven
+  types our API records with a period. The form shows the balance and says plainly that the day count is the server's;
+  the approval path and the announced holidays sit under it.
+
+Every word is a new `me.*` entry in `lib/i18n/ar.ts` and `en.ts` (40 keys), so the area reads in both languages.
+Checks after it: `npx tsc --noEmit`, `npm run lint`, `npm run build` and `node tools/legacy-parity/run.js` all pass
+("all suites match the legacy HTML").
+
+**Built next (4 Nov 2026, same round):** the five tabs that said «لم تُبنَ بعد», plus a home that stopped guessing.
+
+- **الحضور** — `me/(app)/attendance/page.tsx`, the design's `Att.jsx`: the live clock in Riyadh time, the phone's
+  place checked against the work locations (nearest circle within `radius_m`; a location with no coordinates says
+  so), today's sessions with «تسجيل الحضور» / «تسجيل الانصراف» / «رجوع للعمل», every session of a multi-punch day,
+  the expected check-out under flexible hours, the yearly remote-day counter, the last 31 days from `/me/attendance`
+  `history`, a period lookup over `/me/attendance/range`, and «نسيت البصمة / مهمة خارجية» as a `forgot_punch`
+  request. The server decides the punch (geofence, remote request, flexible window) and its refusals are shown in
+  words: `OUTSIDE_GEOFENCE`, `REMOTE_NOT_APPROVED`, `TOO_EARLY/TOO_LATE_FOR_FLEXIBLE_WINDOW`, `GPS_REQUIRED`.
+  The design's polygon zones are not drawn: `/me/attendance` returns circles only.
+- **فريقي** — `me/(app)/team/page.tsx`: my direct reports from `/me/team` (`team_scope`: the four base fields
+  always, the extra contract / leave / salary fields only with the matching permission, so they are not shown here),
+  with a nudge to الموافقات when something waits. The design's task-and-meeting board and the team-availability
+  screen read a tasks table our server does not serve, so that card says it waits rather than showing an empty board.
+- **عمل إضافي** — `me/(app)/overtime/page.tsx`: a day, the hours (0.5 at least) and the reason as a `POST
+  /me/requests` `overtime` request, my overtime requests with the server's stage, and delete while it is not
+  approved. The design's optional attachment is left out (the reason carries the context).
+- **المستندات** — `me/(app)/documents/page.tsx`: the letters HR sends for my signature (`/me/letters` +
+  `/me/sign/states`), each one viewable in a sandboxed iframe (`/letters/{id}/html`), approvable without a
+  signature, refusable with a reason of three characters, or **signed**: a canvas pad whose PNG is kept in this
+  browser only (`ariba_sig_v1_<emp no>`, the design's rule), drawn into the letter exactly where the design's
+  `injectSignature` puts it, then sent base64 to `POST /me/letters/{id}/sign`, which cleans it, files the signed copy
+  and moves the chain (direct manager → HR when `hr_closes` is on). The stage of each letter is shown from the
+  signing row.
+- **الموافقات** — `me/(app)/approvals/page.tsx`, the design's `Approvals.jsx`: what waits for this account at the
+  request's stage, approve, or reject with the reason box inline (no browser pop-up), with the approval path under
+  it. Only `_can_act` rows arrive, so a manager sees his team, HR the HR stage and the CEO the CEO stage.
+- **الرئيسية** — the home now shows the real leave balance (available / carried / by year end, plus the next public
+  holiday), the newest approved payslip's net with a link to الراتب, and four quick actions. The «لا يوجد مسير
+  معتمد» line it used to print unconditionally is gone — it is only said when `/me/payslips` really is empty.
+
+`lib/me.ts` grew the calls and types for team, approvals, letters and signing (and `NewMyRequest` the hourly /
+overtime / forgot-punch fields); `lib/me-labels.ts` holds the Arabic and English names of every request and letter
+type, shared by the tabs (the leaves tab now uses it too). The new tabs write their labels inline with `T(ar, en)`
+like the HR components, so they did not need dictionary keys; the tabs that were already built keep their `me.*` keys.
+
+**Still open there:** the design's shell over the area (hero with the clock and the punch button, tiles, quick
+actions as the design draws them) — the home has the pieces but not the design's layout; the business card
+(«بطاقتي», `bizc`), the leave cancel / edit and the balance snapshot (all waiting on their backend stages); and the
+attendance polygon zones above.
 
 ### Plan for the remaining 2b screens (written 3 Nov 2026, to resume in a fresh session)
 

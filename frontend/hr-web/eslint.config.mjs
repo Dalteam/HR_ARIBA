@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored, copied verbatim (MIT, see src/lib/vendor/qrcode-README.md): the QR encoder the business cards
+    // draw with. Its own style is not ours to lint.
+    "src/lib/vendor/**",
   ]),
 ]);
 

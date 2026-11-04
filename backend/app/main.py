@@ -13,8 +13,8 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals, health
-from app.routers import leave_actions, manager, permissions, public, push, recycle_bin, tasks
+from app.routers import alerts, announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals
+from app.routers import health, leave_actions, manager, permissions, public, push, recycle_bin, tasks
 from app.services import escalation, notify_email
 
 API_PREFIX = "/api/v1"
@@ -124,6 +124,9 @@ def create_app() -> FastAPI:
     # More HR leave actions (Stage 12): return to manager, cancel a leave, balance undo, workflow and leave-policy
     # settings, and escalation (its daily pass is the lifespan loop above). No migration.
     app.include_router(leave_actions.router, prefix=API_PREFIX)
+    # Expiry alerts (Stage 13): /settings/alerts, /alerts/run, /alerts/status; the daily pass runs in the same
+    # loop as escalation. Needs migration 005 (005_expiry_alerts.sql); without it the routes answer 503.
+    app.include_router(alerts.router, prefix=API_PREFIX)
     return app
 
 

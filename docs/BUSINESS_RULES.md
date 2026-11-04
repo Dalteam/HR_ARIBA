@@ -1123,6 +1123,28 @@ no change except the notifications above.
 - `leave_policy` keeps all five of the design's switches; only `hr_cancel_approved` acts today, the employee-side
   four arrive with the employee app's leave stage.
 
+## Expiry alerts — Stage 13, approved by the owner 4 Nov 2026 (`services/expiry_alerts.py`, `routers/alerts.py`, migration `005_expiry_alerts.sql`)
+
+The design's daily alerts (`reference/hr-v1`: `settings/AlertsCard.jsx`, SQL `32_expiry_alerts_notify.sql`,
+`36_alerts_daily_bell.sql`). Owner (4 Nov 2026): as recommended — the backend runs it once a day by itself, HR also
+has «تشغيل الآن», and alerts go to the bell only while e-mail is off.
+
+- **E1** Seven kinds: probation, contract, iqama, passport, medical insurance, national address, GOSI certificate,
+  read from the employee's data exactly as the design does (probation = joining date + `probationDays`, a custom
+  `probationEnd`, or the default length; contract = `contractEnd`, or joining date + `contractDuration` months
+  for a fixed-term contract).
+- **E2** Per kind (`ariba_app_settings['alerts_cfg']`): the dashboard window and the bell `{on, before, ch, to}`.
+  Defaults are the client's own setting of 27 Oct 2026 (all on, the bell to HR from 10 days before); our 7 Oct copy
+  does not carry it (FOLLOW_UPS #49).
+- **E3** One bell per (employee, kind, date, recipient) **per day**, from `before` days ahead until the date is
+  renewed (a new date starts again); probation stops 15 days after its end; former employees are skipped.
+- **E4** HR's recipients are the people of the `hr` workflow stage; the employee gets their own alert only on the
+  `app` channel. **No e-mail is sent** (FOLLOW_UPS #7, #51).
+- **E5** Read the settings and the list: `settings: view`; save and run now: `settings: edit`. Every save and
+  manual run is audited.
+- **E6** Two new tables (`ariba_alert_log`, `ariba_alert_daily`) by migration 005; without it the API still starts,
+  the daily pass skips itself and «تشغيل الآن» answers 503 `migration_required`.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

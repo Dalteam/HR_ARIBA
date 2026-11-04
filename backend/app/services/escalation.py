@@ -102,20 +102,26 @@ def run_due(db: Session) -> int | None:
 
 
 async def run_forever(stop: asyncio.Event, interval_seconds: int) -> None:
-    """Started by app.main: check every `interval_seconds` whether today's pass is due."""
+    """Started by app.main: check every `interval_seconds` whether today's passes are due — escalation (Stage 12)
+    and the expiry alerts (Stage 13), each once per Riyadh day from 07:05, each recorded on its own."""
     from app.database import SessionLocal
+    from app.services import expiry_alerts
 
-    def one_pass() -> int | None:
+    def one_pass() -> tuple[int | None, dict[str, int] | None]:
         with SessionLocal() as db:
-            return run_due(db)
+            moved = run_due(db)
+        with SessionLocal() as db:
+            return moved, expiry_alerts.run_due(db)
 
     while not stop.is_set():
         try:
-            moved = await asyncio.to_thread(one_pass)
+            moved, alerts = await asyncio.to_thread(one_pass)
             if moved:
                 log.info("escalation: %s request(s) moved to HR", moved)
+            if alerts and alerts.get("sent"):
+                log.info("expiry alerts: %s", alerts)
         except Exception:  # the loop must survive a database hiccup
-            log.exception("escalation pass failed")
+            log.exception("daily pass failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=max(60, interval_seconds))
         except (TimeoutError, asyncio.TimeoutError):

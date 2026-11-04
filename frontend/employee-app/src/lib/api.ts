@@ -259,10 +259,22 @@ export type MyLeave = {
 
 export type TeamMember = { id: string; emp_no: string; name_ar: string; job_title: string | null };
 
+export type LeavePolicy = {
+  emp_cancel_pending: boolean; emp_edit_pending: boolean; emp_request_cancel_approved: boolean; allow_advance_balance: boolean;
+};
+
 export const requests = {
   mine: () => api<MyRequest[]>("/me/requests"),
   submit: (body: NewRequest) => api<MyRequest>("/me/requests", { method: "POST", body: JSON.stringify(body) }),
   remove: (id: string) => api<void>(`/me/requests/${id}`, { method: "DELETE" }),
+  // Stage 14: the employee's own leave actions, each behind its switch in HR's leave policy
+  policy: () => api<LeavePolicy>("/me/leave-policy"),
+  cancel: (id: string, reason?: string) =>
+    api<{ cancelled: boolean }>(`/me/requests/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
+  editDates: (id: string, from: string, to: string) =>
+    api<{ days: number }>(`/me/requests/${id}/dates`, { method: "PATCH", body: JSON.stringify({ from, to }) }),
+  cancelRequest: (id: string, reason?: string) =>
+    api<{ id: string }>(`/me/requests/${id}/cancel-request`, { method: "POST", body: JSON.stringify({ reason }) }),
   leave: () => api<MyLeave>("/me/leave"),
   team: () => api<TeamMember[]>("/me/team"),
   approvals: () => api<MyRequest[]>("/me/approvals"),

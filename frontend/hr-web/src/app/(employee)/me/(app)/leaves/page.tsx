@@ -12,7 +12,10 @@ import { myEmployee } from "@/lib/employees";
 import { ddmmyyyy, todayIso } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
-import { deleteMyRequest, LEAVE_TYPES, myLeave, myRequests, submitMyRequest, type MyRequest, type MyRequestType } from "@/lib/me";
+import {
+  cancelMyLeave, deleteMyRequest, editMyLeave, LEAVE_ROW_TYPES, LEAVE_TYPES, myLeave, myLeavePolicy, myRequests, requestLeaveCancel,
+  submitMyRequest, type MyRequest, type MyRequestType,
+} from "@/lib/me";
 import { reqLabel } from "@/lib/me-labels";
 import { useApi } from "@/lib/use-api";
 
@@ -40,6 +43,8 @@ export default function MeLeaves() {
   const { data: e, error, loading } = useApi(myEmployee, "me");
   const reqs = useApi(myRequests, `mereqs:${e?.id ?? ""}`);
   const leave = useApi(myLeave, `meleave:${e?.id ?? ""}`);
+  const policy = useApi(myLeavePolicy, `melvpol:${e?.id ?? ""}`);
+  const [editing, setEditing] = useState<{ id: string; from: string; to: string } | null>(null);
   const [type, setType] = useState<MyRequestType>("annual");
   const [from, setFrom] = useState(todayIso());
   const [to, setTo] = useState(todayIso());
@@ -80,6 +85,28 @@ export default function MeLeaves() {
     }
   }
 
+  // Stage 14: cancel / change dates of a pending leave, ask to cancel an approved one (each behind HR's switch)
+  const T = (ar: string, en: string) => (lang === "en" ? en : ar);
+  async function act(fn: () => Promise<unknown>, ok: string) {
+    try {
+      await fn();
+      toast(ok, "ok");
+      setEditing(null);
+      reqs.reload();
+      leave.reload();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : t("common.error"), "err");
+    }
+  }
+  const cancel = (r: MyRequest) =>
+    window.confirm(T("تُلغى الإجازة قبل الموافقة عليها ويُبلَّغ من ينتظر ردّه. هل أنت متأكد؟", "Cancel this leave before it is decided? Whoever it waits for is told."))
+    && act(() => cancelMyLeave(r.id), T("تم إلغاء الطلب", "Request cancelled"));
+  const askCancel = (r: MyRequest) =>
+    window.confirm(T("يُرسل طلب إلغاء لإجازتك المعتمدة ويمرّ بالموافقات، وعند اعتماده ترجع أيامها لرصيدك. هل أنت متأكد؟", "Send a request to cancel this approved leave? Once approved, its days return to your balance."))
+    && act(() => requestLeaveCancel(r.id), T("تم إرسال طلب الإلغاء", "Cancellation request sent"));
+  const leaveRow = (r: MyRequest) => LEAVE_ROW_TYPES.has(r.type) && !r.payload?.cancelled;
+  const small: React.CSSProperties = { background: "transparent", border: "1px solid var(--bd)", padding: "4px 9px", fontSize: 11 };
+
   return (
     <>
       <div className="card">
@@ -98,6 +125,31 @@ export default function MeLeaves() {
               {r.notes && <div style={{ fontSize: 11, marginTop: 2 }}>{r.notes}</div>}
               {r.status === "rejected" && r.rejection_reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 2 }}>❌ {r.rejection_reason}</div>}
               <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 3 }}>{ddmmyyyy(r.created_at)}</div>
+              {leaveRow(r) && policy.data && (
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {r.status === "pending" && policy.data.emp_edit_pending && (
+                    <button type="button" className="btn" style={{ ...small, color: "var(--bl)" }}
+                      onClick={() => setEditing({ id: r.id, from: String(r.from_date ?? r.payload?.from ?? ""), to: String(r.to_date ?? r.payload?.to ?? "") })}>
+                      {T("تعديل التواريخ", "Change dates")}
+                    </button>
+                  )}
+                  {r.status === "pending" && policy.data.emp_cancel_pending && (
+                    <button type="button" className="btn" style={{ ...small, color: "var(--am)" }} onClick={() => cancel(r)}>{T("إلغاء الطلب", "Cancel request")}</button>
+                  )}
+                  {r.status === "approved" && policy.data.emp_request_cancel_approved && (
+                    <button type="button" className="btn" style={{ ...small, color: "var(--am)" }} onClick={() => askCancel(r)}>{T("طلب إلغاء الإجازة", "Ask to cancel")}</button>
+                  )}
+                </div>
+              )}
+              {editing?.id === r.id && (
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginTop: 8, flexWrap: "wrap" }}>
+                  <div><label style={{ fontSize: 11 }}>{T("من", "From")}</label><input type="date" value={editing.from} onChange={(ev) => setEditing({ ...editing, from: ev.target.value })} /></div>
+                  <div><label style={{ fontSize: 11 }}>{T("إلى", "To")}</label><input type="date" value={editing.to} onChange={(ev) => setEditing({ ...editing, to: ev.target.value })} /></div>
+                  <button type="button" className="btn bpl" style={{ padding: "6px 12px", fontSize: 12 }}
+                    onClick={() => act(() => editMyLeave(r.id, editing.from, editing.to), T("تم تعديل التواريخ", "Dates changed"))}>{T("حفظ", "Save")}</button>
+                  <button type="button" className="btn" style={small} onClick={() => setEditing(null)}>{T("رجوع", "Back")}</button>
+                </div>
+              )}
             </div>
             {r.status !== "approved" && (
               <button type="button" className="btn" onClick={() => remove(r)}

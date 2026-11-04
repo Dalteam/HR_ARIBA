@@ -80,6 +80,8 @@ export interface MyRequest {
   hours: Decimal | null;
   amount: Decimal | null;
   punch_kind: "in" | "out" | "both" | null;
+  /** the stored request body as the API returns it (Stage 14 reads `from`, `to` and `cancelled`) */
+  payload?: { from?: string; to?: string; cancelled?: { reason?: string } } & Record<string, unknown>;
   notes: string | null;
   rejection_reason: string | null;
   /** the document filed with the request (me.py `_attachment_doc_type`), when there is one */
@@ -106,6 +108,22 @@ export const myRequests = () => request<MyRequest[]>("/me/requests");
 export const submitMyRequest = (body: NewMyRequest) => request<MyRequest>("/me/requests", { method: "POST", body });
 
 export const deleteMyRequest = (id: Uuid) => request<void>(`/me/requests/${id}`, { method: "DELETE" });
+
+// Stage 14: the employee's own leave actions, each behind its switch in HR's leave policy
+export interface MyLeavePolicy {
+  emp_cancel_pending: boolean;
+  emp_edit_pending: boolean;
+  emp_request_cancel_approved: boolean;
+  allow_advance_balance: boolean;
+}
+export const myLeavePolicy = () => request<MyLeavePolicy>("/me/leave-policy");
+export const cancelMyLeave = (id: Uuid, reason?: string) => request<{ cancelled: boolean }>(`/me/requests/${id}/cancel`, { method: "POST", body: { reason } });
+export const editMyLeave = (id: Uuid, from: IsoDate, to: IsoDate) =>
+  request<{ days: number }>(`/me/requests/${id}/dates`, { method: "PATCH", body: { from, to } });
+export const requestLeaveCancel = (id: Uuid, reason?: string) =>
+  request<{ id: string }>(`/me/requests/${id}/cancel-request`, { method: "POST", body: { reason } });
+/** The types with a leave row (the API's LEAVE_FORM_TYPES): only these can be cancelled or have their dates changed. */
+export const LEAVE_ROW_TYPES = new Set<string>([...LEAVE_TYPES, "unpaid"]);
 
 // ---------------------------------------------------------------- leave balance (me_requests.py)
 

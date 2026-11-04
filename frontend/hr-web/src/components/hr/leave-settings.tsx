@@ -21,8 +21,6 @@ const POLICY_ROWS: [keyof LeavePolicy, string, string][] = [
   ["allow_advance_balance", "السماح للموظف باستخدام رصيده قبل استحقاقه", "Employee may use leave before it accrues"],
   ["hr_cancel_approved", "تسمح للموارد البشرية بإلغاء إجازة معتمدة وإرجاع الرصيد مباشرة", "HR may cancel an approved leave and restore the balance directly"],
 ];
-/** The switches the API already acts on; the employee-side ones arrive with the employee app's leave stage. */
-const LIVE: (keyof LeavePolicy)[] = ["hr_cancel_approved"];
 
 export function LeavePolicyCard() {
   const { lang } = useLocale();
@@ -60,7 +58,6 @@ export function LeavePolicyCard() {
         <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, padding: "5px 0" }}>
           <input type="checkbox" checked={v[k]} disabled={!edit || busy} onChange={(ev) => setV({ ...v, [k]: ev.target.checked })} />
           {en ? e : ar}
-          {!LIVE.includes(k) && <span style={{ fontSize: 10.5, color: "var(--mu)" }}>({T("يُطبَّق مع مرحلة إجازات تطبيق الموظف", "applies with the employee-app leave stage")})</span>}
         </label>
       ))}
       {edit && <div style={{ marginTop: 10 }}><button type="button" className="btn bpl bsm" disabled={busy || !v} onClick={save}><i className="ti ti-device-floppy" /> {T("حفظ", "Save")}</button></div>}

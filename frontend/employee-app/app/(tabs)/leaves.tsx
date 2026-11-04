@@ -1,11 +1,12 @@
 // طلباتي — their Leaves.jsx «📋 طلباتي» and the delegation card. Sending a request is the «+» in the dock (components/composer.tsx),
 // which holds every type, rule and attachment that used to be the inline form here.
 import { dateLocale } from "@/i18n";
+import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
-import { Btn, Card, CardTitle, Empty, Page, T, useToast } from "@/components/ui";
+import { Btn, Card, CardTitle, Empty, Page, PickerField, Sheet, T, useToast } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { useComposer } from "@/components/composer";
-import { ApiError, requests, type MyRequest } from "@/lib/api";
+import { ApiError, requests, type LeavePolicy, type MyRequest } from "@/lib/api";
 import { DelegationCard } from "@/components/delegation";
 import { RequestItem } from "@/components/request-item";
 import { useData } from "@/lib/data";
@@ -37,6 +38,45 @@ export default function Leaves() {
   const { requests: list, refresh } = useData();
   const mine = list.filter((r) => r.type !== "overtime");
   const pending = mine.filter((r) => r.status === "pending").length;
+  // Stage 14: which of the three leave actions HR has switched on (the API checks each action itself)
+  const [policy, setPolicy] = useState<LeavePolicy | null>(null);
+  const [editing, setEditing] = useState<{ r: MyRequest; from: string; to: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    requests.policy().then(setPolicy).catch(() => setPolicy(null));
+  }, [list]);
+
+  const fail = (e: unknown, fallback: string) => toast(e instanceof ApiError ? e.message : fallback, "err");
+  function cancel(r: MyRequest) {
+    Alert.alert("إلغاء الطلب", "تُلغى الإجازة قبل الموافقة عليها ويُبلَّغ من ينتظر ردّه. هل أنت متأكد؟", [
+      { text: "رجوع", style: "cancel" },
+      { text: "إلغاء الطلب", style: "destructive", onPress: async () => {
+        try { await requests.cancel(r.id); toast("تم إلغاء الطلب", "ok"); await refresh(); } catch (e) { fail(e, "تعذر الإلغاء"); }
+      } },
+    ]);
+  }
+  function cancelRequest(r: MyRequest) {
+    Alert.alert("طلب إلغاء الإجازة", "يُرسل طلب إلغاء لإجازتك المعتمدة ويمرّ بالموافقات، وعند اعتماده ترجع أيامها لرصيدك. هل أنت متأكد؟", [
+      { text: "رجوع", style: "cancel" },
+      { text: "إرسال الطلب", onPress: async () => {
+        try { await requests.cancelRequest(r.id); toast("تم إرسال طلب الإلغاء", "ok"); await refresh(); } catch (e) { fail(e, "تعذر الإرسال"); }
+      } },
+    ]);
+  }
+  async function saveDates() {
+    if (!editing) return;
+    setBusy(true);
+    try {
+      const done = await requests.editDates(editing.r.id, editing.from, editing.to);
+      toast("تم تعديل التواريخ (" + done.days + " يوم)", "ok");
+      setEditing(null);
+      await refresh();
+    } catch (e) {
+      fail(e, "تعذر التعديل");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function remove(r: MyRequest) {
     Alert.alert("حذف الطلب", "هل تريد حذف هذا الطلب؟", [
@@ -63,11 +103,25 @@ export default function Leaves() {
               </View>
               <View style={{ flex: 1, height: 1, backgroundColor: t.bd }} />
             </View>
-            {rows.map((r) => <RequestItem key={r.id} r={r} onDelete={remove} />)}
+            {rows.map((r) => (
+              <RequestItem key={r.id} r={r} onDelete={remove} policy={policy} onCancel={cancel} onCancelRequest={cancelRequest}
+                onEdit={(x) => setEditing({ r: x, from: String(x.payload?.from ?? ""), to: String(x.payload?.to ?? "") })} />
+            ))}
           </View>
         ))}
       </Card>
       <DelegationCard />
+      <Sheet visible={!!editing} onClose={() => setEditing(null)}>
+        <T size={15} weight={800} style={{ marginBottom: 10 }}>تعديل تواريخ الإجازة</T>
+        {editing ? (
+          <>
+            <PickerField label="من" mode="date" value={editing.from} onChange={(v) => setEditing({ ...editing, from: v })} />
+            <PickerField label="إلى" mode="date" value={editing.to} onChange={(v) => setEditing({ ...editing, to: v })} />
+            <T size={11} color={t.mu} style={{ marginTop: 6 }}>يُعاد حساب الأيام والرصيد، ويُبلَّغ من ينتظر ردّه بالتواريخ الجديدة.</T>
+            <Btn kind="primary" title="حفظ" busy={busy} onPress={saveDates} style={{ marginTop: 12 }} />
+          </>
+        ) : null}
+      </Sheet>
     </Page>
   );
 }

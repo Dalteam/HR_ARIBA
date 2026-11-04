@@ -1709,11 +1709,22 @@ def _advance(db: Session, actor: dict[str, Any], item: dict[str, Any], action: s
         _notify_stage(db, dict(item, current_stage=nxt), nxt)
 
 
+#: The request-body keys the employee's own list may carry (Group 1 fix, 5 Nov 2026): the screens' notes for a
+#: cancelled, returned, escalated or manager-submitted request. A whitelist, never the whole body.
+ME_PAYLOAD_KEYS = ("from", "to", "days", "cancelled", "target", "submitted_by_manager", "submitted_by_name", "returned")
+
+
 def _me_requests_out(db: Session, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = []
+    # approved leaves that already have a «طلب إلغاء إجازة» waiting: the screens hide a second one (the API refuses it)
+    waiting = {str((r.get("payload") or {}).get("target")) for r in rows
+               if r.get("request_type") == "leave_cancel" and r.get("status") == "pending"}
     for r in rows:
         o = _workflow_out(db, r)
         p = r.get("payload") or {}
+        o["payload"] = {k: p[k] for k in ME_PAYLOAD_KEYS if k in p} | {
+            "escalated_from": r.get("escalated_from"), "return_note": r.get("return_note")}
+        o["cancel_pending"] = str(r["id"]) in waiting
         o["time_to"] = p.get("time2")
         o["hours"] = p.get("hours") or p.get("dur")
         if r.get("request_type") in HOURLY_TYPES:  # shown as «date time (hours)», not as a leave period

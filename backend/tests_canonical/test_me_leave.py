@@ -156,6 +156,24 @@ def test_a_cancel_request_once_approved_cancels_the_leave(db):
 
 
 @needs_db
+def test_my_list_says_a_cancel_request_is_waiting_and_shows_only_whitelisted_details(db):
+    """Group 1 fix (owner's test, 5 Nov 2026): the screens hide a second «طلب إلغاء» and say the leave was cancelled."""
+    emp = _employee(db)
+    target = _leave(db, emp, "completed", leave_type="annual")
+    db.execute(canonical.text("UPDATE public.workflow_requests SET payload = payload || '{\"iban\": \"SA00\"}'::jsonb WHERE id=:r"),
+               {"r": target})
+    me_leave.request_cancel(target, {}, request=None, actor=_me(emp), db=db)
+    listed = {str(r["id"]): r for r in canonical.my_requests(actor=_me(emp), db=db)}
+    row = listed[str(target)]
+    assert row["cancel_pending"] is True
+    assert "iban" not in row["payload"] and set(row["payload"]) <= set(canonical.ME_PAYLOAD_KEYS) | {"escalated_from", "return_note"}
+    other = _leave(db, emp, "manager")
+    me_leave.cancel_my_leave(other, {"reason": "تغيّر الموعد"}, request=None, actor=_me(emp), db=db)
+    cancelled = {str(r["id"]): r for r in canonical.my_requests(actor=_me(emp), db=db)}[str(other)]
+    assert cancelled["payload"]["cancelled"]["reason"] == "تغيّر الموعد" and cancelled["cancel_pending"] is False
+
+
+@needs_db
 def test_the_employee_reads_only_their_four_switches(db):
     emp = _employee(db)
     assert me_leave.my_leave_policy(actor=_me(emp), db=db) == {

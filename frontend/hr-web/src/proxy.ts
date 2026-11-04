@@ -8,7 +8,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import type { Role } from "@/lib/api";
-import { EMP_LOGIN, HR_LOGIN, canAccess, homeFor, isEmployeeApp } from "@/lib/routes";
+import { EMP_LOGIN, HR_LOGIN, canAccess, homeFor, isEmployeeApp, isPublicApply } from "@/lib/routes";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/session";
 
 const ROLES: Role[] = ["employee", "manager", "finance", "hr", "ceo", "admin"];
@@ -34,6 +34,9 @@ export function proxy(request: NextRequest) {
   if (pathname === HR_LOGIN || pathname === EMP_LOGIN) {
     return role ? NextResponse.redirect(new URL(homeFor(role), request.url)) : NextResponse.next();
   }
+
+  // The public application form (the candidates' link) is the one page that must open signed out.
+  if (isPublicApply(pathname)) return NextResponse.next();
 
   if (!hasSession) {
     const url = new URL(isEmployeeApp(pathname) ? EMP_LOGIN : HR_LOGIN, request.url);

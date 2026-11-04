@@ -42,9 +42,15 @@ const FINANCE_READERS: Role[] = ["finance", "hr", "admin"];
 
 export const HR_LOGIN = "/login";
 export const EMP_LOGIN = "/me/login";
+// The public application form: the link itself is the key (candidates), so it opens with no session.
+export const PUBLIC_APPLY = "/apply";
 
 function under(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "/");
+}
+
+export function isPublicApply(path: string): boolean {
+  return under(path, PUBLIC_APPLY);
 }
 
 export function isEmployeeApp(path: string): boolean {

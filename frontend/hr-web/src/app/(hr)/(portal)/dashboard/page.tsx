@@ -126,16 +126,21 @@ export default function DashboardPage() {
               );
             })}
           </div>
+          {/* the design's three small tiles as it draws them: ti-bell / ti-user-off / ti-school (their
+              `[['ti-bell',…],['ti-user-off',…],['ti-school',…]]` row), an icon per row instead of a bullet */}
           <div data-ariba-kpi="pending" style={{ ...TILE, padding: "20px 16px", border: "2px solid #e5e7eb", display: "flex", flexDirection: "column", gap: 10, justifyContent: "center" }}>
             {(
               [
-                ["dash.pending", "🔔", pendingCount, "#014D3D"],
-                ["dash.ended", "🔴", d.terminated, "#ef4444"],
-                ["dash.tamheer", "🎓", d.tamheer, "#856a00"],
+                ["dash.pending", "ti-bell", pendingCount, "#014D3D"],
+                ["dash.ended", "ti-user-off", d.terminated, "#ef4444"],
+                ["dash.tamheer", "ti-school", d.tamheer, "#856a00"],
               ] as [MessageKey, string, number, string][]
-            ).map(([k, emoji, v, c]) => (
+            ).map(([k, icon, v, c]) => (
               <div key={k} style={ROW}>
-                <span style={{ fontSize: 12, color: "var(--mu)" }}>{emoji} {t(k)}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--mu)" }}>
+                  <i className={"ti " + icon} aria-hidden style={{ fontSize: 16, color: c }} />
+                  {t(k)}
+                </span>
                 <span style={{ fontSize: 26, fontWeight: 900, color: c }}>{v}</span>
               </div>
             ))}

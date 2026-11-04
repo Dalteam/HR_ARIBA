@@ -3,13 +3,16 @@
 import { useState } from "react";
 import { useToast } from "@/components/common/toast";
 import { Modal } from "@/components/hr/modal";
-import { type ExportSpec, FORMATS, type Format, makeFile, saveBlob, tablesFrom } from "@/lib/exporter";
-import { FEATURES, isReady } from "@/lib/features";
+import { useSealStudio } from "@/components/hr/seal-studio";
+import { type ExportSpec, FORMATS, type Format, makeFile, saveBlob, tableHtml, tablesFrom } from "@/lib/exporter";
+import { FEATURES } from "@/lib/features";
+import { previewDoc } from "@/lib/seal";
 import { useLocale } from "@/lib/i18n/locale";
 
 // The updated design's top-bar export (its PageExport.jsx + ExportDialog.jsx): it picks up any table shown on
-// the open page and saves it as PDF / Excel / Word. The stamp overlay and the e-mail half wait for their steps
-// (lib/features.ts `exportSeal`, `exportEmail`) and say so instead of pretending.
+// the open page and saves it as PDF / Excel / Word. «ختم / توقيع» opens the design's seal studio (Phase 2c,
+// components/hr/seal-studio.tsx) and stamps page 1 of the PDF; the e-mail half still waits for its stage
+// (lib/features.ts `exportEmail`) and says so instead of pretending.
 export function PageExport({ title }: { title: string }) {
   const toast = useToast();
   const { lang } = useLocale();
@@ -48,19 +51,29 @@ export function PageExport({ title }: { title: string }) {
   );
 }
 
-function ExportDialog({ spec, onClose }: { spec: ExportSpec; onClose: () => void }) {
+export function ExportDialog({ spec, onClose }: { spec: ExportSpec; onClose: () => void }) {
   const toast = useToast();
   const { lang } = useLocale();
   const T = (ar: string, en: string) => (lang === "en" ? en : ar);
   const [fmt, setFmt] = useState<Format>("pdf");
   const [busy, setBusy] = useState(false);
+  const [seal, setSeal] = useState(false);
+  const { askSeal, sealNode } = useSealStudio();
   const canSeal = fmt === "pdf" && spec.headers.length <= 7;
   const waits = (id: "exportSeal" | "exportEmail") => (lang === "en" ? FEATURES[id].waits?.en : FEATURES[id].waits?.ar);
 
   async function dl() {
     setBusy(true);
     try {
-      saveBlob(await makeFile(fmt, spec));
+      let out = spec;
+      if (seal && canSeal) {
+        // the design previewed the first 32 rows, then stamped the very same layer on page 1
+        const inner = '<div style="padding:3mm 4mm">' + tableHtml({ ...spec, rows: spec.rows.slice(0, 32) }) + "</div>";
+        const a = await askSeal(previewDoc(inner, spec.dir ?? "rtl"), spec.title);
+        if (a === null) return;
+        if (a !== "plain") out = { ...spec, overlay: a.overlay };
+      }
+      saveBlob(await makeFile(fmt, out));
     } catch (e) {
       toast(e instanceof Error && e.message ? e.message : T("تعذر إنشاء الملف", "Could not create the file"), "err");
     } finally {
@@ -69,6 +82,7 @@ function ExportDialog({ spec, onClose }: { spec: ExportSpec; onClose: () => void
   }
 
   return (
+    <>
     <Modal title={T("تصدير / إرسال: ", "Export / send: ") + spec.title} width={640} onClose={onClose}>
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         {(Object.entries(FORMATS) as [Format, [string, string, string]][]).map(([k, v]) => (
@@ -77,8 +91,8 @@ function ExportDialog({ spec, onClose }: { spec: ExportSpec; onClose: () => void
           </label>
         ))}
         {canSeal && (
-          <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12, opacity: isReady("exportSeal") ? 1 : 0.55 }} title={waits("exportSeal")}>
-            <input type="checkbox" id="XD_SEAL" disabled={!isReady("exportSeal")} /> {T("ختم / توقيع (قابل للتحريك)", "Stamp / signature (movable)")}
+          <label style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 12, cursor: "pointer" }}>
+            <input type="checkbox" id="XD_SEAL" checked={seal} onChange={(e) => setSeal(e.target.checked)} /> {T("ختم / توقيع (قابل للتحريك)", "Stamp / signature (movable)")}
           </label>
         )}
         <button className="btn bpl bsm" id="XD_DL" type="button" disabled={busy} onClick={dl} style={{ marginInlineStart: "auto" }}>
@@ -97,5 +111,7 @@ function ExportDialog({ spec, onClose }: { spec: ExportSpec; onClose: () => void
         <button className="btn" type="button" onClick={onClose}>{T("إغلاق", "Close")}</button>
       </div>
     </Modal>
+    {sealNode}
+    </>
   );
 }

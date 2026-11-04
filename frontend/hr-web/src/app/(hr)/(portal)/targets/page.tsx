@@ -1,6 +1,8 @@
-import { PendingScreen } from "@/components/hr/pending-screen";
+"use client";
 
-// The updated design's "goals" page; it waits for the step named in lib/features.ts.
+import { GoalsPage } from "@/components/hr/goals";
+
+// The updated design's targets page (its pages/goals), on OUR Stage 3 routes.
 export default function Page() {
-  return <PendingScreen id="goals" />;
+  return <GoalsPage mode="goals" />;
 }

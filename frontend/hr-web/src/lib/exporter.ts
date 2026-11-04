@@ -1,9 +1,12 @@
 // Export any table on the page to Excel / PDF / Word: the updated design's lib/exporter.js, typed. Its
 // "send by e-mail" half (a Supabase edge function) is not here: e-mail stays off, lib/features.ts `exportEmail`.
 
+import type { jsPDF as JsPdf } from "jspdf";
 import { buildXlsx, withFormulaTotals } from "./xlsx";
 
-export type ExportSpec = { title: string; headers: string[]; rows: string[][]; sub?: string; name?: string; dir?: "rtl" | "ltr"; totals?: boolean };
+/** `overlay` is the seal layer (lib/seal.ts `overlayHtml`), drawn over page 1 of the PDF only — as the
+ *  design's exporter did (a landscape table has no place for it). */
+export type ExportSpec = { title: string; headers: string[]; rows: string[][]; sub?: string; name?: string; dir?: "rtl" | "ltr"; totals?: boolean; overlay?: string };
 export type ExportFile = { blob: Blob; name: string; mime: string };
 export type Format = "xlsx" | "pdf" | "doc";
 
@@ -32,6 +35,22 @@ export function tableHtml({ title, headers, rows, sub, dir = "rtl" }: ExportSpec
   );
 }
 
+/** The seal layer over the page jsPDF is on: rendered once as a transparent A4 sheet, then drawn on top
+ *  (the design's `pdfBlob` did exactly this for `spec.overlay`). */
+async function stampOverlay(pdf: JsPdf, overlay: string) {
+  const { default: html2canvas } = await import("html2canvas");
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-99999px;top:0;width:794px;background:transparent";
+  host.innerHTML = '<div style="position:relative;width:794px;height:1123px;overflow:hidden">' + overlay + "</div>";
+  document.body.appendChild(host);
+  try {
+    const sheet = await html2canvas(host, { scale: 1.5, backgroundColor: null, width: 794, height: 1123, windowWidth: 794 });
+    pdf.addImage(sheet.toDataURL("image/png"), "PNG", 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight(), undefined, "FAST");
+  } finally {
+    host.remove();
+  }
+}
+
 async function pdfBlob(spec: ExportSpec): Promise<Blob> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   const wide = spec.headers.length > 7;
@@ -51,6 +70,36 @@ async function pdfBlob(spec: ExportSpec): Promise<Blob> {
       if (i) pdf.addPage();
       const h = Math.min(PH - 6, (cv.height * (W - 8)) / cv.width);
       pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", 4, 3, W - 8, h);
+      if (i === 0 && spec.overlay && !wide) await stampOverlay(pdf, spec.overlay);
+    }
+  } finally {
+    host.remove();
+  }
+  return pdf.output("blob");
+}
+
+/** A whole HTML report (several sections) as an A4 PDF: rendered once off-screen, then cut into pages.
+ *  Simpler than the design's htmlPdf.js (no "smart" breaks: a row may be cut at a page edge). */
+export async function htmlPdfBlob(html: string, { landscape = false, overlay }: { landscape?: boolean; overlay?: string } = {}): Promise<Blob> {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
+  const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: landscape ? "landscape" : "portrait" });
+  const W = pdf.internal.pageSize.getWidth(), PH = pdf.internal.pageSize.getHeight();
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-99999px;top:0;background:#fff;width:" + (landscape ? 1120 : 790) + "px";
+  host.innerHTML = html;
+  document.body.appendChild(host);
+  try {
+    const cv = await html2canvas(host, { scale: 2, backgroundColor: "#fff" });
+    const pxPerPage = Math.floor((cv.width * (PH - 8)) / (W - 8));
+    for (let y = 0, i = 0; y < cv.height; y += pxPerPage, i++) {
+      const h = Math.min(pxPerPage, cv.height - y);
+      const part = document.createElement("canvas");
+      part.width = cv.width;
+      part.height = h;
+      part.getContext("2d")!.drawImage(cv, 0, y, cv.width, h, 0, 0, cv.width, h);
+      if (i) pdf.addPage();
+      pdf.addImage(part.toDataURL("image/jpeg", 0.92), "JPEG", 4, 4, W - 8, (h * (W - 8)) / cv.width);
+      if (i === 0 && overlay && !landscape) await stampOverlay(pdf, overlay);
     }
   } finally {
     host.remove();

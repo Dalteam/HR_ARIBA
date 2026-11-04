@@ -3,12 +3,13 @@
 // Reports (التقارير) in the updated design's form (its pages/reports/index.jsx): 11 report cards; every report is
 // data (headings + rows) so the viewer can show, hide and reorder columns, report on all or on chosen employees,
 // show totals, print and save to Excel. The rows come from OUR API (salary basis, documents registry, leave
-// balances). The design's custom-report builder, certificates report and comprehensive leave report wait for their
-// steps (lib/features.ts).
+// balances). The design's custom-report builder and comprehensive leave report open above the cards
+// (components/hr/extra-reports.tsx); the certificates report waits for its step (lib/features.ts).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CustomReport, LeaveReport } from "@/components/hr/extra-reports";
 import { PageState } from "@/components/hr/not-built";
 import { saveBlob } from "@/lib/exporter";
-import { FEATURES, type FeatureId } from "@/lib/features";
+import { FEATURES, isReady, type FeatureId } from "@/lib/features";
 import { ddmmyyyy } from "@/lib/format";
 import { listBalances, type BalanceRow } from "@/lib/leave";
 import { printHtml } from "@/lib/print";
@@ -240,13 +241,15 @@ export default function Page() {
     <div className="pg on" id="pg-rpt">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(185px,1fr))", gap: 10, marginBottom: 10 }}>
         {TOOLS.map((x) => (
-          <div key={x.id} onClick={() => setTool(tool === x.id ? null : x.id)} style={{ background: "var(--c)", border: "1px dashed var(--bd)", borderRadius: 10, padding: 12, cursor: "pointer", opacity: 0.75 }}>
+          <div key={x.id} onClick={() => setTool(tool === x.id ? null : x.id)} style={{ background: "var(--c)", border: (isReady(x.id) ? "1px solid " : "1px dashed ") + (tool === x.id ? "var(--bl)" : "var(--bd)"), borderRadius: 10, padding: 12, cursor: "pointer", opacity: isReady(x.id) ? 1 : 0.75 }}>
             <i className={"ti " + x.i} style={{ fontSize: 20, color: "var(--bl)", display: "block", marginBottom: 6 }} />
             <div style={{ fontSize: 12.5, fontWeight: 700 }}>{x.t}</div>
           </div>
         ))}
       </div>
-      {tool && (
+      {tool === "reportCustom" && isReady(tool) && <CustomReport />}
+      {tool === "reportLeaves" && isReady(tool) && <LeaveReport />}
+      {tool && !isReady(tool) && (
         <div className="al alb" style={{ marginBottom: 12 }}>
           <i className="ti ti-hourglass" aria-hidden />
           <div><strong>غير متاح بعد</strong><div>يُفتح بعد {FEATURES[tool].waits?.ar}</div></div>

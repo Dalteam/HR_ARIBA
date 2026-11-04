@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getEmployee } from "@/lib/employees";
+import { balanceDetail } from "@/lib/leave";
 import { dmy, initials, sar } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
@@ -16,6 +17,9 @@ export function EmployeeDetails({ id, onClose }: { id: string; onClose: () => vo
   const { t, tEnum, lang } = useLocale();
   const [tab, setTab] = useState<Tab>("d1");
   const { data: e, error, loading } = useApi(() => getEmployee(id), `ed:${id}`);
+  // the design's leaves tab: today's balance and the days used in each of the last four years (OUR /leave balances)
+  const bal = useApi(() => balanceDetail(id).catch(() => null), `edb:${id}`);
+  const yNow = new Date().getFullYear();
   const name = e ? (lang === "en" && e.name_en) || e.name_ar : "";
   const lk = (l: { name_ar: string; name_en: string } | null) => (l ? (lang === "en" ? l.name_en : l.name_ar) : "—");
   const item = (k: MessageKey, v: React.ReactNode) => (
@@ -100,12 +104,15 @@ export function EmployeeDetails({ id, onClose }: { id: string; onClose: () => vo
           {tab === "d4" && (
             <>
               <div className="dg">
+                <div className="di"><div className="dl">{lang === "en" ? "Leave Balance" : "رصيد الإجازة"}</div><div className="dv">{bal.data ? t("common.days", { n: Number(bal.data.summary.current).toFixed(1) }) : "—"}</div></div>
                 {item("ed.annual", t("common.days", { n: e.annual_leave_days }))}
+                {[yNow - 3, yNow - 2, yNow - 1, yNow].map((y) => (
+                  <div className="di" key={y}><div className="dl">{y}</div><div className="dv">{t("common.days", { n: Number(bal.data?.years.find((l) => l.year === y)?.used ?? 0) })}</div></div>
+                ))}
                 {item("ed.cj", dmy(e.join_date))}
                 {item("ed.ce", dmy(e.contract_end_date))}
                 {item("ed.cn", tEnum("contract_nature", e.contract_nature))}
               </div>
-              <div className="al alb" style={{ marginTop: 8 }}><i className="ti ti-info-circle" /><div>{t("ed.leaveSoon")}</div></div>
             </>
           )}
         </>

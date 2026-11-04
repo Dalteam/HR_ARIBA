@@ -46,7 +46,8 @@ export const listAttendanceSummary = (month: string) => request<AttendanceSummar
 
 export const upsertAttendance = (body: AttendanceInput) => request<AttendanceRecord>("/attendance", { method: "POST", body });
 
-export const updateAttendance = (id: string, body: Partial<AttendanceInput>) =>
+/** PATCH takes the day as `date` (not `work_date`) and never moves a record to another employee. */
+export const updateAttendance = (id: string, body: Partial<Omit<AttendanceInput, "employee_id" | "work_date">> & { date?: string }) =>
   request<AttendanceRecord>(`/attendance/${id}`, { method: "PATCH", body });
 
 export const deleteAttendance = (id: string) => request<void>(`/attendance/${id}`, { method: "DELETE" });

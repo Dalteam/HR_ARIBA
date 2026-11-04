@@ -13,9 +13,16 @@ export interface AttRow {
   late_minutes: number | null;
   early_minutes: number | null;
   notes: string | null;
+  location_name?: string | null;
 }
-export interface Grp { in: string | null; out: string | null; status: string; late: number; early: number; hours: number; noOut: boolean; auto: boolean; sessions: number }
-export interface Day { date: string; dow: string; cls: Cls; rec: Grp | null }
+/** One check-in → check-out pair of the day (the updated design's `periods`); `out` is "" while open or auto-closed. */
+export interface Period { in: string; out: string; auto: boolean }
+export interface Grp {
+  in: string | null; out: string | null; status: string; late: number; early: number; hours: number; noOut: boolean; auto: boolean; sessions: number;
+  /** added with the updated design (not part of the legacy parity check): every punch pair, the first punch's location, all notes */
+  periods: Period[]; loc: string; notes: string;
+}
+export interface Day { date: string; dow: string; cls: Cls; rec: Grp | null; /** a weekend or official holiday */ off: boolean }
 export interface Sum<E> {
   e: E; expected: number; present: number; late: number; absent: number; leave: number; remote: number; offWorked: number;
   lateMin: number; early: number; earlyDays: number; noOut: number; hours: number; rate: number | null; avgIn: string; days: Day[];
@@ -35,6 +42,34 @@ export const secs = (t: string | null) => {
   return +p[0] * 3600 + (+p[1] || 0) * 60 + (parseFloat(p[2]) || 0);
 };
 const r2 = (n: number) => Math.round(n * 100) / 100;
+export const hm = (t: string | null | undefined) => (t ? String(t).slice(0, 5) : "");
+
+export const ST_AR: Record<Cls, string> = { present: "حاضر", late: "متأخر", absent: "غائب", leave: "إجازة", remote: "عن بعد", off: "عطلة", pending: "لم يُسجَّل بعد" };
+export const ST_EN: Record<Cls, string> = { present: "Present", late: "Late", absent: "Absent", leave: "Leave", remote: "Remote", off: "Day off", pending: "Not yet" };
+
+/** Minutes as words (the design's fmtHM): «ساعتان و5 دقيقة» / "2h 5m". */
+export function fmtHM(m: number, en: boolean) {
+  m = Math.round(Number(m) || 0);
+  if (m <= 0) return en ? "0" : "0 دقيقة";
+  const h = Math.floor(m / 60), r = m % 60;
+  if (en) return ((h ? h + "h " : "") + (r ? r + "m" : "")).trim() || "0m";
+  if (!h) return r + " دقيقة";
+  let hs = h === 1 ? "ساعة" : h === 2 ? "ساعتان" : h + " ساعات";
+  if (h > 10) hs = h + " ساعة";
+  return hs + (r ? " و" + r + " دقيقة" : "");
+}
+
+/** The design's report filters (who appears), with the minimum number of days. */
+export const FILTERS: Record<string, { ar: string; en: string; f: (s: Sum<unknown>, n: number) => boolean }> = {
+  all: { ar: "كل الموظفين", en: "All employees", f: () => true },
+  late: { ar: "المتأخرون فقط", en: "Late only", f: (s, n) => s.late >= n },
+  absent: { ar: "الغائبون فقط", en: "Absent only", f: (s, n) => s.absent >= n },
+  early: { ar: "عندهم خروج مبكر", en: "Early exit", f: (s, n) => s.earlyDays >= n },
+  noout: { ar: "بدون بصمة انصراف", en: "Missing check-out", f: (s, n) => s.noOut >= n },
+  remote: { ar: "عن بعد", en: "Remote", f: (s, n) => s.remote >= n },
+  leave: { ar: "في إجازة", en: "On leave", f: (s, n) => s.leave >= n },
+  clean: { ar: "ملتزمون (بدون تأخير أو غياب)", en: "Fully compliant", f: (s) => s.late === 0 && s.absent === 0 && s.present + s.remote > 0 },
+};
 
 export function groupRows(rows: AttRow[]): Map<string, Grp> {
   const g = new Map<string, AttRow[]>();
@@ -86,6 +121,9 @@ export function groupRows(rows: AttRow[]): Map<string, Grp> {
       noOut: !!first.time_in && !finalReal,
       auto: anyAuto,
       sessions: withIn.length,
+      periods: withIn.map((r) => ({ in: hm(r.time_in), out: r.time_out && !isAuto(r) ? hm(r.time_out) : "", auto: isAuto(r) })),
+      loc: first.location_name || "",
+      notes: rs.map((r) => r.notes).filter(Boolean).join(" | "),
     });
   });
   return out;
@@ -153,7 +191,7 @@ export function computeReport<E extends { id: string; join_date: string | null }
           inCnt++;
         }
       }
-      s.days.push({ date: ds, dow: a.dayName(d), cls, rec: g });
+      s.days.push({ date: ds, dow: a.dayName(d), cls, rec: g, off: isOff });
     }
     s.hours = r2(s.hours);
     const base = s.expected - s.leave;

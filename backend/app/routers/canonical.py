@@ -475,6 +475,10 @@ def my_employee(actor: dict[str, Any] = Depends(current_actor), db: Session = De
     return _employee_detail(db, _employee_scope(db, actor, actor["employee_id"]), actor)
 
 
+# the employees page's category tabs → employee_map.category() values
+_CATEGORY_TABS = {"tamheer": "tamheer", "training": "training", "consultants": "consultant"}
+
+
 @router.get("/employees")
 def employees(tab: str = "all", q: str = "", workplace_id: str | None = None, page: int = 1, page_size: int = 100, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     if actor["role"] == "finance":
@@ -493,6 +497,8 @@ def employees(tab: str = "all", q: str = "", workplace_id: str | None = None, pa
         items = [e for e in items if e["active"]]
     elif tab == "terminated":
         items = [e for e in items if not e["active"]]
+    elif tab in _CATEGORY_TABS:  # everyone of that category, former staff included (the prototype's setEmpCategory)
+        items = [e for e in items if emap.category(e) == _CATEGORY_TABS[tab]]
     size = max(1, min(page_size, 100))
     start = max(0, page - 1) * size
     return {"items": [_public_employee(e, actor, list_view=True) for e in items[start:start + size]], "total": len(items), "page": page, "page_size": size}
@@ -504,7 +510,8 @@ def employee_counts(actor: dict[str, Any] = Depends(current_actor), db: Session 
     visible = rows if actor["role"] in HR_READ_ROLES else [r for r in rows if r["employee_id"] == actor.get("employee_id") or (actor["role"] == "manager" and r.get("manager_id") == actor.get("employee_id"))]
     active = [r for r in visible if r.get("active")]
     saudis = sum(1 for r in active if str(r.get("nationality") or "").lower() in {"saudi", "saudi arabia", "سعودي", "سعودية"})
-    return {"all": len(visible), "active": len(active), "terminated": len(visible)-len(active), "tamheer": 0, "training": 0, "consultants": 0, "saudi": saudis, "expat": len(active)-saudis, "saudization_pct": round(saudis*100/len(active),1) if active else 0}
+    return {"all": len(visible), "active": len(active), "terminated": len(visible)-len(active),
+            **{tab: sum(1 for r in visible if emap.category(dict(r.get("data") or {})) == c) for tab, c in _CATEGORY_TABS.items()}, "saudi": saudis, "expat": len(active)-saudis, "saudization_pct": round(saudis*100/len(active),1) if active else 0}
 
 
 @router.get("/employees/{employee_id}")

@@ -1,6 +1,8 @@
-import { PendingScreen } from "@/components/hr/pending-screen";
+"use client";
 
-// The updated design's "eval" page; it waits for the step named in lib/features.ts.
+import { GoalsPage } from "@/components/hr/goals";
+
+// The updated design's evaluation page (its pages/goals), on OUR Stage 3 routes.
 export default function Page() {
-  return <PendingScreen id="eval" />;
+  return <GoalsPage mode="eval" />;
 }

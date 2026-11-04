@@ -1084,6 +1084,45 @@ Salary figures on employee records are shown to roles with **`payroll` ≥ view*
   finance +19 (the reads above, plus payroll exclusion and the letter step); ceo +3 (salary basis, salary preview,
   accounts list); hr −2 (payroll approve / reopen); admin_manager +2 / −15 — all exactly the client's matrix.
 
+## More HR leave actions — Stage 12, rules approved by the owner 4 Nov 2026 (`routers/leave_actions.py`, `services/escalation.py`, no migration)
+
+The design's HR side of leaves and requests (`reference/hr-v1`: `pages/leaves/*`, `settings/WorkflowCard.jsx`,
+`LeavePolicyCard.jsx`; SQL `10_phase1_workflow_upgrade.sql`, `26_leave_cancel.sql`, `25_approval_circles.sql`).
+Owner's rule: match the reference. Waiting in `features.ts`: `lvReturn`, `lvCancel`, `lvBalanceUndo`, `wfConfig`.
+
+### What it adds
+
+| # | Action | Who (matrix) | What happens (the design's own steps) |
+|---|---|---|---|
+| L1 | **Return a request to the direct manager** | `requests: edit` | Only a pending request of an employee who has a manager; a note is required. The request goes back to the `manager` stage, the note is kept in its history, HR's bell items for it are cleared, the manager is asked to answer and the employee is told. Audited |
+| L2 | **Cancel an approved (or pending) leave** | `leaves: edit`, and the `leave_policy.hr_cancel_approved` switch (on by default, as in the design) | The request ends as «ملغاة» (rejected, with who / when / why / what it was before kept on it), its leave row becomes `cancelled`, so its days return to the balance; the employee is notified. Only a leave can be cancelled (other request types are 409). Audited |
+| L3 | **Undo the last balance save** | `leaves: edit` | Every save of an employee's balances keeps the values before it; the last **10** are kept and «تراجع عن آخر حفظ» puts the latest back. Audited |
+| L4 | **Workflow settings** | read `settings` or `requests: view`; save `settings: edit` | Manager's and CEO's waiting time (0–60 days, 0 = never escalate), the salary-advance ceiling (1–1000 % of salary), and the final approver per request type (Stage 1's `final_by_type`). The extra e-mail list is stored but **nothing is sent** while e-mail is off |
+| L5 | **Escalation** | runs by itself once a day; HR can press «تشغيل الآن» (`requests: edit`) | A request waiting at the manager or the CEO longer than its waiting time moves to **HR for the decision** (approve, reject or return); HR, the employee and the late manager are notified. Never twice for the same wait |
+
+Refusals: a request that is not pending → 409; an employee with no manager → 409 (L1); no note → 422 (L1);
+the switch off → 403 `feature_disabled` (L2); someone without the module → 403. Managers and employees see
+no change except the notifications above.
+
+### Decisions (owner, 4 Nov 2026)
+
+- **Q1** Escalation after the client's **3 days** (manager) and **3 days** (CEO), automatically every day: **yes**.
+- **Q2** HR may cancel an approved leave, **on by default** with the switch in Settings: **yes**.
+- **Q3** Approval circles: **later**, as their own stage.
+
+### Built as
+
+- The columns were already in the normalized schema: `workflow_requests.escalated_from / escalated_at /
+  returned_at / return_note`, and `workflow_actions.action` allows `returned` and `escalated`. A cancelled leave ends
+  at `current_stage='rejected'` with `payload.cancelled = {by, at, kind: 'hr', reason, was}`; balances count only
+  approved annual requests, so its days return by themselves.
+- The balance history lives on the employee (`data.leaveBalanceHistory`, last 10), written by
+  `PUT /leave/employees/{id}` before it replaces the figures.
+- The daily pass is a loop in the app (`WORKFLOW_ESCALATION_CHECK_SECONDS`, default 3600, 0 = off) that runs once
+  per Riyadh day from 07:05 and records the day in `ariba_app_settings['escalation_last_run']`; no Railway cron.
+- `leave_policy` keeps all five of the design's switches; only `hr_cancel_approved` acts today, the employee-side
+  four arrive with the employee app's leave stage.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

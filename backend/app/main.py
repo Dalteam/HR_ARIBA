@@ -13,9 +13,9 @@ from app.core.errors import install_error_handlers
 from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
-from app.routers import announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals, health, manager
-from app.routers import permissions, public, push, recycle_bin, tasks
-from app.services import notify_email
+from app.routers import announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals, health
+from app.routers import leave_actions, manager, permissions, public, push, recycle_bin, tasks
+from app.services import escalation, notify_email
 
 API_PREFIX = "/api/v1"
 
@@ -46,13 +46,18 @@ async def lifespan(_app: FastAPI):
         logging.getLogger("ariba.notify_email").info(
             "notification e-mails every %ss through %s", s.notify_email_interval_seconds, s.smtp_host)
         sender = asyncio.create_task(notify_email.run_forever(stop, s.notify_email_interval_seconds))
+    # Escalation (Stage 12): checks every WORKFLOW_ESCALATION_CHECK_SECONDS whether today's pass is due.
+    escalator = None
+    if s.workflow_escalation_check_seconds > 0:
+        escalator = asyncio.create_task(escalation.run_forever(stop, s.workflow_escalation_check_seconds))
     try:
         yield
     finally:
-        if sender is not None:
-            stop.set()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sender
+        stop.set()
+        for task in (sender, escalator):
+            if task is not None:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
 
 
@@ -116,6 +121,9 @@ def create_app() -> FastAPI:
     # Roles and permissions (Stage 11): the matrix (/permissions), the accounts' roles, and /me/permissions. Every
     # HR-side check reads the same matrix through canonical._perm (services/permissions.py); no migration.
     app.include_router(permissions.router, prefix=API_PREFIX)
+    # More HR leave actions (Stage 12): return to manager, cancel a leave, balance undo, workflow and leave-policy
+    # settings, and escalation (its daily pass is the lifespan loop above). No migration.
+    app.include_router(leave_actions.router, prefix=API_PREFIX)
     return app
 
 

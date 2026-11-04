@@ -3078,6 +3078,11 @@ def leave_balance_detail(employee_id: str, actor: dict[str, Any] = Depends(curre
     return _balance_detail(db, employee_id)
 
 
+#: Stage 12 (L3): the employee's balance saves kept for undo (the design's leaveBalanceHistory, last 10).
+BALANCE_HISTORY_KEY = "leaveBalanceHistory"
+BALANCE_HISTORY_MAX = 10
+
+
 @router.put("/leave/employees/{employee_id}")
 def update_leave_balance(employee_id: str, body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     """Legacy saveLeaveBalanceAdjustment: replace every year's figures in data.leaveYearOverrides (same normalisation)."""
@@ -3104,6 +3109,11 @@ def update_leave_balance(employee_id: str, body: dict[str, Any], request: Reques
         o["updatedAt"] = datetime.now(UTC).isoformat()
         overrides[str(int(entry["year"]))] = o
     data = dict(row.get("data") or {})
+    # Stage 12 (L3): the figures this save replaces are kept, the last BALANCE_HISTORY_MAX, for «تراجع عن آخر حفظ»
+    history = list(data.get(BALANCE_HISTORY_KEY) or [])
+    history.append({"at": datetime.now(UTC).isoformat(), "by": actor.get("employee_id"),
+                    "overrides": data.get("leaveYearOverrides") or {}})
+    data[BALANCE_HISTORY_KEY] = history[-BALANCE_HISTORY_MAX:]
     data["leaveYearOverrides"] = overrides
     db.execute(text("UPDATE public.employee_directory SET data=CAST(:data AS jsonb),updated_at=now() WHERE employee_id=:eid"),
                {"data": json.dumps(data, ensure_ascii=False), "eid": employee_id})

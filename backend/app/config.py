@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     notify_email_interval_seconds: int = 60     # 0 turns the background loop off (manual flush only)
     notify_email_batch: int = 25
     notify_email_max_tries: int = 5
+    # Stage 12 (L5): how often the app checks whether today's escalation pass is due (it runs once a day from
+    # 07:05 Riyadh). 0 turns the loop off; HR's «تشغيل الآن» still works.
+    workflow_escalation_check_seconds: int = 3600
 
     # Never mail a notification created before this instant (ISO 8601, e.g. 2026-10-29T00:00:00Z).
     # Empty = the stamp migration 002 wrote into ariba_app_settings['notify_email_since'], which is the

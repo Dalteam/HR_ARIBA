@@ -34,6 +34,7 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 43 | **HR has no screen to send announcements** | Stage 7 ships the API only (`/announcements`, `/occasions`, `/settings/greetings`); `hr-web` has no page for it (checked 2 Nov 2026: no file mentions announcements), and the client's page runs on their `portPage` framework, which our `hr-web` does not have. Smallest useful page: one route under `(hr)/(portal)/announcements` with a list (title, kind, date, recipient count, delete button) and a send form (kind, title, text, audience all/employer/chosen employees, pinned, expiry), Arabic RTL, calling the existing endpoints. Estimate: about 200 lines and half a day including a type-check and a browser pass; occasions and the greetings switch would be a second, similar page | team lead / hr-web | Open (not built) |
 | 44 | **Confirm with HR that personal-occasion notes should exist at all** | Stage 7 adds `ariba_emp_occasions` (HR-only notes of an employee's wedding, newborn, graduation…, used for greetings) because the client's design has it. These are facts from people's private lives: HR should confirm they want to keep them, who may see them, and how long they are kept; `recovery` (health) is already left out (BUSINESS_RULES D2). Until confirmed, the table can stay empty: nothing in the app reads it and automatic greetings are off | HR / owner | Needs decision |
 | 45 | **Legitimate `<`, `>` and `"` in an announcement are changed** | Migration 003 attaches the database's existing `ariba_sanitize` trigger to the announcement tables (it was already on the bell, employee records, requests and 14 other tables). It stores `<` as `‹`, `>` as `›` and `"` as `″`. So HR writing «الراتب > 5000» or «قال "شكرًا"» shows employees «الراتب › 5000» and «قال ″شكرًا″» on the card and in the bell: readable, and harmless, but not the characters typed. It is the same behaviour every other text field in this database already has. Options: accept it (recommended until somebody complains), or have the app display the look-alikes back as the real characters, since the app never renders HTML | owner / employee-app | Recorded (decide if HR objects) |
+| 48 | **The app's «نسيت كلمة المرور؟» sheet needs three small changes before e-mail recovery is switched on** | Found building Stage 8 (`frontend/employee-app/app/login.tsx`): (a) its own text promises «كلمة مرور مؤقتة على الإيميل» while the server now says to contact HR (and, later, sends a link, not a password); (b) it treats **any** error as a lost connection («تعذر الاتصال بالخادم…», `login.tsx:145`), so the limit's `429` and the empty-field `422` show that sentence instead of the server's message; (c) there is no page for the reset link to open (`/reset-password?token=…`). None of this leaks anything; the backend answer is correct today. Needed before `PASSWORD_RECOVERY_DELIVERY` gets a second value, not before go-live | employee-app | Open |
 | 46 | **What the Stage 6 live checks turned up (push tokens)** | All 11 checks passed (Stage 6 browser check below). Three things to know for when a push sender is built (#37): (a) when a second account registers the same token text, the token **moves** to it silently: the first owner is not told, and the audit row is an ordinary `push_token_register {platform}`, not a "moved" event; (b) the tokens deleted by logout or by disabling an account are not counted in that audit row (`logout` has no details; the disable row says `{"role", "active"}` only), so the audit cannot show that a device was forgotten; (c) logout forgets **every** device of the account, not only the phone that signed out. None of these leaks a token; they are decisions for the sender | backend | Open (with #37) |
 | 19 | The app's **hard-coded default API URL is the old production Railway host** (`src/lib/api.ts`, `.env.example`, `tests/sw.test.mjs`) | Without a local `.env` the app talks to **production**. It must point at the new Railway backend **before any build or release** — as a separate commit, not folded into the port. Consider also making the app refuse to start without an explicit `EXPO_PUBLIC_API_URL` | employee-app | Open (before release) |
 | 22 | The new UI needs backend work the API does not have yet | **Stage 1 done in code:** `POST /me/requests` accepts the `{type, payload, attachment}` envelope as well as the flat body (per-type validation, ownership, upload limits in `services/request_envelope.py`), and approvals now route through `workflow_config.final_by_type`. **Stage 2 done in code:** the direct manager's surface — `GET /me/manager-perms`, `GET /me/team` (enriched), `GET /me/team/requests`, `POST /me/team/{employee_id}/requests` (on behalf), `GET/PUT /me/delegation`, and the HR settings `GET/PUT /settings/manager-perms` + `GET/PUT /settings/team-salary` (`routers/manager.py`, `services/team_scope.py`, `tests_canonical/test_manager_surface.py`). **Stage 3 done in code:** the goal cycle — `GET /me/goals`, `GET/POST /targets`, `DELETE /targets/{id}`, `GET/PUT /evaluations/{employee_id}/{period_type}/{period_key}`, `POST /evaluations/{id}/approve` (`routers/goals.py`, `services/goals.py`, `tests_canonical/test_goals_surface.py`), with the signing stage read from `goals_config.evaluation_approver`. **Stage 4 done in code:** tasks, meetings and the team's availability — `GET /team/availability`, `GET /tasks?box=`, `POST /tasks`, `POST /tasks/{id}/update` (`routers/tasks.py`, `services/tasks.py`, `tests_canonical/test_tasks_surface.py`). Still missing: sign, document content (the viewer), push token, announcements, public brand, password recovery. The `port_*.py` reference routers stay guide-only | backend | In progress |
@@ -78,6 +79,31 @@ When an item closes, change its **Status** and add the date; do not delete the r
 | 13 | The **Supabase password shared earlier must be reset** | It was shared in plain text during the port; rotate it and keep the new one in the password manager only | me | Open |
 | 14 | **Future client pushes need a repeatable sync process** | The reference repo is copied in by hand today (`Downloads\_ref_HR_ARIBA1`, `Downloads\_backups\employee-app_before-ui-port`). Define how a new client drop is compared, ported, verified (parity + `tsc` + `expo export` + `sw.test.mjs`) and recorded — before the next drop, not during it | team lead | Open |
 | 40 | **Unauthenticated routes (`/public/brand`, login, password recovery) have no rate limit; decide before go-live** | What exists today (checked 2 Nov 2026): `POST /auth/login` in `canonical.py` counts **failed** attempts in `ariba_login_attempts` and answers `429` at 25 per username or 40 per IP in 15 minutes; nothing else is limited. `GET /public/brand` (up to four images of 512 KiB each, five database reads per call, no token) has no limit, and `POST /auth/refresh` has none. Password recovery does not exist yet (Stage 8) and must not ship without one. The `config.py` limiter (`login_max_per_username` 5, `login_max_per_ip` 20, 300 s) is only used by `routers/auth.py`, which `main.py` does not mount, so those settings do nothing today. Behind Railway's proxy the IP comes from `X-Forwarded-For` (`--forwarded-allow-ips=*`), so a per-IP count is only as good as that header. Decide: limits per route, where they are counted (database vs memory, one instance), and whether Railway's edge does any of it | backend / team lead | Needs decision |
+| 47 | **What the git history holds (scan of all 17 commits on all branches, 2 Nov 2026)** | Scanned every file of every commit for secret patterns, data files and personal data, and cross-checked every 8+ digit number, phone, IBAN, e-mail and full name against the real employees in `ariba_src` (values never printed; scripts `history_scan.py` / `history_triage.py` in the session scratchpad, not committed). **Clean:** no `.env` file was ever committed, no database dump, CSV, spreadsheet, export or key file, no blob over 1 MB, no private key, AWS key or JWT, no Supabase *secret* key, no real Postgres, JWT or SMTP value (the hits in `DEPLOY_RAILWAY.md`, `LOCAL_TESTING.md`, `tests/conftest.py` and `.env.example` are placeholders or empty), and **no real ID number, phone, IBAN or e-mail address**. **Found:** (a) **real employee full names** in 5 files from the client's first commit `31cb909` (on every branch, including `origin/main`): `docs/ARIBA_HR_System_Documentation.md`, `frontend/legacy/hr-portal/index.html`, `…/core-ui/104-ariba-v117-english-hr.js`, `…/employees-data/041-v43-force-terminate-wassim.js`, `…/payroll/107-ariba-v119-payroll.js`; (b) the old Supabase project's host and **publishable** key in 58 legacy files (public by design in browser code, but it names the old project: retire it, #13); (c) the two documented local demo passwords in `docs/LOCAL_TESTING.md`, `tools/smoke/smoke_setup.py` and `tools/smoke/manager_demo_seed.py` (local throwaway use only; GO_LIVE.md checks that no `smoke_`/`demo_` account reaches Railway); (d) `ariba_normalization.sql.bak` (lookup inserts, no personal data), `canonical.py.bak` (code) and `tools/legacy-parity/sql/schema.sql` (schema, no data). Decide before pushing to a new repo: publish the history as it is (the client's repo already has it), or push without the legacy folder's history | owner / client | Needs decision (before go-live) |
+
+## Deferred decisions (recorded 2 Nov 2026; the owner raises them, the safe default applies meanwhile)
+
+Every row is **needed before go-live** (`docs/GO_LIVE.md` §0). Not asked again until the owner raises it.
+
+| Decision | Current default (in force) | Who answers | Row |
+|---|---|---|---|
+| Who gives final approval for the five new request types | HR (`workflow_config.final_by_type`) | HR / owner | #23 |
+| Whether managers may see team salary | hidden (`manager_team_salary` off) | HR / owner | #24 |
+| Who approves an evaluation, and whether HR may see or write them | HR (`goals_config.evaluation_approver`) | HR / CEO | #30 |
+| Whether HR wants a final step on letters, and a screen for it | off (`doc_sign_cfg.hr_closes`) | HR | #31, #34 |
+| Whether the older `GET /documents/{id}/file` should be narrowed | unchanged | backend / owner | #32 |
+| Whether managers may open sick-leave and maternity attachments | allowed for direct reports, audited | HR / legal | #33 |
+| Rate limits on unauthenticated routes | login only; Stage 8 adds recovery limits | backend / team lead | #40 |
+| An HR screen for announcements | none: API only, **delayed on purpose**, raised again at go-live | team lead | #43 |
+| Whether personal-occasion notes should exist at all | the table exists and stays empty; automatic greetings off | HR | #44 |
+| `<`, `>` and `"` shown as look-alikes in announcements | accepted | owner | #45 |
+| How employees get the app (store build or home-screen web app) | home-screen web app | owner / client | #12 |
+| Which GitHub repository and branch Railway deploys from | none: nothing is pushed until the owner approves | owner / client | — |
+| Whether the git history is published as it is | not published | owner / client | #47 |
+| How HR confirms identity before issuing a temporary password | in person or a call back to the number on file | HR | BUSINESS_RULES § Password recovery |
+| Where the password-reset page lives, and the app's wording | none: delivery `off`, HR issues temporary passwords | owner | BUSINESS_RULES § Password recovery |
+| Hosting staging and production on Railway, and the plan | nothing leaves this computer | owner / IT | GO_LIVE §12 |
+| The line-ending policy | each file keeps its own endings | team lead | — |
 
 ## 5. Adopted rules
 
@@ -354,7 +380,8 @@ cleanup, which also removes the `push_config` row it wrote, so a fresh copy stay
 138,232 characters whose top-level fields are only `names`, `brand`, `logo` and `appLogo`, and `304` on the
 repeat request with `If-None-Match`.
 
-**Login-screen visual check:** still to do.
+**Login-screen visual check: PASSED** (owner, reported 2 Nov 2026: the signed-out login screen shows the
+company's colours, logo and name). **Stage 6 is fully checked.**
 
 **Push-token live checks: PASSED, 11/11** (Claude Code, on the throwaway `ariba_s7_demo` with the backend
 on port 8030, never on `ariba_src`, `ariba_local` or `ariba_manager_demo`). Script:
@@ -406,4 +433,24 @@ answer the same defanged text.
 **Before any backend with this code starts on an existing local database, 003 must be applied to it**
 (`models.py` refuses to start when a listed table is missing): `ariba_src`, `ariba_local` and
 `ariba_manager_demo` do not have it yet. Applying it is a write the owner has to approve.
+**Done 2 Nov 2026 with the owner's OK:** 003 applied to `ariba_manager_demo`, `ariba_local` and `ariba_src`
+(each 59/61/108 → 62/65/115, verify_003 43/43; `railway_validate` on `ariba_src` 13/13 OK), after full
+backups to `C:\Users\GhadyNafisah\Downloads\_backups\before-003_2026-11-02\` (outside the repo).
+
+
+## Stage 8 checks, fresh copies (3 Nov 2026)
+
+Password recovery: `POST /auth/password-recovery` (the app's), the two older routes rebuilt on the same
+service with their addresses and answer shapes kept, `services/password_recovery.py` (one delivery,
+`off`), and `PASSWORD_RECOVERY_DELIVERY` in `config.py`. No migration (`ariba_password_resets` and
+`ariba_login_attempts` already exist). Rules: BUSINESS_RULES.md § Password recovery (R1–R8, P1–P11).
+
+| Check | Command | Result |
+|---|---|---|
+| Unit tests | `python -m pytest -q` (cwd `backend`, no database variable) | **391 passed, 27 skipped** (Stage 7: 384 / 20; +7 tests, +7 skips that need a database) |
+| Unit tests against a database | `CANONICAL_TEST_DATABASE_URL=…/ariba_s8_mig pytest -q` (a fresh copy of `ariba_src`, which has 003) | **403 passed, 15 skipped** (Stage 7: 389 / 15); the copy afterwards still had 0 attempts, 0 reset tokens and the same audit count as `ariba_src` |
+| Migration checks and shape | `verify_001/002/003.sql`, `railway_validate.py` on that copy | 33/33, 27/27, 43/43; **13/13 OK** |
+| HTTP surface | `api_smoke.py --base …:8029` on `ariba_s8_new` | **PASS=361 RULE=5 STUB=1 (367 checks)**, `RESULT: OK`, exit 0 (Stage 7: 349/5/1); the real and the unknown account got identical answers in 427 and 406 ms; afterwards 0 recovery counters and 0 reset tokens left |
+| The same checks as last stage | the `api_smoke.py` at `HEAD` (Stage 7) on its own fresh copy `ariba_s8_head`, same server code | **349/5/1 (355)**, the Stage 7 baseline exactly; line by line all 355 rows keep their verdict, the 12 new rows are all `PASS` |
+| Browser walkthrough | owner, on `ariba_s8_demo` (backend 8030, employee web 8082, hr-web 3001) | pending |
 

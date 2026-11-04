@@ -912,6 +912,149 @@ unless HR turns on `/settings/announcements` `{email: true}` (`ariba_app_setting
   **never** e-mailed (A12).
 - **D6:** may the CEO read the HR list? **No** (default kept).
 
+## Password recovery — ✅ Stage 8, rules approved by the owner 3 Nov 2026 (`services/password_recovery.py`, `routers/canonical.py`)
+
+**What the app calls.** «نسيت كلمة المرور؟» on the login screen (`frontend/employee-app/app/login.tsx:113`)
+opens a sheet that sends `POST /auth/password-recovery` with `{username}` or `{iqama}` (`login.tsx:141`)
+and shows the answer's `message`, plus `sent_to` when the server returns one (`login.tsx:142`). The app
+has **no** screen to type a reset code or a new password.
+
+**What the client's reference does, and what we do not copy** (`_ref_HR_ARIBA1`, `port_settings.py`
+`password_recovery`): it e-mails a **plain-text temporary password** valid for 24 hours, accepted at login,
+and answers `sent_to` with a half-masked e-mail **only when the account exists and has an e-mail**. The
+first puts a working password in a mailbox; the second tells a stranger which usernames and iqama numbers
+are real and part of their e-mail. Neither is copied.
+
+**What exists in our API today** (`routers/canonical.py`): `POST /auth/password-reset` (writes a 15-minute
+token, hashed, only when the account exists, so the work differs) and
+`POST /auth/password-reset/complete` (no rate limit, no audit, push tokens survive). Their URLs and answer
+shapes stay; their insides move to the rules below.
+
+| Method | Path | Answer | Who |
+|---|---|---|---|
+| POST | `/auth/password-recovery` (new, the app's) | always `200 {ok: true, message}` for a well-formed body; `422` only when both fields are empty; `429` when rate-limited | anybody, no token |
+| POST | `/auth/password-reset` (existing) | always `200 {ok: true}`; the same service with `{username}` | anybody, no token |
+| POST | `/auth/password-reset/complete` (existing) | `200 {ok: true}`, or `400 invalid_reset` for every kind of failure, `422 weak_password`, `429` | anybody holding a valid token |
+| POST | `/auth/users/{id}/temporary-password` (existing, unchanged) | the interim path (R8) | HR |
+
+**R1: the same answer whether or not the account exists.** For a well-formed request the status, the body
+and the steps are identical: one lookup, one rate-limit row and one audit row (no password hash is
+computed on either path while delivery is off). Every answer, a `422` or `429` included, is held to a
+**fixed minimum time** of 0.4 s (`MIN_SECONDS`) so a fast "no such user" cannot be told apart from a slow
+"found". When a sender exists, the e-mail goes out after the answer (a background task), so its delay
+cannot show either. It never carries `sent_to`, an
+e-mail (masked or not), a username or a name. A disabled account, an account whose employee is no longer
+current, and an account with no e-mail on file are all treated exactly like an unknown one.
+
+**R2: one switch, one delivery interface, off.** The environment variable `PASSWORD_RECOVERY_DELIVERY`
+(`off` by default; later `email`) selects a delivery class behind one interface,
+`deliver(to_address, username, reset_link) -> bool`, in `services/password_recovery.py`. SMTP or an HTTPS
+e-mail API (for example a provider's REST endpoint) plugs in as another class later, with no change to
+the routes. **While it is `off`: no token is created, nothing is sent, nothing is queued**, and only the
+rate-limit row and the audit row are written. An environment variable rather than a database setting, so
+nobody can switch delivery on from inside the app.
+
+**R3: the token (only when delivery is on).** 32 random bytes (`secrets.token_urlsafe(32)`), stored only as
+its SHA-256 in `ariba_password_resets.token_hash` (the table already exists; no migration). It is valid
+for **15 minutes**, works **once**, and a new request voids every older unused token of that account. It
+goes **only** to the e-mail on the employee's record, as a link to a reset page, and never appears in a
+response, a log line or an audit row. The reset page does not exist yet (FOLLOW_UPS); until it does,
+switching delivery on is pointless.
+
+**R4: finishing a reset.** `{username, reset_token, new_password}`. The new password needs at least 10
+characters with letters and digits (the existing rule, `422 weak_password`). Unknown username, disabled
+account, expired token, used token, a token of another account and a guessed token all get the **same**
+`400 invalid_reset "Invalid or expired password reset"`. On success, in one transaction:
+- the new password hash is stored and `must_change` is cleared;
+- the token is marked used and **every other unused token** of the account is voided;
+- **every session** of the account is deleted and **every push token** is forgotten (`push.forget_account`,
+  as logout and HR's temporary password already do);
+- the answer is `{ok: true}` with no session: the user signs in again with the new password.
+
+**R5: rate limits** (counted in the existing `ariba_login_attempts`, with the key stored as a hash so no typed
+username or iqama number is kept in clear):
+- a request: **3 per username or iqama per hour** and **10 per IP address per hour**;
+- finishing: **5 failures per username** and **20 per IP address per 15 minutes**;
+- over a limit: `429 rate_limited` with the same generic message, whether or not the account exists, so
+  the limit itself reveals nothing. The per-IP counts share the table with the login counter, so one
+  address that hammers both is slowed on both. Behind Railway's proxy the address comes from
+  `X-Forwarded-For` (FOLLOW_UPS #40).
+
+**R6: audit without secrets.**
+- `password_recovery_request`: `{by: "username" | "iqama", matched: true | false, delivered: true | false}`,
+  with the account id as the entity only when it matched. **Never** the typed value, the token, the e-mail
+  or the new password.
+- `password_recovery_complete` on success (account id, no details) and `password_recovery_failed` on a
+  refusal (no details at all).
+
+**R7: who can be found.** A username matches case-insensitively; an iqama number matches after keeping its
+digits only, against the employee's `iqama_no` (or the `iqamaNo` in the record). Only an **active**
+account whose employee is **current** (active and not terminated) counts as found.
+
+**R8: until e-mail exists, HR is the way back in.** With delivery `off`, every request gets the same
+message, which the app shows as it is:
+
+> «لا يمكن إرسال رسائل الاسترجاع حاليًا. تواصل مع الموارد البشرية لتصدر لك كلمة مرور مؤقتة.»
+
+The employee contacts HR. HR checks who they are (in person, or a call back to the number on file; the
+exact check is HR's decision), then uses the existing **«كلمة مرور مؤقتة»** button on the employee's page in
+`hr-web` (`POST /auth/users/{id}/temporary-password`). That already deletes the account's sessions and
+push tokens and is audited, and the app sends the employee straight to the change-password screen at the
+first sign-in (`app/_layout.tsx:33`). Once delivery is on, the message becomes «إذا كانت البيانات صحيحة
+ولها بريد مسجّل، ستصلك رسالة خلال دقائق.», again the same for everybody. The sheet's own text still
+promises «كلمة مرور مؤقتة على الإيميل»; changing that wording is an app change, recorded in FOLLOW_UPS.
+
+### Where each promise is kept (checked 3 Nov 2026)
+
+- **The forced password change:** `frontend/employee-app/app/_layout.tsx:33` sends a signed-in account
+  with `must_change_password` to `/change-password` from every screen
+  (`frontend/employee-app/app/change-password.tsx`).
+- **HR's temporary password:** `backend/app/routers/canonical.py`, `temporary_password()`. It is 10
+  characters drawn with `secrets.choice` from 31 unambiguous letters and digits, stored only as its Argon2
+  hash with `must_change=true`, and returned **once** in the answer. hr-web shows it once in a dialog
+  (`frontend/hr-web/src/components/hr/employee-form.tsx`, `newPassword()` → `PasswordReveal`; the same
+  in `settings/page.tsx`). The audit row is `reset_password` with **no details**; nothing prints or logs
+  it, and the answer carries `Cache-Control: no-store` (`core/security.py`).
+- **Where the counters live, and a restart:** in the database table `ariba_login_attempts` (columns `uname`,
+  `ip`, `at`), not in memory, so **a restart keeps them** and two backend instances share them. A row's
+  `uname` is `recovery:` or `recovery-fail:` plus an HMAC-SHA256 of the typed value under the server's
+  `JWT_SECRET`; the value itself is never stored, logged or audited, and the HMAC cannot be reversed
+  without that secret (a plain hash of a 10-digit iqama number could be). Unknown accounts and iqama
+  numbers are counted exactly like real ones, and the `429` has the same shape for both. Rows older than a
+  day are deleted on each request. The login counter reads the same table, so recovery requests from one
+  address also count towards that address's login limit (40 in 15 minutes); recovery itself allows 10 an
+  hour, so it cannot use that limit up.
+- **The two older routes** (both in `routers/canonical.py`; **no caller** in hr-web, the employee app, the
+  smoke test or any test, checked 3 Nov 2026):
+
+  | Path | Before | After (additive; address and answer shape unchanged) |
+  |---|---|---|
+  | `POST /auth/password-reset` | wrote a 15-minute token **only for a real account** (different work, so different timing), no limit, no audit, `{ok: true}` | the same service as the app's route, by username: no token while delivery is off, the minimum time, R5 limits (a new `429`), the R6 audit row; still `{ok: true}` |
+  | `POST /auth/password-reset/complete` | `{username, reset_token, new_password}`, `400 invalid_reset` / `422 weak_password`, deleted sessions only | the same body and answers, plus: only a current employee's active account, every other token voided, **push tokens forgotten**, R5 limits (a new `429`), audit `password_recovery_complete` / `password_recovery_failed` |
+
+### The refusals the negative tests pin
+
+| # | Who → what | Expected |
+|---|---|---|
+| P1 | an unknown username, an unknown iqama, a disabled account, a former employee, a real account | **byte-identical** `200` bodies, nothing created, one audit row each, no `sent_to` |
+| P2 | any request while delivery is `off` | no row in `ariba_password_resets`, delivery never called |
+| P3 | a request with delivery on (a fake delivery in the test) | one row whose `token_hash` is the SHA-256 of what was delivered; the raw token is in no response, log or audit row |
+| P4 | an expired token | `400 invalid_reset`, password unchanged |
+| P5 | a token used once, then again | the second is `400 invalid_reset` |
+| P6 | a guessed token, or a real token with another username | `400 invalid_reset` |
+| P7 | a valid token for an account disabled after the request | `400 invalid_reset` |
+| P8 | a successful reset | password changed, all sessions and push tokens gone, other tokens voided, audit row without secrets |
+| P9 | a weak new password | `422 weak_password`, token still unused |
+| P10 | the 4th request for one username in an hour, the 11th from one IP, the 6th failed finish | `429`, the same for a real and an unknown account |
+| P11 | timing | a found and a not-found request both take at least the fixed floor |
+
+### Decisions (deferred, defaults in force; FOLLOW_UPS)
+- How HR confirms identity before issuing a temporary password: HR's process (default: in person or a
+  call back to the number on file).
+- Where the reset page lives (employee web app or hr-web) and the app's wording: needed before delivery is
+  switched on.
+- Token lifetime: 15 minutes by default.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

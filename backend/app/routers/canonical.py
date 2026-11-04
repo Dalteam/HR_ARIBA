@@ -20,7 +20,7 @@ import jwt
 import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -33,6 +33,7 @@ from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
 from app.services import html_safety
+from app.services import password_recovery as recovery
 from app.services import push as push_tokens
 from app.services import team_scope
 from app.services.request_envelope import Attachment, RequestInput
@@ -3252,39 +3253,46 @@ def account_by_employee(employee_id: str, actor: dict[str, Any] = Depends(curren
     return _account_user(db, account)
 
 
-@router.post("/auth/password-reset")
-def request_password_reset(body: dict[str, Any], db: Session = Depends(get_db)):
-    username = str(body.get("username") or "").strip().lower()
-    account = _row(db, "SELECT id FROM public.ariba_auth_accounts WHERE lower(username)=:username AND active", username=username)
-    if account:
-        raw = secrets.token_urlsafe(32)
-        digest = __import__("hashlib").sha256(raw.encode()).hexdigest()
-        db.execute(text("UPDATE public.ariba_password_resets SET used_at=coalesce(used_at,now()) WHERE account_id=:id AND used_at IS NULL"), {"id": account["id"]})
-        db.execute(text("INSERT INTO public.ariba_password_resets(account_id,token_hash,expires_at) VALUES(:id,:hash,now()+interval '15 minutes')"),
-                   {"id": account["id"], "hash": digest})
+def _recovery_request(body: dict[str, Any], request: Request, background: BackgroundTasks, db: Session) -> None:
+    """The shared body of the two request routes (Stage 8, R1–R6): same steps, same audit row, same minimum time."""
+    started = recovery.clock()
+    ip = request.client.host if request.client else None
+    try:
+        outcome = recovery.request(db, body, ip)
+        _write_audit(db, None, request, "auth", "password_recovery_request", "account", outcome.account_id,
+                     details={"by": "username" if str(body.get("username") or "").strip() else "iqama",
+                              "matched": outcome.matched, "delivered": outcome.delivered})
         db.commit()
-        # This API has no delivery provider configured; return only the generic response.
+        if outcome.send:
+            background.add_task(recovery.delivery().deliver, *outcome.send)
+    finally:
+        recovery.hold(started)
+
+
+@router.post("/auth/password-recovery")
+def password_recovery(body: dict[str, Any], request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """`{ok, message}` — the login screen's «نسيت كلمة المرور؟». The same answer for every account (R1)."""
+    _recovery_request(body, request, background, db)
+    return {"ok": True, "message": recovery.message()}
+
+
+@router.post("/auth/password-reset")
+def request_password_reset(body: dict[str, Any], request: Request, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """`{ok}` — the older route, kept with its shape; by username only, through the same service (R1–R6)."""
+    _recovery_request({"username": body.get("username")}, request, background, db)
     return {"ok": True}
 
 
 @router.post("/auth/password-reset/complete")
-def complete_password_reset(body: dict[str, Any], db: Session = Depends(get_db)):
-    username = str(body.get("username") or "").strip().lower()
-    token = str(body.get("reset_token") or "")
-    password = str(body.get("new_password") or "")
-    if len(password) < 10 or not any(char.isalpha() for char in password) or not any(char.isdigit() for char in password):
-        raise ApiError(422, "weak_password", "Password must have at least 10 characters, letters, and digits")
-    digest = __import__("hashlib").sha256(token.encode()).hexdigest()
-    account = _row(db, """SELECT a.* FROM public.ariba_auth_accounts a JOIN public.ariba_password_resets r ON r.account_id=a.id
-        WHERE lower(a.username)=:username AND a.active AND r.token_hash=:hash AND r.used_at IS NULL AND r.expires_at>now()
-        ORDER BY r.created_at DESC LIMIT 1 FOR UPDATE""", username=username, hash=digest)
-    if not account:
-        raise ApiError(400, "invalid_reset", "Invalid or expired password reset")
-    db.execute(text("UPDATE public.ariba_auth_accounts SET password_hash=:hash,must_change=false,updated_at=now() WHERE id=:id"),
-               {"hash": _hasher.hash(password), "id": account["id"]})
-    db.execute(text("UPDATE public.ariba_password_resets SET used_at=now() WHERE account_id=:id AND token_hash=:hash"),
-               {"id": account["id"], "hash": digest})
-    db.execute(text("DELETE FROM public.ariba_sessions WHERE account_id=:id"), {"id": account["id"]})
+def complete_password_reset(body: dict[str, Any], request: Request, db: Session = Depends(get_db)):
+    """`{ok}` — R4: one `400 invalid_reset` for every failure; success ends every session and push token."""
+    ip = request.client.host if request.client else None
+    account_id = recovery.complete(db, body, ip, _hasher.hash)
+    if account_id is None:
+        _write_audit(db, None, request, "auth", "password_recovery_failed")
+        db.commit()
+        raise ApiError(400, "invalid_reset", recovery.INVALID_RESET)
+    _write_audit(db, None, request, "auth", "password_recovery_complete", "account", account_id)
     db.commit()
     return {"ok": True}
 

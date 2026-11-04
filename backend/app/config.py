@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     # setting). Settings → app links writes that row; this is only the fallback.
     public_app_url: str = "http://localhost:3000"
 
+    # Password recovery (Stage 8): how a reset link reaches the employee. `off` is the only delivery that
+    # exists today: no token is created and nothing is sent, and HR issues a temporary password instead.
+    # A sender (SMTP or an HTTPS e-mail API) is added as a new value here plus a class in
+    # services/password_recovery.py. An environment variable, so nobody can switch it on from the app.
+    password_recovery_delivery: Literal["off"] = "off"
+
     # First deploy only: create this admin if there are no users yet (must change the password at
     # first sign-in). Remove both variables after the first successful login.
     bootstrap_admin_username: str = ""

@@ -213,6 +213,10 @@ def _cleanup(database: str, employee_id: str, account_id: str, host: str, port: 
         ("DELETE FROM public.ariba_emp_occasions WHERE strpos(coalesce(note, ''), 'smoke-ann-') > 0", ()),
         ("DELETE FROM public.ariba_app_settings WHERE key IN ('announcements_mail', 'occasions_auto')", ()),
     ]
+    # Stage 8: the recovery counters it wrote (keys start with `recovery`, never the typed name).
+    statements += [
+        ("DELETE FROM public.ariba_login_attempts WHERE strpos(uname, 'recovery') = 1", ()),
+    ]
     problems = []
     dsn = url or f"host={host} port={port} user={user} dbname={database}"
     try:
@@ -827,6 +831,30 @@ def main() -> int:
         call((404,), "PATCH", f"/announcements/{ann_id}", "hr_approver", {"title": "x"}, allow={404})
     if greet_id:
         call((200,), "DELETE", f"/announcements/{greet_id}", "hr_approver")
+
+    # ------------------------------------------------------------------ password recovery (Stage 8, delivery off)
+    # The same answer for a real and an unknown account, nothing revealed, at least the minimum time, and the
+    # limit on the 4th request for one name. Five counted requests from this address, under its limit of 10.
+    unknown_name = "smoke-recovery-" + uuid.uuid4().hex[:6]
+    _, ans_unknown = call((200,), "POST", "/auth/password-recovery", body={"username": unknown_name})
+    ms_unknown = RESULTS[-1]["ms"]
+    _, ans_real = call((200,), "POST", "/auth/password-recovery", body={"username": accounts["requester"]["username"]})
+    ms_real = RESULTS[-1]["ms"]
+    grade(ans_unknown == ans_real and isinstance(ans_real, dict) and set(ans_real) == {"ok", "message"},
+          "POST", "/auth/password-recovery (R1: identical for a real and an unknown account)",
+          f"{ans_unknown!r} vs {ans_real!r}")
+    grade(min(ms_unknown, ms_real) >= 380, "POST", "/auth/password-recovery (R1: both held to the floor)",
+          f"{ms_unknown} ms and {ms_real} ms")
+    call((422,), "POST", "/auth/password-recovery", body={})
+    _, ans_old = call((200,), "POST", "/auth/password-reset", body={"username": accounts["plain_employee"]["username"]})
+    grade(ans_old == {"ok": True}, "POST", "/auth/password-reset (older route keeps its shape)", f"{ans_old!r}")
+    for _ in range(2):
+        call((200,), "POST", "/auth/password-recovery", body={"username": unknown_name})
+    call((429,), "POST", "/auth/password-recovery", body={"username": unknown_name}, allow={429})
+    call((400,), "POST", "/auth/password-reset/complete",
+         body={"username": accounts["requester"]["username"], "reset_token": "smoke-guess", "new_password": "Smoke-Pass-1234"})
+    call((422,), "POST", "/auth/password-reset/complete",
+         body={"username": accounts["requester"]["username"], "reset_token": "smoke-guess", "new_password": "short"})
 
     # ------------------------------------------------------------------ public holidays
     _, holiday = call((201,), "POST", "/holidays", "hr_approver",

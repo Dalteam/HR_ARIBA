@@ -297,8 +297,11 @@ def evaluation_access(db: Session, actor: dict[str, Any], employee_id: str) -> s
 
 
 def can_write_evaluation(db: Session, actor: dict[str, Any], employee_id: str) -> bool:
-    """Only the evaluator writes `items`/`comments` - HR and the approver never do (P7)."""
-    return evaluation_access(db, actor, employee_id) == "manager"
+    """The evaluator writes `items`/`comments`, and since Stage 15 HR does too (owner, 4 Nov 2026, replacing P7's
+    "HR never writes"); the approver who is not HR still never does, and nobody writes their own."""
+    if not actor.get("employee_id") or actor.get("employee_id") == employee_id:
+        return False
+    return evaluation_access(db, actor, employee_id) == "manager" or is_hr(actor)
 
 
 # ---------------------------------------------------------------- the approver (data, not code)

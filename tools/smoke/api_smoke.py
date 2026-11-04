@@ -378,8 +378,14 @@ def main() -> int:
     call((403,), "POST", "/targets", "requester",
          {"target": {"employee_id": emp_id, "period_type": "annual",
                      "period_key": str(today.year), "title": "هدف من موظف"}}, allow={403})
-    call((403,), "PUT", f"/evaluations/{emp_id}/annual/{today.year}", "hr_approver",
-         {"items": [{"title": "بند", "score": 50, "weight": 1}], "submit": True}, allow={403})
+    # Stage 15 (owner, 4 Nov 2026): HR writes evaluations and HR's submission is final at once - so the second
+    # write to the same period is the locked 409, and the employee still never writes their own
+    call((200,), "PUT", f"/evaluations/{emp_id}/annual/{today.year}", "hr_approver",
+         {"items": [{"title": "بند", "score": 50, "weight": 1}], "submit": True})
+    call((409,), "PUT", f"/evaluations/{emp_id}/annual/{today.year}", "hr_approver",
+         {"items": [{"title": "بند", "score": 60, "weight": 1}], "submit": False}, allow={409})
+    call((403,), "PUT", f"/evaluations/{emp_id}/annual/{today.year}", "requester",
+         {"items": [{"title": "بند", "score": 100, "weight": 1}], "submit": True}, allow={403})
     call((200,), "GET", f"/targets?employee_id={emp_id}&year={today.year}", "hr_approver")
     if goal_target_id:
         call((200,), "DELETE", f"/targets/{goal_target_id}", "hr_approver")

@@ -138,14 +138,17 @@ def read_evaluation(employee_id: str, period_type: str, period_key: str, request
     if access is None:
         raise ApiError(403, "forbidden", goals.FORBIDDEN)
     row = goals.get_evaluation(db, employee_id, period_type, period_key)
-    if access != "manager" and (row is None or row["status"] == "draft"
-                                or (access == "hr" and row["status"] != "approved")):
+    # Stage 15: HR writes evaluations, so it reads every status of the period it is about to write (H2)
+    hr_writer = goals.is_hr(actor)
+    if access != "manager" and not hr_writer and (row is None or row["status"] == "draft"
+                                                  or (access == "hr" and row["status"] != "approved")):
         raise ApiError(404, "not_found", "Evaluation not found")
     targets = [goals.target_out(target) for target in
                goals.period_targets(db, employee_id, period_type, period_key)] \
         if goals.can_read_targets(db, actor, employee_id) else []
     answer = {"evaluation": goals.evaluation_out(row) if row else None, "targets": targets,
-              "can_approve": bool(row and goals.may_approve(db, actor, row))}
+              "can_approve": bool(row and goals.may_approve(db, actor, row)),
+              "can_write": goals.can_write_evaluation(db, actor, employee_id)}
     if row is not None and access in ("approver", "hr"):
         # A read is recorded too, not only a write: this is somebody opening an evaluation they did
         # not write, and a signature is worth nothing without knowing who looked at it first. The
@@ -181,6 +184,22 @@ def save_evaluation(employee_id: str, period_type: str, period_key: str, body: d
     row = goals.save_evaluation(db, actor.get("employee_id"), employee_id, period_type, period_key,
                                 items, comments, submit)
     label = period_label(period_type, period_key)
+    by_hr = goals.is_hr(actor) and goals.evaluation_access(db, actor, employee_id) != "manager"
+    if submit and by_hr:
+        # Stage 15 (owner, 4 Nov 2026): HR's evaluation needs no approval after HR - it is final at once and
+        # reaches the employee exactly as a signed one does (H1)
+        approved = goals.approve_evaluation(db, actor.get("employee_id"), row)
+        if approved is None:
+            raise ApiError(409, "locked", "اعتُمد هذا التقييم نهائياً ولا يمكن تعديله")
+        row = approved
+        overall = approved.get("overall")
+        result = f"{float(overall):g}% - {approved.get('rating')}" if overall is not None else "-"
+        canonical._insert_notification(db, employee_id, None, "اعتُمد تقييمك", f"{label}: {result}", "employee", "goals")
+        canonical._write_audit(db, actor, request, "goals", "evaluation_hr_final", "employee", employee_id,
+                               details={"period_type": period_type, "period_key": period_key,
+                                        "evaluation_id": str(row["id"]), "items": len(items)})
+        db.commit()
+        return {"evaluation": goals.evaluation_out(row)}
     if submit:
         # The employee is deliberately left out: a bell entry here would say that a pending evaluation
         # exists, which is exactly what P1 keeps off /me/goals. The row reaches the employee when it is

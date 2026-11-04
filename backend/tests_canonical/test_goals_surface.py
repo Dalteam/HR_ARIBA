@@ -279,12 +279,13 @@ def test_own_goals_are_read_only_even_for_a_manager(monkeypatch):
     assert goals.evaluation_access(db, dict(MGR), "mgr") is None
 
 
-def test_hr_may_administrate_targets_but_never_write_an_evaluation(monkeypatch):
+def test_hr_administrates_targets_and_since_stage_15_writes_evaluations(monkeypatch):
     world(monkeypatch)
     db = ScriptedDB()
     assert goals.can_read_targets(db, dict(HR), "emp1") is True
     assert goals.can_write_targets(db, dict(HR), "emp1") is True
-    assert goals.can_write_evaluation(db, dict(HR), "emp1") is False      # P7
+    assert goals.can_write_evaluation(db, dict(HR), "emp1") is True       # H1 (owner, 4 Nov 2026), replacing P7
+    assert goals.can_write_evaluation(db, dict(HR), "hr") is False        # but never their own
     assert goals.evaluation_access(db, dict(HR), "emp1") == "approver"    # the stage is HR here
 
 
@@ -454,13 +455,22 @@ def test_t15_hr_cannot_sign_when_the_stage_is_the_ceo(monkeypatch):
 
 
 def test_t16_an_approver_never_sees_a_draft(monkeypatch):
-    world(monkeypatch, stage="hr", people=("hr", "admin1"))
+    world(monkeypatch, stage="ceo", people=("ceo",))
     db = ScriptedDB({SQL_EVALUATION: evaluation_row(status="draft",
                                                                             submitted_at=None)})
     with pytest.raises(ApiError) as exc:
         goals_api.read_evaluation(request=None, employee_id="emp1", period_type="annual", period_key="2026",
-                                  actor={"employee_id": "admin1", "role": "admin"}, db=db)
+                                  actor=dict(CEO), db=db)
     refused(exc, 404, "not_found")
+
+
+def test_h2_hr_reads_the_draft_of_the_period_it_may_write(monkeypatch):
+    """Stage 15: HR writes evaluations, so it sees the period's draft or pending row before writing over it."""
+    world(monkeypatch, stage="hr", people=("hr", "admin1"))
+    db = ScriptedDB({SQL_EVALUATION: evaluation_row(status="draft", submitted_at=None)})
+    answer = goals_api.read_evaluation(request=None, employee_id="emp1", period_type="annual", period_key="2026",
+                                       actor={"employee_id": "admin1", "role": "admin"}, db=db)
+    assert answer["evaluation"]["status"] == "draft" and answer["can_write"] is True
 
 
 def test_t17_a_stage_that_resolves_to_nobody_refuses_instead_of_guessing(monkeypatch):
@@ -523,7 +533,7 @@ def test_the_evaluator_reads_their_draft_with_the_targets_the_form_scores(monkey
                      SQL_EVALUATION: evaluation_row()})
     answer = goals_api.read_evaluation(request=None, employee_id="emp1", period_type="annual", period_key="2026",
                                        actor=dict(MGR), db=db)
-    assert set(answer) == {"evaluation", "targets", "can_approve"}
+    assert set(answer) == {"evaluation", "targets", "can_approve", "can_write"}
     assert answer["targets"][0]["id"] == str(TARGET_ID)      # the form seeds its items from these
     assert answer["evaluation"]["id"] == str(EVAL_ID)
     assert answer["can_approve"] is False                    # the evaluator is not the approver

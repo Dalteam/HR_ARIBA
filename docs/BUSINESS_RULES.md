@@ -1165,6 +1165,21 @@ Owner (4 Nov 2026, decision 6): match the reference. Each action sits behind its
   `feature_disabled`. `GET /me/leave-policy` tells the screens which buttons to show (the API checks each action).
 - **M6** The request type `leave_cancel` is added by migration 006; without it only M3 answers 503.
 
+## HR writes evaluations — Stage 15, owner's decision 4 Nov 2026 (`services/goals.py`, `routers/goals.py`)
+
+Owner (3 Nov 2026, decision b, confirmed 4 Nov): **HR may write evaluations, and nobody approves them after HR.**
+This replaces P7 of § Goals ("HR never writes evaluations") for the HR set (hr, admin, admin_manager, chairman).
+
+- **H1** HR may write any employee's evaluation of any period, **never its own**. A draft is a draft; HR's submission
+  is **approved at once** (`approved_by` = HR) and reaches the employee as a signed one does («اعتُمد تقييمك»). An
+  approved evaluation stays final for everyone, HR included (409 `locked`).
+- **H2** So HR reads every status of a period (draft, pending, approved) before writing over it; the read is audited
+  as before, with ids and the period only. An approver who is not HR (the CEO when configured) still never sees a draft
+  (T16), and the employee still sees their approved evaluations only (P1).
+- **H3** The direct manager's path is unchanged: they write, submit, and the configured approver signs. If HR writes
+  the same period, HR's version replaces the manager's unsigned one.
+- **H4** `GET /evaluations/...` answers `can_write` so the screen shows HR's form only to those who may use it.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

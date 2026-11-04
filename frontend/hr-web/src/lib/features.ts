@@ -87,7 +87,7 @@ export const FEATURES = {
   /** mail account settings (saved without the password, sending stays off) */
   mailSettings: backend("مرحلة إعدادات البريد (حفظ فقط)", "the mail-settings stage (save only)"),
   /** the daily expiry-alerts run */
-  expiryAlerts: backend("مرحلة تنبيهات الانتهاء", "the expiry-alerts stage"),
+  expiryAlerts: { status: "ready" } as Feature,
   /** the editable role × page permission matrix */
   /** Stage 11: `backend/app/routers/permissions.py` + components/hr/perms-card.tsx and lib/permissions.ts */
   rolesMatrix: { status: "ready" } as Feature,

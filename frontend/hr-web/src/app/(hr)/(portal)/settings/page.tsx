@@ -11,6 +11,7 @@ import { PageState } from "@/components/hr/not-built";
 import { PasswordDialog } from "@/components/common/password-dialog";
 import { PasswordReveal } from "@/components/hr/password-reveal";
 import { PermsCard } from "@/components/hr/perms-card";
+import { AlertsCard } from "@/components/hr/alerts-card";
 import { LeavePolicyCard, WorkflowCard } from "@/components/hr/leave-settings";
 import { useToast } from "@/components/common/toast";
 import { request } from "@/lib/api";
@@ -193,7 +194,7 @@ export default function Page() {
     ],
     lists: [<ListsCard key="ml" lookups={lookups} run={run} />],
     alerts: [
-      W("ti-bell-ringing", "تنبيهات انتهاء الوثائق", "Document-expiry alerts", ["فحص يومي لانتهاء الإقامات والجوازات والعقود والتأمين، ومن يستلم التنبيه وقبلها بكم يوم.", "A daily check of expiring iqamas, passports, contracts and insurance, who receives it and how many days before."], "expiryAlerts", "alr"),
+      <AlertsCard key="alr" />,
     ],
     access: [
       <PasswordsCard key="pwd" emps={emps} />,

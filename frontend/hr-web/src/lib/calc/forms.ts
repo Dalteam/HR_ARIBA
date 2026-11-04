@@ -431,7 +431,7 @@ export function buildSalaryCert(d: SalaryCertData, s: Signer): Built {
 export function printDoc(title: string, html: string) {
   const w = window.open("", "_blank");
   if (!w) {
-    alert("تنبيه: المتصفح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع وحاول تاني");
+    alert("تنبيه: منع المتصفح فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة لهذا الموقع ثم المحاولة مرة أخرى.");
     return;
   }
   w.document.open();

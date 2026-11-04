@@ -579,7 +579,7 @@ function PasswordsCard({ emps }: { emps: EmployeeListItem[] }) {
   async function reset() {
     const e = emps.find((x) => x.id === emp);
     if (!e) return toast("اختر الموظف الأول", "err");
-    if (!window.confirm(`هتطلع كلمة مرور مؤقتة جديدة لـ ${e.name_ar}، والقديمة هتبطل. متأكد؟`)) return;
+    if (!window.confirm(`سيتم إنشاء كلمة مرور مؤقتة جديدة للموظف ${e.name_ar}، وسيتم إلغاء كلمة المرور الحالية. هل أنت متأكد؟`)) return;
     try {
       let t;
       try {

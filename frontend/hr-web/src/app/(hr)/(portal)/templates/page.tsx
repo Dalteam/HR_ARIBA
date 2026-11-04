@@ -296,7 +296,7 @@ export default function Page() {
       if (b.type === "salary_cert") consumeRef();
       return;
     }
-    if (!window.confirm(`هيتبعت "${b.title}" لـ ${emp?.nameAr ?? ""} في تطبيقه عشان يوافق أو يعترض. متأكد؟`)) return;
+    if (!window.confirm(`سيتم إرسال "${b.title}" إلى الموظف ${emp?.nameAr ?? ""} عبر التطبيق للموافقة عليه أو الاعتراض. هل أنت متأكد؟`)) return;
     request("/letters", { method: "POST", body: { employee_id: empId, type: b.type, title: b.title, html: emp ? withEnglish(b, emp) : b.html } })
       .then(() => {
         toast("اتبعت للموظف وبيقدر يوافق أو يعترض من تطبيقه", "ok");
@@ -390,7 +390,7 @@ export default function Page() {
 
   async function bulkSend(k: string, ids: string[], setStat: (s: string) => void) {
     if (!ids.length) return toast("اختر موظفًا واحدًا على الأقل", "err");
-    if (!window.confirm(`هيتبعت "${TYPE_AR[k]}" لـ ${ids.length} موظف دفعة واحدة. متأكد؟`)) return;
+    if (!window.confirm(`سيتم إرسال "${TYPE_AR[k]}" إلى ${ids.length} من الموظفين دفعةً واحدة. هل أنت متأكد؟`)) return;
     let ok = 0;
     const fail: string[] = [];
     for (const id of ids) {

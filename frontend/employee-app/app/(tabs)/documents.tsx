@@ -23,7 +23,7 @@ function Doc({ x, onDone, state, owner, name, needSig }: { x: Letter; onDone: ()
   function signApprove() {
     const sig = getSig(owner);
     if (!sig) { needSig(); toast("أضف توقيعك أولاً ثم اضغط «موافق مع التوقيع»", "ok"); return; }
-    Alert.alert("موافق مع التوقيع", "سيُضاف توقيعك على المستند في مكان توقيع الموظف ويُرسل للمسؤول. متأكد؟", [
+    Alert.alert("موافق مع التوقيع", "سيُضاف توقيعك على المستند في مكان توقيع الموظف ويُرسل للمسؤول. هل أنت متأكد؟", [
       { text: "إلغاء", style: "cancel" },
       { text: "متابعة", onPress: async () => {
         setBusy(true);

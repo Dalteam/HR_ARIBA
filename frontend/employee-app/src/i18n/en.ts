@@ -525,7 +525,7 @@ export const EN: [string, string][] = [
   ["وقّع واعتمد", "Sign and approve"],
   ["أضف توقيعك أولاً", "Add your signature first"],
   ["أضف توقيعك أولاً ثم اضغط «موافق مع التوقيع»", "Add your signature first, then tap “Approve with signature”"],
-  ["سيُضاف توقيعك على المستند في مكان توقيع الموظف ويُرسل للمسؤول. متأكد؟", "Your signature will be placed on the document where the employee signs, and it goes to the approver. Are you sure?"],
+  ["سيُضاف توقيعك على المستند في مكان توقيع الموظف ويُرسل للمسؤول. هل أنت متأكد؟", "Your signature will be placed on the document where the employee signs, and it goes to the approver. Are you sure?"],
   ["متابعة", "Continue"],
   ["تم التوقيع، المستند الآن عند مديرك المباشر لتوقيعه ثم يذهب للموارد البشرية", "Signed — the document is now with your direct manager, then it goes to HR"],
   ["تمت الموافقة بالتوقيع وأُرسل المستند للموارد البشرية", "Approved with signature and sent to HR"],

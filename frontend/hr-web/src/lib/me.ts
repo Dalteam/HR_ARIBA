@@ -82,6 +82,8 @@ export interface MyRequest {
   punch_kind: "in" | "out" | "both" | null;
   /** the stored request body as the API returns it (Stage 14 reads `from`, `to` and `cancelled`) */
   payload?: { from?: string; to?: string; cancelled?: { reason?: string } } & Record<string, unknown>;
+  /** an approved leave that already has a «طلب إلغاء إجازة» waiting (the API refuses a second one) */
+  cancel_pending?: boolean;
   notes: string | null;
   rejection_reason: string | null;
   /** the document filed with the request (me.py `_attachment_doc_type`), when there is one */

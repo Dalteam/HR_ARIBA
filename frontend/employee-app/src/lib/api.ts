@@ -242,6 +242,8 @@ export type MyRequest = {
   created_at: string;
   /** Their request payload (amount, IBAN, changes, on-behalf name, escalation, HR's return note). */
   payload?: Record<string, any>;
+  /** an approved leave that already has a «طلب إلغاء إجازة» waiting (the API refuses a second one) */
+  cancel_pending?: boolean;
   attachments?: { id: string; document_type: string; file_name: string }[];
 };
 

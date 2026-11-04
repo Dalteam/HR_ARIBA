@@ -125,6 +125,8 @@ export default function MeLeaves() {
               {r.notes && <div style={{ fontSize: 11, marginTop: 2 }}>{r.notes}</div>}
               {r.status === "rejected" && r.rejection_reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 2 }}>❌ {r.rejection_reason}</div>}
               <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 3 }}>{ddmmyyyy(r.created_at)}</div>
+              {r.cancel_pending && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 3 }}>⏳ طلب إلغاء هذه الإجازة قيد الاعتماد</div>}
+              {r.payload?.cancelled && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 3 }}>🚫 {T("أُلغيت هذه الإجازة", "This leave was cancelled")}{r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : ""}</div>}
               {leaveRow(r) && policy.data && (
                 <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                   {r.status === "pending" && policy.data.emp_edit_pending && (
@@ -136,7 +138,7 @@ export default function MeLeaves() {
                   {r.status === "pending" && policy.data.emp_cancel_pending && (
                     <button type="button" className="btn" style={{ ...small, color: "var(--am)" }} onClick={() => cancel(r)}>{T("إلغاء الطلب", "Cancel request")}</button>
                   )}
-                  {r.status === "approved" && policy.data.emp_request_cancel_approved && (
+                  {r.status === "approved" && !r.cancel_pending && policy.data.emp_request_cancel_approved && (
                     <button type="button" className="btn" style={{ ...small, color: "var(--am)" }} onClick={() => askCancel(r)}>{T("طلب إلغاء الإجازة", "Ask to cancel")}</button>
                   )}
                 </div>

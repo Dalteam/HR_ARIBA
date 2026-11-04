@@ -32,7 +32,7 @@ export function RequestItem({ r, onDelete, policy, onCancel, onEdit, onCancelReq
   const actions: Action[] = [];
   if (leave && policy && r.status === "pending" && policy.emp_edit_pending) actions.push(["تعديل التواريخ", onEdit, t.bl]);
   if (leave && policy && r.status === "pending" && policy.emp_cancel_pending) actions.push(["إلغاء الطلب", onCancel, t.am]);
-  if (leave && policy && r.status === "approved" && policy.emp_request_cancel_approved) actions.push(["طلب إلغاء الإجازة", onCancelRequest, t.am]);
+  if (leave && policy && r.status === "approved" && !r.cancel_pending && policy.emp_request_cancel_approved) actions.push(["طلب إلغاء الإجازة", onCancelRequest, t.am]);
   return (
     <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: t.bd }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -54,6 +54,7 @@ export function RequestItem({ r, onDelete, policy, onCancel, onEdit, onCancelReq
       {r.payload?.cancelled ? (
         <T size={10} color={t.am} style={{ marginTop: 3 }}>{"🚫 أُلغيت هذه الإجازة" + (r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : "")}</T>
       ) : null}
+      {r.cancel_pending ? <T size={10} color={t.am} style={{ marginTop: 3 }}>⏳ طلب إلغاء هذه الإجازة قيد الاعتماد</T> : null}
       {actions.some(([, fn]) => fn) ? (
         <View style={{ flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
           {actions.map(([label, fn, color]) => (fn ? (

@@ -58,11 +58,11 @@ export const FEATURES = {
   /** attendance: the design's shift schedule (official / Ramadan hours) behind lateness, required hours and the shift column */
   attSchedule: backend("مرحلة الساعات المرنة ودوام رمضان", "the flexible-hours / Ramadan stage"),
   /** leaves: HR returns a request to the direct manager with a note (the design's hr_return_to_manager) */
-  lvReturn: backend("مرحلة إجراءات الإجازات الإضافية للموارد البشرية", "the more-HR-leave-actions stage"),
+  lvReturn: { status: "ready" } as Feature,
   /** leaves: HR cancels an approved leave, keeps it as «ملغاة» and returns its days (hr_leave_cancel) */
-  lvCancel: backend("مرحلة إجراءات الإجازات الإضافية للموارد البشرية", "the more-HR-leave-actions stage"),
+  lvCancel: { status: "ready" } as Feature,
   /** leaves: undo the last balance save (the design keeps the last ten saves) */
-  lvBalanceUndo: backend("مرحلة إجراءات الإجازات الإضافية للموارد البشرية", "the more-HR-leave-actions stage"),
+  lvBalanceUndo: { status: "ready" } as Feature,
   /** payroll: HR prepares the month and sends it to finance, who approves (the design's prepare / status steps) */
   payPrepare: backend("مرحلة تجهيز المسير للمالية (حالة المسير: مسودة ← جاهز ← معتمد)", "the payroll prepare-for-finance stage (draft → prepared → approved)"),
   /** employee form: a certificate with its type, title, issuer and dates (the design's EmpCerts; needs document metadata) */
@@ -83,7 +83,7 @@ export const FEATURES = {
   /** the image behind the employee app's punch button */
   punchLogo: backend("حفظ شعار زر البصمة وقراءته في تطبيق الموظف", "storing the punch-button logo and reading it in the employee app"),
   /** per-type approvers, escalation deadlines and approval circles */
-  wfConfig: backend("مرحلة إجراءات الإجازات الإضافية للموارد البشرية", "the more-HR-leave-actions stage"),
+  wfConfig: { status: "ready" } as Feature,
   /** mail account settings (saved without the password, sending stays off) */
   mailSettings: backend("مرحلة إعدادات البريد (حفظ فقط)", "the mail-settings stage (save only)"),
   /** the daily expiry-alerts run */

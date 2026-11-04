@@ -15,7 +15,7 @@ import { PromptModal } from "@/components/hr/prompt-modal";
 import { useToast } from "@/components/common/toast";
 import { useAuth } from "@/lib/auth-context";
 import { listAllEmployees, openDocument, uploadDocument } from "@/lib/employees";
-import { FEATURES, isReady, type FeatureId } from "@/lib/features";
+import { isReady } from "@/lib/features";
 import { ddmmyyyy, todayIso } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale";
 import { printHtml } from "@/lib/print";
@@ -36,8 +36,12 @@ import {
   LVL,
   OTHER_TYPES,
   overrideRequest,
+  cancelLeave,
   rejectRequest,
+  returnToManager,
   saveBalance,
+  balanceHistory,
+  undoBalance,
   typeLabel,
   type BalanceDetail,
   type BalanceRow,
@@ -65,7 +69,7 @@ const STAGE: Record<string, [string, string]> = { manager: ["بانتظار ال
 const STAGE_ORDER: Record<string, number> = { hr: 0, manager: 1, ceo: 2 };
 
 /** The note dialog's purpose (the design's `dlg.kind`). */
-type Dlg = { kind: "approve" | "final" | "reject" | "delete"; r: HrRequest } | null;
+type Dlg = { kind: "approve" | "final" | "reject" | "delete" | "return" | "cancel"; r: HrRequest } | null;
 
 function useT() {
   const { lang } = useLocale();
@@ -137,7 +141,6 @@ function RequestsPage() {
       setBusy("");
     }
   }
-  const waiting = (id: FeatureId) => toast(T("غير متاح بعد — يُفتح بعد ", "Not available yet — opens after ") + (en ? FEATURES[id].waits?.en : FEATURES[id].waits?.ar), "info");
   function confirm(v: string) {
     const d = dlg;
     setDlg(null);
@@ -147,6 +150,8 @@ function RequestsPage() {
       act(() => (r.stage === "hr" ? approveRequest(r.id, v || undefined) : overrideRequest(r.id, v || "تمت الموافقة من الموارد البشرية")), "✓ " + T("تمت الموافقة على الطلب", "Request approved"), r.id);
     else if (d.kind === "final") act(() => finalApproveRequest(r.id, v || undefined), "✓ " + T("تم الاعتماد النهائي للطلب", "Request finally approved"), r.id);
     else if (d.kind === "reject") act(() => rejectRequest(r.id, v), "❌ " + T("تم رفض الطلب — أُرسل إشعار للموظف", "Request rejected — the employee was notified"), r.id);
+    else if (d.kind === "return") act(() => returnToManager(r.id, v), "↩ " + T("أُعيد الطلب للمدير المباشر — أُرسل إشعار له وللموظف", "Returned to the direct manager — both were notified"), r.id);
+    else if (d.kind === "cancel") act(() => cancelLeave(r.id, v), "✓ " + T("أُلغيت الإجازة ورجع رصيدها — أُرسل إشعار للموظف", "Leave cancelled and its days returned — the employee was notified"), r.id);
     else act(() => deleteRequest(r.id), T("تم الحذف", "Deleted"), r.id);
   }
   const att = (r: HrRequest) =>
@@ -179,19 +184,19 @@ function RequestsPage() {
         <PageState loading={!error} error={error} onRetry={reload} />
       ) : (
         <>
-          {tab === "lv1" && <Pending list={pending} can={can} busy={busy} type={typeFilter} onType={setTypeFilter} setDlg={setDlg} att={att} waiting={waiting} />}
-          {tab === "lv2" && <AllRequests reqs={reqs} emps={emps} can={can} initialType={typeFilter} setDlg={setDlg} att={att} waiting={waiting} onRefresh={reload} />}
+          {tab === "lv1" && <Pending list={pending} can={can} busy={busy} type={typeFilter} onType={setTypeFilter} setDlg={setDlg} att={att} />}
+          {tab === "lv2" && <AllRequests reqs={reqs} emps={emps} can={can} initialType={typeFilter} setDlg={setDlg} att={att} onRefresh={reload} />}
           {tab === "lv3" && can && <NewRequest emps={emps} hols={hols} bal={bal} onDone={() => { reload(); setTab("lv1"); }} />}
-          {tab === "lv4" && <Balances bal={bal} emps={emps} can={can} onSaved={reload} waiting={waiting} />}
+          {tab === "lv4" && <Balances bal={bal} emps={emps} can={can} onSaved={reload} />}
           {tab === "lv5" && <Holidays hols={hols} can={can} onChange={reload} />}
           {tab === "lv6" && <Overtime emps={emps} can={can} reqs={reqs.filter((r) => r.type === "overtime")} setDlg={setDlg} att={att} onDone={reload} />}
         </>
       )}
       {dlg && (
         <PromptModal
-          title={{ approve: T("موافقة على الطلب", "Approve the request"), final: T("اعتماد نهائي بالنيابة", "Final approval on behalf"), reject: T("سبب الرفض", "Rejection reason"), delete: T("حذف الطلب", "Delete the request") }[dlg.kind]}
-          label={dlg.kind === "reject" ? T("السبب", "Reason") : T("ملاحظة (اختياري)", "Note (optional)")}
-          required={dlg.kind === "reject"}
+          title={{ approve: T("موافقة على الطلب", "Approve the request"), final: T("اعتماد نهائي بالنيابة", "Final approval on behalf"), reject: T("سبب الرفض", "Rejection reason"), delete: T("حذف الطلب", "Delete the request"), return: T("إرجاع للمدير المباشر", "Return to the direct manager"), cancel: T("إلغاء الإجازة وإرجاع الرصيد", "Cancel the leave and restore the balance") }[dlg.kind]}
+          label={dlg.kind === "reject" || dlg.kind === "cancel" ? T("السبب", "Reason") : dlg.kind === "return" ? T("ملاحظة للمدير المباشر", "Note for the direct manager") : T("ملاحظة (اختياري)", "Note (optional)")}
+          required={dlg.kind === "reject" || dlg.kind === "return"}
           noInput={dlg.kind === "delete"}
           message={
             dlg.kind === "final"
@@ -200,10 +205,14 @@ function RequestsPage() {
                 ? dlg.r.status === "approved" && dlg.r.type === "annual"
                   ? T("حذف الإجازة المعتمدة نهائيًا؟ يرجع رصيدها للموظف ويختفي الطلب من تطبيقه. (لا توجد سلة مهملات بعد.)", "Delete this approved leave for good? Its days return to the balance and it disappears from the employee app. (There is no recycle bin yet.)")
                   : T("حذف هذا الطلب نهائيًا؟ يختفي من تطبيق الموظف. (لا توجد سلة مهملات بعد.)", "Delete this request for good? It disappears from the employee app. (There is no recycle bin yet.)")
-                : undefined
+                : dlg.kind === "return"
+                  ? T("يرجع الطلب للمدير المباشر ليرد عليه (موافقة أو رفض) قبل قرار الموارد البشرية، ويصله ويصل الموظف إشعار.", "The request goes back to the direct manager to answer before HR decides; both are notified.")
+                  : dlg.kind === "cancel"
+                    ? T("تُلغى الإجازة وتبقى في السجل «ملغاة»، وترجع أيامها لرصيد الموظف ويصله إشعار.", "The leave is cancelled and kept as «cancelled»; its days return to the balance and the employee is notified.")
+                    : undefined
           }
-          danger={dlg.kind === "reject" || dlg.kind === "delete"}
-          confirmText={dlg.kind === "reject" ? T("رفض", "Reject") : dlg.kind === "delete" ? T("حذف", "Delete") : T("تأكيد", "Confirm")}
+          danger={dlg.kind === "reject" || dlg.kind === "delete" || dlg.kind === "cancel"}
+          confirmText={dlg.kind === "reject" ? T("رفض", "Reject") : dlg.kind === "delete" ? T("حذف", "Delete") : dlg.kind === "return" ? T("إرجاع", "Return") : dlg.kind === "cancel" ? T("إلغاء الإجازة", "Cancel the leave") : T("تأكيد", "Confirm")}
           cancelText={T("إلغاء", "Cancel")}
           onClose={() => setDlg(null)}
           onConfirm={confirm}
@@ -235,7 +244,7 @@ function detailOf(r: HrRequest, T: Tr) {
 
 type RowProps = { can: boolean; setDlg: (d: Dlg) => void; att: (r: HrRequest) => React.ReactNode };
 
-function Pending({ list: all, can, busy, type, onType, setDlg, att, waiting }: RowProps & { list: HrRequest[]; busy: string; type: string; onType: (v: string) => void; waiting: (id: FeatureId) => void }) {
+function Pending({ list: all, can, busy, type, onType, setDlg, att }: RowProps & { list: HrRequest[]; busy: string; type: string; onType: (v: string) => void }) {
   const { en, T, ty } = useT();
   const list = type ? all.filter((r) => r.type === type) : all;
   const KIND: Record<string, string> = { in: T("دخول", "Check-in"), out: T("خروج", "Check-out"), both: T("دخول وخروج", "Check-in & out") };
@@ -282,7 +291,7 @@ function Pending({ list: all, can, busy, type, onType, setDlg, att, waiting }: R
                       )}
                       <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} disabled={busy === r.id} onClick={() => setDlg({ kind: "reject", r })}>✗ {T("رفض", "Reject")}</button>
                       {r.stage === "hr" && (
-                        <button type="button" className="btn bsm" style={{ color: "var(--am)", opacity: isReady("lvReturn") ? 1 : 0.6 }} title={T("إرجاع للمدير المباشر بملاحظة", "Return to the direct manager with a note")} onClick={() => waiting("lvReturn")}>
+                        <button type="button" className="btn bsm" style={{ color: "var(--am)", opacity: isReady("lvReturn") ? 1 : 0.6 }} title={T("إرجاع للمدير المباشر بملاحظة", "Return to the direct manager with a note")} onClick={() => setDlg({ kind: "return", r })}>
                           ↩ {T("إرجاع للمدير", "Return to manager")}
                         </button>
                       )}
@@ -298,7 +307,7 @@ function Pending({ list: all, can, busy, type, onType, setDlg, att, waiting }: R
   );
 }
 
-function AllRequests({ reqs, emps, can, initialType, setDlg, att, waiting, onRefresh }: RowProps & { reqs: HrRequest[]; emps: EmployeeListItem[]; initialType: string; waiting: (id: FeatureId) => void; onRefresh: () => void }) {
+function AllRequests({ reqs, emps, can, initialType, setDlg, att, onRefresh }: RowProps & { reqs: HrRequest[]; emps: EmployeeListItem[]; initialType: string; onRefresh: () => void }) {
   const { en, T, ty } = useT();
   const [fe, setFe] = useState("");
   const [ft, setFt] = useState(initialType);
@@ -345,7 +354,7 @@ function AllRequests({ reqs, emps, can, initialType, setDlg, att, waiting, onRef
                   <td>
                     {att(r)}{" "}
                     {can && r.status === "approved" && (
-                      <><button type="button" className="btn bsm" style={{ color: "var(--am)", opacity: isReady("lvCancel") ? 1 : 0.6 }} title={T("إلغاء الإجازة وإرجاع الرصيد", "Cancel the leave and restore the balance")} onClick={() => waiting("lvCancel")}><i className="ti ti-arrow-back-up" /> {T("إلغاء/استرجاع", "Cancel")}</button>{" "}</>
+                      <><button type="button" className="btn bsm" style={{ color: "var(--am)", opacity: isReady("lvCancel") ? 1 : 0.6 }} title={T("إلغاء الإجازة وإرجاع الرصيد", "Cancel the leave and restore the balance")} onClick={() => setDlg({ kind: "cancel", r })}><i className="ti ti-arrow-back-up" /> {T("إلغاء/استرجاع", "Cancel")}</button>{" "}</>
                     )}
                     {can && <button type="button" className="btn bsm" style={{ color: "var(--rd)", opacity: 0.8 }} title={T("حذف", "Delete")} onClick={() => setDlg({ kind: "delete", r })}><i className="ti ti-trash" /></button>}
                   </td>
@@ -473,7 +482,7 @@ function NewRequest({ emps, hols, bal, onDone }: { emps: EmployeeListItem[]; hol
   );
 }
 
-function Balances({ bal, emps, can, onSaved, waiting }: { bal: BalanceRow[]; emps: EmployeeListItem[]; can: boolean; onSaved: () => void; waiting: (id: FeatureId) => void }) {
+function Balances({ bal, emps, can, onSaved }: { bal: BalanceRow[]; emps: EmployeeListItem[]; can: boolean; onSaved: () => void }) {
   const toast = useToast();
   const { en, T } = useT();
   const [sel, setSel] = useState("");
@@ -581,7 +590,7 @@ function Balances({ bal, emps, can, onSaved, waiting }: { bal: BalanceRow[]; emp
           )}
         </div>
       </div>
-      {editing && se && <BalanceEditor emp={se} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onSaved(); }} waiting={waiting} />}
+      {editing && se && <BalanceEditor emp={se} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onSaved(); }} />}
     </div>
   );
 }
@@ -597,7 +606,7 @@ const EDIT_COLS: [string, string, string][] = [
   ["eos", "فائض نهاية الخدمة", "EOS Excess"],
 ];
 
-function BalanceEditor({ emp, onClose, onSaved, waiting }: { emp: EmployeeListItem; onClose: () => void; onSaved: () => void; waiting: (id: FeatureId) => void }) {
+function BalanceEditor({ emp, onClose, onSaved }: { emp: EmployeeListItem; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const { en, T } = useT();
   const [date, setDate] = useState(todayIso());
@@ -605,10 +614,13 @@ function BalanceEditor({ emp, onClose, onSaved, waiting }: { emp: EmployeeListIt
   const [orig, setOrig] = useState<Record<string, string>[] | null>(null);
   const [rows, setRows] = useState<Record<string, string>[] | null>(null);
   const [busy, setBusy] = useState(false);
+  // the design's leaveBalanceHistory: how many earlier saves can still be undone (Stage 12, L3)
+  const [saves, setSaves] = useState(0);
   const yNow = new Date().getFullYear();
 
   useEffect(() => {
     let alive = true;
+    balanceHistory(emp.id).then((h) => alive && setSaves(h.items.length)).catch(() => alive && setSaves(0));
     balanceDetail(emp.id).then((d) => {
       if (!alive) return;
       const r = d.years.map((l) => ({
@@ -626,6 +638,20 @@ function BalanceEditor({ emp, onClose, onSaved, waiting }: { emp: EmployeeListIt
   const chg = (i: number, k: string) => !!rows && !!orig && Math.abs((parseFloat(rows[i][k]) || 0) - (parseFloat(orig[i][k]) || 0)) > 0.004;
   const anyCh = !!rows && rows.some((_, i) => EDIT_COLS.some(([k]) => chg(i, k)));
   const set = (i: number, k: string, v: string) => setRows((rs) => rs && rs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+
+  async function undoLast() {
+    if (!saves || !window.confirm(T("استرجاع الأرصدة لما قبل آخر حفظ؟", "Restore the balances to before the last save?"))) return;
+    setBusy(true);
+    try {
+      await undoBalance(emp.id);
+      toast("↩ " + T("رجعت الأرصدة لما قبل آخر حفظ", "Balances restored to before the last save"), "ok");
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save() {
     if (!rows) return;
@@ -688,7 +714,7 @@ function BalanceEditor({ emp, onClose, onSaved, waiting }: { emp: EmployeeListIt
         <button type="button" className="btn bpl" disabled={busy || !rows} onClick={save}><i className="ti ti-check" /> {busy ? "…" : T("حفظ", "Save")}</button>
         <button type="button" className="btn" onClick={onClose}>{T("إلغاء", "Cancel")}</button>
         <button type="button" className="btn bsm" disabled={!anyCh} onClick={() => { setRows(orig); setNote(""); }}>↺ {T("استرجاع الكل", "Restore all")}</button>
-        <button type="button" className="btn bsm" style={{ opacity: isReady("lvBalanceUndo") ? 1 : 0.6 }} onClick={() => waiting("lvBalanceUndo")}>↩ {T("تراجع عن آخر حفظ", "Undo last save")}</button>
+        <button type="button" className="btn bsm" disabled={busy || !saves} title={saves ? T(`محفوظ ${saves} من آخر 10 حفظات`, `${saves} of the last 10 saves kept`) : T("لا يوجد حفظ سابق", "No earlier save")} onClick={undoLast}>↩ {T("تراجع عن آخر حفظ", "Undo last save")}</button>
       </div>
     </Modal>
   );

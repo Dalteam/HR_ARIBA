@@ -11,6 +11,7 @@ import { PageState } from "@/components/hr/not-built";
 import { PasswordDialog } from "@/components/common/password-dialog";
 import { PasswordReveal } from "@/components/hr/password-reveal";
 import { PermsCard } from "@/components/hr/perms-card";
+import { LeavePolicyCard, WorkflowCard } from "@/components/hr/leave-settings";
 import { useToast } from "@/components/common/toast";
 import { request } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -171,13 +172,13 @@ export default function Page() {
       <FlexCard key={"fx" + JSON.stringify(att)} att={att} run={run} />,
     ],
     leave: [
-      W("ti-arrow-back-up", "سياسة الإجازات (إلغاء الإجازة المعتمدة)", "Leave policy (cancelling an approved leave)", ["هل تقدر الموارد البشرية تلغي إجازة معتمدة وترجع رصيدها.", "Whether HR may cancel an approved leave and return its days."], "lvCancel", "lpol"),
+      <LeavePolicyCard key="lpol" />,
       W("ti-calendar-repeat", "ترحيل الرصيد وطريقة الاستحقاق والاستحقاقات الخاصة", "Carry-over, accrual method and special entitlements", ["حد الترحيل للسنة التالية، طريقة احتساب الاستحقاق (تقويمي / أيام عمل / شهري)، واستحقاق الاستشاري والتمهير والتدريب. الحالي: 21 يومًا، أيام العمل، ترحيل 10 أيام.", "The carry cap, the accrual method (calendar / working days / monthly) and the entitlement of consultants, Tamheer and trainees. Today: 21 days, working days, 10 days carried."], "leaveRules", "lc"),
     ],
     app: [
       W("ti-palette", "ألوان تطبيق الموظف", "Employee-app colours", ["ألوان تطبيق الموظف من نفس لوحة الهوية.", "The employee app's colours, from the same brand palette."], "brandColors", "brapp"),
       W("ti-fingerprint", "شعار خلف زر البصمة (تطبيق الموظف)", "Logo behind the punch button (employee app)", ["صورة باهتة خلف دائرة الحضور والانصراف بشفافية تختارها.", "A faint image behind the check-in circle, with an opacity you choose."], "punchLogo", "pw"),
-      W("ti-route", "مسار اعتماد الطلبات ودوائر الاعتماد", "Request workflow and approval circles", ["من يعتمد كل نوع طلب، المهلة قبل التصعيد، ودوائر الاعتماد المتعددة.", "Who approves each request type, the escalation deadline, and multi-step approval circles."], "wfConfig", "wf"),
+      <WorkflowCard key="wf" />,
       <DocSignCard key="ds" run={run} />,
       <PushCard key="push" run={run} />,
     ],

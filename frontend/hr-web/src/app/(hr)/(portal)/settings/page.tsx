@@ -174,12 +174,12 @@ export default function Page() {
     ],
     leave: [
       <LeavePolicyCard key="lpol" />,
+      <WorkflowCard key="wf" />,
       W("ti-calendar-repeat", "ترحيل الرصيد وطريقة الاستحقاق والاستحقاقات الخاصة", "Carry-over, accrual method and special entitlements", ["حد الترحيل للسنة التالية، طريقة احتساب الاستحقاق (تقويمي / أيام عمل / شهري)، واستحقاق الاستشاري والتمهير والتدريب. الحالي: 21 يومًا، أيام العمل، ترحيل 10 أيام.", "The carry cap, the accrual method (calendar / working days / monthly) and the entitlement of consultants, Tamheer and trainees. Today: 21 days, working days, 10 days carried."], "leaveRules", "lc"),
     ],
     app: [
       W("ti-palette", "ألوان تطبيق الموظف", "Employee-app colours", ["ألوان تطبيق الموظف من نفس لوحة الهوية.", "The employee app's colours, from the same brand palette."], "brandColors", "brapp"),
       W("ti-fingerprint", "شعار خلف زر البصمة (تطبيق الموظف)", "Logo behind the punch button (employee app)", ["صورة باهتة خلف دائرة الحضور والانصراف بشفافية تختارها.", "A faint image behind the check-in circle, with an opacity you choose."], "punchLogo", "pw"),
-      <WorkflowCard key="wf" />,
       <DocSignCard key="ds" run={run} />,
       <PushCard key="push" run={run} />,
     ],

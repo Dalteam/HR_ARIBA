@@ -130,7 +130,7 @@ export function WorkflowCard() {
   const typeName = (code: string) => w?.types?.find((t) => t.code === code)?.name_ar || code;
   return (
     <div className="card" style={card} id="WF_CARD">
-      <div className="ct" style={{ marginBottom: 8 }}><i className="ti ti-route" /> {T("مسار اعتماد الطلبات والتصعيد", "Request workflow and escalation")}</div>
+      <div className="ct" style={{ marginBottom: 8 }}><i className="ti ti-route" /> {T("سير الطلبات: مسار الاعتماد والتصعيد", "Request workflow: approvals and escalation")}</div>
       {!w ? <div style={{ color: "var(--mu)" }}>…</div> : (
         <>
           <div className="fg">

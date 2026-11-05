@@ -16,7 +16,7 @@ const KPI_ICON: React.CSSProperties = { fontSize: 24, display: "block", marginBo
 
 // Layout and inline styles reproduce the prototype dashboard (#pg-dash after its V42 patch).
 const TILE: React.CSSProperties = { background: "var(--c2)", borderRadius: 18, padding: "24px 20px", minHeight: 140 };
-const ROW: React.CSSProperties = { background: "var(--c1)", borderRadius: 12, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" };
+const ROW: React.CSSProperties = { background: "var(--c1)", borderRadius: 12, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 };
 
 const STAGE_TXT: Record<string, string> = {
   manager: "بانتظار المدير المباشر",

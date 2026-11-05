@@ -20,22 +20,22 @@ import { todayIso } from "@/lib/format";
 type Occ = { k: string; ar: string; ic: string; t?: string; b?: string; ann?: boolean; auto?: boolean };
 /** the design's occasion filter; `api` is what our API stores (it knows 8 occasions) */
 const OCCASIONS: Occ[] = [
-  { k: "announcement", ar: "إعلان عام", ic: "📢", ann: true },
-  { k: "birthday", ar: "عيد ميلاد", ic: "🎂", auto: true, t: "🎂 كل عام وأنت بخير يا {name}", b: "تتمنى لك إدارة الموارد البشرية عامًا مليئًا بالصحة والنجاح والسعادة. كل عام وأنت بخير." },
-  { k: "anniversary", ar: "سنوية التعيين", ic: "🎉", auto: true, t: "🎉 {years} سنة معنا يا {name}", b: "نشكرك على جهودك وإخلاصك، ونتمنى لك دوام التوفيق في مسيرتك معنا." },
-  { k: "graduation", ar: "تخرج", ic: "🎓", t: "🎓 مبروك التخرج يا {name}", b: "نبارك لك التخرج ونتمنى لك مستقبلًا مشرقًا ومليئًا بالنجاح." },
-  { k: "wedding", ar: "زواج", ic: "💍", t: "💍 مبروك الزواج يا {name}", b: "بارك الله لك وبارك عليك وجمع بينكما في خير. نتمنى لكما حياة سعيدة." },
-  { k: "newborn", ar: "مولود جديد", ic: "👶", t: "👶 مبروك المولود الجديد يا {name}", b: "بارك الله لك في الموهوب وشكرت الواهب وبلغ أشدّه ورُزقت برّه." },
-  { k: "promotion", ar: "ترقية", ic: "⭐", t: "⭐ مبروك الترقية يا {name}", b: "نبارك لك الترقية، وهي ثمرة جهدك وتميزك. نتمنى لك المزيد من التقدم." },
-  { k: "achievement", ar: "إنجاز / تميز", ic: "🏆", t: "🏆 شكرًا على إنجازك يا {name}", b: "نقدّر إنجازك المتميز ونشكرك على عطائك." },
-  { k: "recovery", ar: "سلامة / شفاء", ic: "💐", t: "💐 سلامتك يا {name}", b: "نسأل الله لك الشفاء العاجل وأن يلبسك ثوب الصحة والعافية." },
-  { k: "condolence", ar: "تعزية", ic: "🕊️", t: "🕊️ خالص العزاء يا {name}", b: "عظّم الله أجرك وأحسن عزاءك وغفر لفقيدك، وإنا لله وإنا إليه راجعون." },
-  { k: "eid_fitr", ar: "عيد الفطر", ic: "🌙", t: "🌙 عيد فطر مبارك", b: "كل عام وأنتم بخير، تقبّل الله منا ومنكم صالح الأعمال. عيدكم مبارك." },
-  { k: "eid_adha", ar: "عيد الأضحى", ic: "🐑", t: "🐑 عيد أضحى مبارك", b: "كل عام وأنتم بخير، وتقبّل الله طاعاتكم. عيدكم مبارك." },
-  { k: "ramadan", ar: "رمضان", ic: "🌙", t: "🌙 رمضان كريم", b: "نبارككم حلول شهر رمضان المبارك، أعاده الله علينا وعليكم بالخير واليمن والبركات." },
-  { k: "national_day", ar: "اليوم الوطني", ic: "🇸🇦", t: "🇸🇦 كل عام والوطن بخير", b: "نهنئكم باليوم الوطني، حفظ الله الوطن وقيادته وشعبه." },
-  { k: "appreciation", ar: "شكر وتقدير", ic: "🙏", t: "🙏 شكر وتقدير", b: "نشكر لكم جهودكم المبذولة وتفانيكم في العمل." },
-  { k: "other", ar: "مناسبة أخرى", ic: "🎊", t: "🎊 تهنئة يا {name}", b: "تهنئة من إدارة الموارد البشرية ونتمنى لك دوام التوفيق والسعادة." },
+  { k: "announcement", ar: "إعلان عام", ic: "ti-speakerphone", ann: true },
+  { k: "birthday", ar: "عيد ميلاد", ic: "ti-cake", auto: true, t: "كل عام وأنت بخير يا {name}", b: "تتمنى لك إدارة الموارد البشرية عامًا مليئًا بالصحة والنجاح والسعادة. كل عام وأنت بخير." },
+  { k: "anniversary", ar: "سنوية التعيين", ic: "ti-confetti", auto: true, t: "{years} سنة معنا يا {name}", b: "نشكرك على جهودك وإخلاصك، ونتمنى لك دوام التوفيق في مسيرتك معنا." },
+  { k: "graduation", ar: "تخرج", ic: "ti-school", t: "مبروك التخرج يا {name}", b: "نبارك لك التخرج ونتمنى لك مستقبلًا مشرقًا ومليئًا بالنجاح." },
+  { k: "wedding", ar: "زواج", ic: "ti-rings", t: "مبروك الزواج يا {name}", b: "بارك الله لك وبارك عليك وجمع بينكما في خير. نتمنى لكما حياة سعيدة." },
+  { k: "newborn", ar: "مولود جديد", ic: "ti-baby-carriage", t: "مبروك المولود الجديد يا {name}", b: "بارك الله لك في الموهوب وشكرت الواهب وبلغ أشدّه ورُزقت برّه." },
+  { k: "promotion", ar: "ترقية", ic: "ti-star", t: "مبروك الترقية يا {name}", b: "نبارك لك الترقية، وهي ثمرة جهدك وتميزك. نتمنى لك المزيد من التقدم." },
+  { k: "achievement", ar: "إنجاز / تميز", ic: "ti-trophy", t: "شكرًا على إنجازك يا {name}", b: "نقدّر إنجازك المتميز ونشكرك على عطائك." },
+  { k: "recovery", ar: "سلامة / شفاء", ic: "ti-flower", t: "سلامتك يا {name}", b: "نسأل الله لك الشفاء العاجل وأن يلبسك ثوب الصحة والعافية." },
+  { k: "condolence", ar: "تعزية", ic: "ti-feather", t: "خالص العزاء يا {name}", b: "عظّم الله أجرك وأحسن عزاءك وغفر لفقيدك، وإنا لله وإنا إليه راجعون." },
+  { k: "eid_fitr", ar: "عيد الفطر", ic: "ti-moon", t: "عيد فطر مبارك", b: "كل عام وأنتم بخير، تقبّل الله منا ومنكم صالح الأعمال. عيدكم مبارك." },
+  { k: "eid_adha", ar: "عيد الأضحى", ic: "ti-building-mosque", t: "عيد أضحى مبارك", b: "كل عام وأنتم بخير، وتقبّل الله طاعاتكم. عيدكم مبارك." },
+  { k: "ramadan", ar: "رمضان", ic: "ti-moon-stars", t: "رمضان كريم", b: "نبارككم حلول شهر رمضان المبارك، أعاده الله علينا وعليكم بالخير واليمن والبركات." },
+  { k: "national_day", ar: "اليوم الوطني", ic: "ti-flag", t: "كل عام والوطن بخير", b: "نهنئكم باليوم الوطني، حفظ الله الوطن وقيادته وشعبه." },
+  { k: "appreciation", ar: "شكر وتقدير", ic: "ti-heart-handshake", t: "شكر وتقدير", b: "نشكر لكم جهودكم المبذولة وتفانيكم في العمل." },
+  { k: "other", ar: "مناسبة أخرى", ic: "ti-gift", t: "تهنئة يا {name}", b: "تهنئة من إدارة الموارد البشرية ونتمنى لك دوام التوفيق والسعادة." },
 ];
 const API_OCC = new Set(["birthday", "anniversary", "graduation", "wedding", "newborn", "promotion", "achievement", "other"]);
 const occ = (k: string | null) => OCCASIONS.find((o) => o.k === k) ?? OCCASIONS[OCCASIONS.length - 1];
@@ -138,14 +138,14 @@ function Send({ can, act, employers }: { can: boolean; act: EmployeeListItem[]; 
         },
       });
       const what = isAnn ? "الإعلان" : "التهنئة";
-      if (res.sent === 0) toast("⚠️ ما وصلت " + what + " لأي موظف — الموظفون المختارون غير مفعّلين أو منتهية خدمتهم", "err");
+      if (res.sent === 0) toast("تعذّر إرسال " + what + " إلى أي موظف — الموظفون المختارون غير مفعّلين أو منتهية خدمتهم", "err");
       else {
-        toast("✓ وصلت " + what + " إلى " + res.sent + " موظف (إشعار في تطبيق الموظف)", "ok");
+        toast("تم إرسال " + what + " إلى " + res.sent + " موظف (إشعار في تطبيق الموظف)", "ok");
         setTitle("");
         setBody("");
       }
     } catch (e) {
-      toast("⚠️ " + (e instanceof Error ? e.message : "تعذر الإرسال"), "err");
+      toast((e instanceof Error ? e.message : "تعذر الإرسال"), "err");
     } finally {
       setBusy(false);
     }
@@ -157,7 +157,7 @@ function Send({ can, act, employers }: { can: boolean; act: EmployeeListItem[]; 
         <div>
           <Lb>النوع / المناسبة (فلتر)</Lb>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {OCCASIONS.map((x) => <button key={x.k} type="button" className={"btn bsm" + (k === x.k ? " bpl" : "")} onClick={() => pickOcc(x.k)}>{x.ic} {x.ar}</button>)}
+            {OCCASIONS.map((x) => <button key={x.k} type="button" className={"btn bsm" + (k === x.k ? " bpl" : "")} onClick={() => pickOcc(x.k)}><i className={"ti " + x.ic} aria-hidden /> {x.ar}</button>)}
           </div>
         </div>
         <div>
@@ -179,13 +179,13 @@ function Send({ can, act, employers }: { can: boolean; act: EmployeeListItem[]; 
         {isAnn && <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5 }}><input type="checkbox" checked={pin} onChange={(e) => setPin(e.target.checked)} /> تثبيت الإعلان أعلى الصفحة الرئيسية في تطبيق الموظف حتى ينتهي</label>}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button type="button" className="btn bpl" id="ANN_SEND" disabled={busy || !can} onClick={check}><i className="ti ti-send" /> {busy ? "جاري الإرسال…" : "إرسال الآن"}</button>
-          <span style={{ fontSize: 12, color: "var(--mu)" }}>سيصل لـ <b>{targets.length}</b> موظف: إشعار في الجرس + بطاقة في الرئيسية{isAnn ? "" : " (يومًا واحدًا)"}{isAnn ? " + إيميل لو إشعارات الإيميل مفعّلة" : " (التهاني لا تُرسل بالإيميل)"}.</span>
+          <span style={{ fontSize: 12, color: "var(--mu)" }}>سيصل إلى <b>{targets.length}</b> موظف: إشعار في الجرس + بطاقة في الرئيسية{isAnn ? "" : " (يومًا واحدًا)"}{isAnn ? " + بريد إلكتروني إذا كانت إشعارات البريد مفعّلة" : " (لا تُرسل التهاني بالبريد الإلكتروني)"}.</span>
           {!can && <span className="b br">للاطلاع فقط — لا توجد صلاحية إرسال</span>}
         </div>
         {can && mail !== null && (
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--mu)" }}>
-            <input type="checkbox" checked={mail} onChange={(e) => { const v = e.target.checked; setMail(v); request("/settings/announcements", { method: "PUT", body: { email: v } }).then(() => toast("✓ اتحفظ", "ok")).catch((x) => toast(String(x instanceof Error ? x.message : x), "err")); }} />
-            إرسال الإعلانات بالإيميل أيضًا عند تشغيل البريد (البريد متوقف حاليًا؛ التهاني لا تُرسل بالإيميل أبدًا)
+            <input type="checkbox" checked={mail} onChange={(e) => { const v = e.target.checked; setMail(v); request("/settings/announcements", { method: "PUT", body: { email: v } }).then(() => toast("تم الحفظ", "ok")).catch((x) => toast(String(x instanceof Error ? x.message : x), "err")); }} />
+            إرسال الإعلانات بالبريد الإلكتروني أيضًا عند تشغيل البريد (البريد متوقف حاليًا، ولا تُرسل التهاني بالبريد أبدًا)
           </label>
         )}
       </div>
@@ -210,9 +210,9 @@ function Auto({ can }: { can: boolean }) {
     try {
       setC(await request("/settings/greetings", { method: "PUT", body: next }));
       setTpl(await request<Tpl>("/settings/greeting-templates", { method: "PUT", body: tpl }));
-      toast("✓ اتحفظ إعداد التهاني التلقائية", "ok");
+      toast("تم حفظ إعداد التهاني التلقائية", "ok");
     } catch (e) {
-      toast("⚠️ " + (e instanceof Error ? e.message : String(e)), "err");
+      toast((e instanceof Error ? e.message : String(e)), "err");
     } finally {
       setBusy(false);
     }
@@ -221,9 +221,9 @@ function Auto({ can }: { can: boolean }) {
     setBusy(true);
     try {
       const r = await request<{ sent: number }>("/occasions/run-auto", { method: "POST" });
-      toast(r.sent ? "✓ اتبعت " + r.sent + " تهنئة اليوم" : "لا توجد مناسبات اليوم (أو اتبعت قبل كده / التلقائي موقوف)", "ok");
+      toast(r.sent ? "أُرسلت " + r.sent + " تهنئة اليوم" : "لا توجد مناسبات اليوم (أو أُرسلت تهانيها مسبقًا، أو الإرسال التلقائي موقوف)", "ok");
     } catch (e) {
-      toast("⚠️ " + (e instanceof Error ? e.message : String(e)), "err");
+      toast((e instanceof Error ? e.message : String(e)), "err");
     } finally {
       setBusy(false);
     }
@@ -235,17 +235,17 @@ function Auto({ can }: { can: boolean }) {
       <div style={{ padding: 12, display: "grid", gap: 12 }}>
         <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
           <input type="checkbox" id="OCC_ON" checked={c.enabled} disabled={!can || busy} onChange={(e) => void save({ ...c, enabled: e.target.checked })} /> تفعيل الإرسال التلقائي{" "}
-          {c.enabled ? <span className="b bg">شغّال</span> : <span className="b br">موقوف — لن يُرسل شيء إلا يدويًا</span>}
+          {c.enabled ? <span className="b bg">مُفعّل</span> : <span className="b br">موقوف — لن يُرسل شيء إلا يدويًا</span>}
         </label>
-        <div style={{ fontSize: 12, color: "var(--mu)", lineHeight: 1.8 }}>لما يكون شغّال: كل موظف يوصله تهنئة <b>في يوم المناسبة</b> تلقائيًا (مرة واحدة في السنة لكل مناسبة). بتتولّد أول ما يفتح أي حساب للموارد البشرية البوابة في اليوم.</div>
+        <div style={{ fontSize: 12, color: "var(--mu)", lineHeight: 1.8 }}>عند التفعيل تصل كلَّ موظف تهنئة <b>في يوم المناسبة</b> تلقائيًا (مرة واحدة في السنة لكل مناسبة)، وتُنشأ عند أول دخول لأي حساب من الموارد البشرية إلى البوابة في ذلك اليوم.</div>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {([["birthday", "🎂 عيد الميلاد (من تاريخ الميلاد)"], ["anniversary", "🎉 سنوية التعيين (من تاريخ المباشرة)"], ["custom", "🎓 المناسبات المسجّلة للموظفين (تخرج، زواج، مولود…)"]] as const).map(([k, l]) => (
-            <label key={k} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}><input type="checkbox" checked={c[k]} disabled={!can || busy} onChange={(e) => setC({ ...c, [k]: e.target.checked })} /> {l}</label>
+          {([["birthday", "ti-cake", "عيد الميلاد (من تاريخ الميلاد)"], ["anniversary", "ti-confetti", "سنوية التعيين (من تاريخ المباشرة)"], ["custom", "ti-school", "المناسبات المسجّلة للموظفين (تخرج، زواج، مولود…)"]] as const).map(([k, ic, l]) => (
+            <label key={k} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}><input type="checkbox" checked={c[k]} disabled={!can || busy} onChange={(e) => setC({ ...c, [k]: e.target.checked })} /> <i className={"ti " + ic} aria-hidden /> {l}</label>
           ))}
         </div>
-        {([["birthday", "🎂 نص تهنئة الميلاد"], ["anniversary", "🎉 نص سنوية التعيين"]] as const).map(([k, l]) => (
+        {([["birthday", "ti-cake", "نص تهنئة الميلاد"], ["anniversary", "ti-confetti", "نص سنوية التعيين"]] as const).map(([k, ic, l]) => (
           <div key={k} style={{ border: "1px solid var(--bd)", borderRadius: 8, padding: 10, display: "grid", gap: 6 }}>
-            <b style={{ fontSize: 13 }}>{l}</b>
+            <b style={{ fontSize: 13 }}><i className={"ti " + ic} aria-hidden /> {l}</b>
             <input style={INP} disabled={!can || busy} maxLength={200} value={tpl[k].t} placeholder={occ(k).t} onChange={(e) => setTpl({ ...tpl, [k]: { ...tpl[k], t: e.target.value } })} />
             <textarea style={{ ...INP, minHeight: 60 }} disabled={!can || busy} maxLength={2000} value={tpl[k].b} placeholder={occ(k).b} onChange={(e) => setTpl({ ...tpl, [k]: { ...tpl[k], b: e.target.value } })} />
             <div style={{ fontSize: 11, color: "var(--mu)" }}>{"اتركه فارغًا لاستخدام النص الافتراضي. {name} = الاسم الأول" + (k === "anniversary" ? "، {years} = عدد السنوات" : "") + "."}</div>
@@ -276,11 +276,11 @@ function Occasions({ can, act }: { can: boolean; act: EmployeeListItem[] }) {
     setBusy(true);
     try {
       await request("/occasions", { method: "POST", body: { employee_id: f.emp, occasion: f.k, occ_date: f.d, yearly: f.y, note: f.note || null } });
-      toast("✓ اتسجّلت المناسبة — هتتبعت تلقائيًا في يومها (لو التلقائي شغّال)", "ok");
+      toast("تم تسجيل المناسبة — ستُرسل التهنئة تلقائيًا في يومها (إذا كانت التهاني التلقائية مفعّلة)", "ok");
       setF({ ...f, note: "" });
       load();
     } catch (e) {
-      toast("⚠️ " + (e instanceof Error ? e.message : String(e)), "err");
+      toast((e instanceof Error ? e.message : String(e)), "err");
     } finally {
       setBusy(false);
     }
@@ -290,18 +290,18 @@ function Occasions({ can, act }: { can: boolean; act: EmployeeListItem[] }) {
       await request(`/occasions/${id}`, { method: "DELETE" });
       load();
     } catch (e) {
-      toast("⚠️ " + (e instanceof Error ? e.message : String(e)), "err");
+      toast((e instanceof Error ? e.message : String(e)), "err");
     }
   }
   return (
     <div className="card">
       <div className="ch"><div className="ct"><i className="ti ti-calendar-heart" /> <span>مناسبات الموظفين المسجّلة</span></div></div>
       <div style={{ padding: 12, display: "grid", gap: 10 }}>
-        <div style={{ fontSize: 12, color: "var(--mu)", lineHeight: 1.8 }}>سجّل مناسبة لموظف بتاريخها (تخرج، زواج، مولود، ترقية…) وهتتبعت له تهنئة <b>تلقائيًا في ذلك اليوم</b> لو «التهاني التلقائية» شغّالة. «تتكرر سنويًا» مناسبة لحاجة زي ذكرى الزواج. عيد الميلاد وسنوية التعيين بيتحسبوا من بيانات الموظف تلقائيًا فلا تحتاج تسجلهم.</div>
+        <div style={{ fontSize: 12, color: "var(--mu)", lineHeight: 1.8 }}>سجّل مناسبة لموظف بتاريخها (تخرج، زواج، مولود، ترقية…) وستُرسل له تهنئة <b>تلقائيًا في ذلك اليوم</b> إذا كانت «التهاني التلقائية» مفعّلة. خيار «تتكرر سنويًا» مناسب لمناسبة مثل ذكرى الزواج. أما عيد الميلاد وسنوية التعيين فيُحسبان من بيانات الموظف تلقائيًا، فلا حاجة إلى تسجيلهما.</div>
         {can && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 8, alignItems: "end" }}>
             <div><Lb>الموظف</Lb><select style={INP} value={f.emp} onChange={(e) => setF({ ...f, emp: e.target.value })}><option value="">— اختر —</option>{act.map((e) => <option key={e.id} value={e.id}>{e.name_ar || e.name_en}</option>)}</select></div>
-            <div><Lb>المناسبة</Lb><select style={INP} value={f.k} onChange={(e) => setF({ ...f, k: e.target.value })}>{REGISTERABLE.map((o) => <option key={o.k} value={o.k}>{o.ic} {o.ar}</option>)}</select></div>
+            <div><Lb>المناسبة</Lb><select style={INP} value={f.k} onChange={(e) => setF({ ...f, k: e.target.value })}>{REGISTERABLE.map((o) => <option key={o.k} value={o.k}>{o.ar}</option>)}</select></div>
             <div><Lb>التاريخ</Lb><DateField value={f.d} onChange={(v) => setF({ ...f, d: v })} style={INP} /></div>
             <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, paddingBottom: 6 }}><input type="checkbox" checked={f.y} onChange={(e) => setF({ ...f, y: e.target.checked })} /> تتكرر سنويًا</label>
             <div style={{ gridColumn: "1/-1" }}><Lb>ملاحظة (اختياري)</Lb><input style={INP} maxLength={500} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></div>
@@ -316,7 +316,7 @@ function Occasions({ can, act }: { can: boolean; act: EmployeeListItem[] }) {
                 : !list.length ? <tr><td colSpan={6} style={{ padding: 14, textAlign: "center", color: "var(--mu)" }}>لا توجد مناسبات مسجّلة</td></tr>
                 : list.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.name}</td><td>{occ(r.occasion).ic} {occ(r.occasion).ar}</td><td>{String(r.occ_date).slice(0, 10)}</td><td>{r.yearly ? "نعم" : "—"}</td><td>{r.note || ""}</td>
+                    <td>{r.name}</td><td><i className={"ti " + occ(r.occasion).ic} aria-hidden /> {occ(r.occasion).ar}</td><td>{String(r.occ_date).slice(0, 10)}</td><td>{r.yearly ? "نعم" : "—"}</td><td>{r.note || ""}</td>
                     <td>{can && <button type="button" className="btn bsm" onClick={() => setDel(r.id)}><i className="ti ti-trash" /></button>}</td>
                   </tr>
                 ))}
@@ -340,10 +340,10 @@ function Log({ can }: { can: boolean }) {
   async function remove(id: string) {
     try {
       const r = await request<{ removed: number }>(`/announcements/${id}`, { method: "DELETE" });
-      toast("✓ اتشال من تطبيق الموظف وحُذفت " + r.removed + " إشعارات منه", "ok");
+      toast("أُزيل من تطبيق الموظف وحُذفت " + r.removed + " إشعارات منه", "ok");
       load();
     } catch (e) {
-      toast("⚠️ " + (e instanceof Error ? e.message : String(e)), "err");
+      toast((e instanceof Error ? e.message : String(e)), "err");
     }
   }
   const aud = (r: AnnRow) => (r.audience === "all" ? "الكل" : r.audience === "employer" ? "شركة" : "موظفون محددون");
@@ -359,7 +359,7 @@ function Log({ can }: { can: boolean }) {
               : list.map((r) => (
                 <tr key={r.id}>
                   <td>{fmt(r.created_at)}</td>
-                  <td>{r.kind === "greeting" ? occ(r.occasion).ic + " " + occ(r.occasion).ar : "📢 إعلان" + (r.pinned ? " 📌" : "")}</td>
+                  <td>{r.kind === "greeting" ? <><i className={"ti " + occ(r.occasion).ic} aria-hidden /> {occ(r.occasion).ar}</> : <><i className="ti ti-speakerphone" aria-hidden /> إعلان{r.pinned && <> <i className="ti ti-pin" aria-hidden title="مثبّت" /></>}</>}</td>
                   <td title={r.body}>{r.title}</td>
                   <td>{aud(r)} ({r.sent_count})</td>
                   <td>{r.source === "auto" ? <span className="b bb">تلقائي</span> : "يدوي"}</td>

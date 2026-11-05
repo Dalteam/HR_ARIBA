@@ -1,17 +1,20 @@
-// App shell of the legacy employee app (V118 js/core-ui/030 + 012/016/026/032): sticky header (page title, bell, key,
-// logout, day/night, manual refresh) and the floating bottom nav. Approvals only for manager / hr / ceo / admin.
-import { useEffect, useState } from "react";
+// App shell of the legacy employee app (V118 js/core-ui/030 + 012/016/026/032): sticky header (page title, tasks, bell,
+// manual refresh) and the floating bottom nav. The dock carries five groups (owner, 5 Nov 2026): a group with more than
+// one page shows its pages as chips under the title, so every page is at most two taps away and nothing needs a back
+// button. Approvals only for manager / hr / ceo / admin. The tasks button (their TaskFab) counts open inbox tasks.
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Alert, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { getRefreshToken } from "@/lib/api";
 import { biometricAvailable, biometricEnabled, enableBiometric, remembered, setNudged, wasNudged } from "@/lib/biometric";
 import { useInsets } from "@/lib/insets";
-import { router, Tabs } from "expo-router";
-import { Icon } from "@/components/icons";
+import { router, Tabs, usePathname } from "expo-router";
+import { Icon, type IconName } from "@/components/icons";
 import { ComposerProvider } from "@/components/composer";
 import { T, useToast } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { useData } from "@/lib/data";
 import { useBell } from "@/lib/notifications";
+import { tasks } from "@/lib/port";
 import { PunchProvider } from "@/lib/punch";
 import { useTheme } from "@/theme";
 import { shadow } from "@/lib/shadow";
@@ -29,7 +32,6 @@ const TABS: { name: string; title: string; label: string; icon: Parameters<typeo
   { name: "overtime", title: "عمل إضافي", label: "عمل إضافي", icon: "stopwatch" },
   { name: "documents", title: "المستندات", label: "مستندات", icon: "file" },
   { name: "approvals", title: "الموافقات", label: "الموافقات", icon: "checks" },
-  { name: "more", title: "المزيد", label: "المزيد", icon: "more" },
 ];
 const APPROVERS = ["manager", "hr", "ceo", "admin", "admin_manager", "chairman"];
 
@@ -43,13 +45,68 @@ function IconBtn({ children, onPress, label }: { children: React.ReactNode; onPr
   );
 }
 
-const FROM_MORE = ["attendance", "team", "goals", "overtime", "documents", "approvals", "profile"];
+type Group = { key: string; label: string; icon: IconName; pages: string[] };
+const GROUPS: Group[] = [
+  { key: "home", label: "الرئيسية", icon: "home", pages: ["index"] },
+  { key: "att", label: "الحضور", icon: "clock", pages: ["attendance", "overtime"] },
+  { key: "req", label: "طلباتي", icon: "clipboard", pages: ["leaves", "documents", "approvals"] },
+  { key: "pay", label: "الراتب", icon: "wallet", pages: ["salary"] },
+  { key: "me", label: "أنا", icon: "user", pages: ["profile", "goals", "team"] },
+];
+const CHIP: Record<string, string> = {
+  attendance: "سجل الحضور", overtime: "عمل إضافي", leaves: "طلباتي", documents: "المستندات", approvals: "الموافقات",
+  profile: "ملفي", goals: "أهدافي", team: "فريقي",
+};
+const groupOf = (route?: string) => GROUPS.find((g) => g.pages.includes(route ?? "")) ?? GROUPS[0];
+const pagesOf = (g: Group, role?: string) => g.pages.filter((p) => p !== "approvals" || APPROVERS.includes(role ?? ""));
+const href = (name: string) => (name === "index" ? "/(tabs)" : `/(tabs)/${name}`);
+
+// Open inbox tasks for the header's tasks button: read on start, on every change of screen (so coming back from the
+// tasks screen updates it) and once a minute.
+const TasksCtx = createContext<{ open: number; refresh: () => void }>({ open: 0, refresh: () => {} });
+function TasksProvider({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(0);
+  const pathname = usePathname();
+  const refresh = useCallback(() => {
+    tasks.list("inbox").then((r) => setOpen(r.items.filter((x) => x.status === "open").length)).catch(() => {});
+  }, []);
+  useEffect(() => { refresh(); }, [refresh, pathname]);
+  useEffect(() => { const iv = setInterval(refresh, 60000); return () => clearInterval(iv); }, [refresh]);
+  return <TasksCtx.Provider value={{ open, refresh }}>{children}</TasksCtx.Provider>;
+}
+
+function Chips({ route }: { route: string }) {
+  const t = useTheme();
+  const { user } = useAuth();
+  const { approvals, letters } = useData();
+  const pages = pagesOf(groupOf(route), user?.role);
+  if (pages.length < 2) return null;
+  const count: Record<string, number> = { documents: letters.filter((l) => l.status === "pending").length, approvals: approvals.length };
+  const onBg = t.dark ? "#29B35E" : "#014D3D";
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 18, paddingBottom: 6 }}>
+      {pages.map((p) => {
+        const on = p === route;
+        const n = count[p] ?? 0;
+        return (
+          <Pressable key={p} accessibilityRole="tab" accessibilityLabel={CHIP[p]} accessibilityState={{ selected: on }}
+            onPress={() => { if (!on) { select(); router.navigate(href(p) as never); } }}
+            style={({ pressed }) => [styles.chip, { backgroundColor: on ? onBg : t.c, borderColor: on ? onBg : t.bd, transform: [{ scale: pressed ? 0.96 : 1 }] }]}>
+            <T size={13} weight={on ? 800 : 600} color={on ? (t.dark ? "#013D31" : "#fff") : t.tx}>{CHIP[p]}</T>
+            {n > 0 ? <View style={[styles.chipBadge, { backgroundColor: "#B3342B" }]}><T size={10} weight={800} color="#fff">{n}</T></View> : null}
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
 
 function Header({ title, route }: { title: string; route: string }) {
   const t = useTheme();
   const insets = useInsets();
   const { refresh } = useData();
   const bell = useBell();
+  const task = useContext(TasksCtx);
   const toast = useToast();
   const [panel, setPanel] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,6 +119,7 @@ function Header({ title, route }: { title: string; route: string }) {
     Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: true })).start();
     try {
       await Promise.all([refresh(), bell.refresh()]);
+      task.refresh();
       toast("تم التحديث والحفظ", "ok");
     } catch {
       toast("تعذر إكمال التحديث", "err");
@@ -73,18 +131,22 @@ function Header({ title, route }: { title: string; route: string }) {
 
   // large title on the page's own background (no bar, no divider): where am I is the first thing read
   return (
-    <View style={[styles.hdr, { paddingTop: insets.top + 12, backgroundColor: t.bg }]}>
+    <View style={{ paddingTop: insets.top + 12, backgroundColor: t.bg, zIndex: 10 }}>
+    <View style={styles.hdr}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }}>
-        {FROM_MORE.includes(route) ? (
-          <IconBtn label="إغلاق والعودة إلى المزيد" onPress={() => router.navigate("/(tabs)/more" as never)}><Icon name="x" size={20} color={t.tx} stroke={2.2} /></IconBtn>
-        ) : null}
-        <T size={FROM_MORE.includes(route) ? 24 : 28} weight={800} style={{ flexShrink: 1, letterSpacing: -0.6, lineHeight: 36 }} numberOfLines={1}>{title}</T>
+        <T size={28} weight={800} style={{ flexShrink: 1, letterSpacing: -0.6, lineHeight: 36 }} numberOfLines={1}>{title}</T>
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <IconBtn label="تحديث البيانات" onPress={manualRefresh}>
           <Animated.View style={{ transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}>
             <Icon name="refresh" size={20} color={t.tx} stroke={2} />
           </Animated.View>
+        </IconBtn>
+        <IconBtn label={task.open > 0 ? `المهام، ${task.open} مفتوحة` : "المهام"} onPress={() => router.push("/tasks" as never)}>
+          <Icon name="tasks" size={21} color={t.tx} stroke={2} />
+          {task.open > 0 ? (
+            <View style={[styles.badge, { borderColor: t.c }]}><T size={10} weight={800} color="#fff">{task.open > 99 ? "99+" : task.open}</T></View>
+          ) : null}
         </IconBtn>
         <IconBtn label={bell.unread > 0 ? `الإشعارات، ${bell.unread} جديدة` : "الإشعارات"} onPress={() => { setPanel(true); bell.refresh(); }}>
           <Icon name="bell" size={21} color={t.tx} stroke={2} />
@@ -94,6 +156,8 @@ function Header({ title, route }: { title: string; route: string }) {
         </IconBtn>
       </View>
       <BellPanel visible={panel} onClose={() => setPanel(false)} top={insets.top + 64} />
+    </View>
+    <Chips route={route} />
     </View>
   );
 }
@@ -162,28 +226,26 @@ type NavRoute = { key: string; name: string };
 // SDK 58 no longer hands a `navigation` object to a custom tab bar, so the dock navigates through the router.
 type BottomTabBarProps = { state: { index: number; routes: NavRoute[] } };
 
-const DOCK: { name: string; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
-  { name: "index", label: "الرئيسية", icon: "home" },
-  { name: "leaves", label: "طلباتي", icon: "clipboard" },
-  { name: "salary", label: "الراتب", icon: "wallet" },
-  { name: "more", label: "المزيد", icon: "more" },
-];
-
 function BottomNav({ state }: BottomTabBarProps) {
   const t = useTheme();
   const insets = useInsets();
   const { width, gutter, dockMax } = useLayout();
   const dockW = Math.min(dockMax, width - gutter * 2); // tablets: a dock of phone width, centred
+  const { user } = useAuth();
   const { approvals, letters } = useData();
   const current = state.routes[state.index]?.name;
-  const badge = (name: string) => (name === "more" ? letters.filter((l) => l.status === "pending").length + approvals.length : 0);
-  const item = (d: (typeof DOCK)[number]) => {
-    const on = current === d.name || (d.name === "more" && !!current && !["index", "leaves", "salary"].includes(current));
+  // a group's button reopens the page last seen in it (attendance -> overtime -> home -> attendance lands on overtime)
+  const last = useRef<Record<string, string>>({});
+  useEffect(() => { if (current) last.current[groupOf(current).key] = current; }, [current]);
+  const badge = (key: string) => (key === "req" ? letters.filter((l) => l.status === "pending").length + approvals.length : 0);
+  const item = (d: Group) => {
+    const on = groupOf(current).key === d.key;
     const color = on ? (t.dark ? "#29B35E" : "#014D3D") : t.mu;
-    const n = badge(d.name);
+    const n = badge(d.key);
+    const pages = pagesOf(d, user?.role);
     return (
-      <Pressable key={d.name} accessibilityRole="tab" accessibilityLabel={d.label} accessibilityState={{ selected: on }}
-        onPress={() => { select(); router.navigate((d.name === "index" ? "/(tabs)" : `/(tabs)/${d.name}`) as never); }} style={({ pressed }) => [styles.tab, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}>
+      <Pressable key={d.key} accessibilityRole="tab" accessibilityLabel={d.label} accessibilityState={{ selected: on }}
+        onPress={() => { select(); const l = last.current[d.key]; router.navigate(href(l && pages.includes(l) ? l : pages[0]) as never); }} style={({ pressed }) => [styles.tab, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}>
         <View style={{ transform: [{ translateY: on ? -2 : 0 }] }}><Icon name={d.icon} size={23} color={color} stroke={on ? 2.1 : 1.8} /></View>
         <T size={11.5} weight={on ? 800 : 600} color={color} numberOfLines={1}>{d.label}</T>
         <View style={[styles.tabLine, { backgroundColor: "#29B35E", opacity: on ? 1 : 0, transform: [{ skewX: "-30deg" }, { scaleX: on ? 1 : 0.2 }] }]} />
@@ -193,8 +255,7 @@ function BottomNav({ state }: BottomTabBarProps) {
   };
   return (
     <View style={[styles.bnav, { left: (width - dockW) / 2, right: (width - dockW) / 2, bottom: Math.max(14, insets.bottom), backgroundColor: t.dark ? "rgba(1,61,49,.94)" : "rgba(255,255,255,.94)", borderColor: t.bd }]}>
-      {item(DOCK[0])}{item(DOCK[1])}
-      {item(DOCK[2])}{item(DOCK[3])}
+      {GROUPS.map(item)}
     </View>
   );
 }
@@ -219,19 +280,23 @@ export default function TabsLayout() {
   return (
     <PunchProvider>
       <ComposerProvider>
+      <TasksProvider>
       <BioAsk />
       <Tabs tabBar={(p) => <BottomNav {...(p as unknown as BottomTabBarProps)} />} screenOptions={({ route }) => ({
         header: () => <Header title={TABS.find((x) => x.name === route.name)?.title ?? ""} route={route.name} />,
       })}>
         {TABS.map((x) => <Tabs.Screen key={x.name} name={x.name} options={{ title: x.title }} />)}
       </Tabs>
+      </TasksProvider>
       </ComposerProvider>
     </PunchProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  hdr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 18, paddingBottom: 8, zIndex: 10 },
+  hdr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 18, paddingBottom: 8 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, height: 36, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1 },
+  chipBadge: { minWidth: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   ib: { width: 44, height: 44, borderRadius: 15, alignItems: "center", justifyContent: "center", ...shadow("#014D3D", 0.1, 5, 0, 2, 1) },
   badge: { position: "absolute", top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: "#B54A4A", alignItems: "center", justifyContent: "center", paddingHorizontal: 4, borderWidth: 2 },
   mode: { height: 36, minWidth: 36, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },

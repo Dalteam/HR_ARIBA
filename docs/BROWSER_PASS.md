@@ -54,12 +54,12 @@ all of it is put back at the end (§D).
 - **A-2 a pending leave at the HR stage** → for 12-5, and for the 5.27 → 7.27 figure.
   Employee app → **`EMP102`** (no manager, so it reaches HR in one step) → **«سنوية»** → **15 → 16 Nov 2026**
   (2 workdays ≤ 5.27) → «إرسال».
-- **A-3 an overtime request** → for A1-3. Employee app → **`EMP102`** → «المزيد» (the dock carries six tabs;
-  «عمل إضافي» sits behind «المزيد») → «عمل إضافي» → «التاريخ» **12/11/2026**,
+- **A-3 an overtime request** → for A1-3. Employee app → **`EMP102`** → dock «الحضور» (its chip «عمل إضافي»
+  sits under the page title) → «عمل إضافي» → «التاريخ» **12/11/2026**,
   «عدد الساعات» **2**, «السبب / المهمة» anything → «⏱️ إرسال الطلب».
   Two things that are not defects: the row will **not** appear in «طلباتي» (that tab drops `type !== "overtime"`,
   `app/(tabs)/leaves.tsx:61`) — it appears in «عمل إضافي» with its type, status badge, reason, sent date and 🗑;
-  and «عمل إضافي» is not on the dock at all, which is why the step above goes through «المزيد».
+  and «عمل إضافي» is not a dock button, which is why the step above goes through the «الحضور» group's chip.
 - **A-4 two targets for 102** → for 15-1b, 15-2 and 15-6. HR web → «المستهدفات» (`/targets`) → employee **102**, period
   **«سنوي»** + year **2026** (the picker defaults to «ربع سنوي»; a target saved in another period never seeds the
   annual evaluation) → «+ مستهدف جديد» → title + «الوزن (الأهمية)» → «حفظ» (toast «✓ حُفظ المستهدف وأُشعر
@@ -254,8 +254,8 @@ application card)
 - [ ] **A1-1 the two pills** — under the leave tiles: as `EMP040` «مرحّل: **5.07** يوم», as `EMP102` «مرحّل: **0**
       يوم». The second pill is **absent** today and that is correct: it is the nearest *future* public holiday
       and no announced holiday is left in 2026 (A-5).
-- [ ] **A1-4 the photo** — nobody has one, so the home, «ملفي» and «المزيد» heroes show the monogram. Upload one
-      in B2, sign in as that employee → the photo replaces the letter on all three; sign in as `EMP102`
+- [ ] **A1-4 the photo** — nobody has one, so the home and «ملفي» heroes show the monogram. Upload one
+      in B2, sign in as that employee → the photo replaces the letter on both; sign in as `EMP102`
       afterwards → **no** leftover face (it is per session).
 
 ### C2. «طلباتي» and the composer as `EMP102`

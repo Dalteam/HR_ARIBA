@@ -90,6 +90,7 @@ export const EN: [string, string][] = [
   ["حضورك وانصرافك والبحث بفترة", "Your check-in and check-out, and search by period"],
   ["{#} من فريقك · المهام والاجتماعات والتوفر", "{1} of your team · tasks, meetings and availability"],
   ["المهام والاجتماعات وتوفر الفريق", "Tasks, meetings and team availability"],
+  ["أنا", "Me"],
   ["مستهدفاتك وتقييمك الدوري", "Your targets and periodic appraisal"],
   ["طلب ساعات إضافية ومتابعتها", "Request overtime and follow it up"],
   ["نماذج بانتظار توقيعك وأرشيفها", "Forms waiting for your signature, and their archive"],

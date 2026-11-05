@@ -408,7 +408,7 @@ replaces the initial letter on three heroes (`lib/photo.ts`: one `GET /employees
 means "no photo", the value is dropped on sign-out). No backend change.
 
 **How to get there.** Employee app (`localhost:8081`) — sign in as **`EMP040`** (carry 5.07) and as **`EMP102`**
-(carry 0). Home is «الرئيسية»; the heroes are home, «ملفي» and «المزيد»; the list is «طلباتي»; the tab is
+(carry 0). Home is «الرئيسية»; the heroes are home and «ملفي»; the list is «طلباتي»; the tab is
 «عمل إضافي».
 
 - [ ] **A1-1 the two pills.** As `EMP040`, under the leave tiles: «مرحّل: 5.07 يوم»; as `EMP102`: «مرحّل: 0 يوم»
@@ -422,8 +422,8 @@ means "no photo", the value is dropped on sign-out). No backend change.
       After recipe §5.13.2 the row must carry the type, the status badge, the reason, the sent date and 🗑 while
       it is not approved (that is the whole point of the change).
 - [ ] **A1-4 the photo.** No employee has one (`has_photo` false on every row; `GET /employees/102/photo` →
-      404), so all three heroes show the monogram today. Upload one in the employee form (§5.8), sign in as
-      that employee → the photo replaces the letter on home + «ملفي» + «المزيد»; sign in as `EMP102` afterwards
+      404), so both heroes show the monogram today. Upload one in the employee form (§5.8), sign in as
+      that employee → the photo replaces the letter on home + «ملفي»; sign in as `EMP102` afterwards
       → **no** leftover face (the value is per session).
 
 ### 5.12 A2 — «سيتبقى» counts annual leave the way the server does (shipped 5 Nov 2026)
@@ -497,10 +497,10 @@ change; it is the difference between "the button is not there" and "there was no
 
 **5.13.2 an overtime request — for §5.11 A1-3** (7 Nov 2026: no overtime row exists anywhere)
 
-Employee app → `EMP102` → «المزيد» → «عمل إضافي» → «التاريخ» **12/11/2026**, «عدد الساعات» **2**, «السبب / المهمة»
+Employee app → `EMP102` → dock «الحضور» → chip «عمل إضافي» → «التاريخ» **12/11/2026**, «عدد الساعات» **2**, «السبب / المهمة»
 anything → «⏱️ إرسال الطلب». The row then appears in «عمل إضافي» with its type, status badge, reason, sent date
 and 🗑 — and **not** in «طلباتي», which filters `type !== "overtime"` out (`app/(tabs)/leaves.tsx:61`). «عمل إضافي» is
-not a dock tab either: the dock carries six and this one sits behind «المزيد» (`app/(tabs)/_layout.tsx:46`).
+not a dock button either: it is a chip of the dock's «الحضور» group (`GROUPS` in `app/(tabs)/_layout.tsx`).
 - *put it back:* 🗑 on the row in «عمل إضافي» (the app asks «هل تريد حذف طلب العمل الإضافي؟»).
 
 **5.13.3 two targets — for the evaluation form** (needs: §5.6 15-1, 15-2, 15-6)
@@ -656,8 +656,9 @@ box that opens whichever sections contain the typed word). Every «How to get th
 | 5.13 | the four data recipes | «المستهدفات»، «التقييم»، «الإجازات والطلبات»، «الإعدادات» → **4** | see the block |
 | 19-2 | the audit row | «سجل التعديلات» | `/audit-log` |
 
-The app's screens are the bottom dock's four pills — «الرئيسية»، «طلباتي»، «الراتب»، «المزيد» — and behind
-«المزيد»: «الحضور»، «فريقي»، «أهدافي وتقييمي»، «عمل إضافي»، «المستندات»، «الموافقات»، «ملفي».
+The app's screens are the bottom dock's five groups — «الرئيسية»؛ «الحضور» (chips «سجل الحضور»، «عمل إضافي»)؛
+«طلباتي» (chips «طلباتي»، «المستندات»، «الموافقات» for managers / HR)؛ «الراتب»؛ «أنا» (chips «ملفي»، «أهدافي»، «فريقي»).
+The chips sit under the page title; «المهام والاجتماعات» opens from the tasks icon next to the bell.
 
 **Order.** The pass writes as it goes: §5.2 changes the matrix that guards everything else, §5.3/§5.4/§5.7 change
 settings, §5.10 approves a month, §5.13 creates requests. Run the blocks in this order so whatever you return to

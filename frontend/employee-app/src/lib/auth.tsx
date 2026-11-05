@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { auth, clearSession, hasSession, saveSession, setRefreshListener, type User } from "./api";
 import { biometricEnabled, biometricUnlock, updateBiometricToken } from "./biometric";
+import { clearPhotoCache } from "./photo";
 import { registerPush, unregisterPush } from "./push";
 
 type AuthState = {
@@ -65,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await unregisterPush();
     await auth.logout(await biometricEnabled());
+    clearPhotoCache();
     setUser(null);
   }, []);
 

@@ -246,6 +246,11 @@ export const EN: [string, string][] = [
   ["إلى تاريخ", "To date"],
   ["المتاح لك {#}", "Available to you: {1}"],
   ["سيتبقى {#}", "Remaining after: {1}"],
+  // Stage A1: the carry-over and the nearest public holiday on the home, and the sent date on an overtime request
+  ["مرحّل: {#} يوم", "Carried: {#} day(s)"],
+  ["أقرب إجازة رسمية: {#}", "Next public holiday: {#}"],
+  ["أُرسل {#}", "Sent {#}"],
+  ["هل تريد حذف طلب العمل الإضافي؟", "Do you want to delete this overtime request?"],
   ["السبب", "Reason"],
   ["ملاحظات", "Notes"],
   ["مطلوب", "Required"],

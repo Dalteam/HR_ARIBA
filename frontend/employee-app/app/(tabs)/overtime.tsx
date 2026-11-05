@@ -1,19 +1,17 @@
 // عمل إضافي — legacy requests/009 (V21) and their Overtime.jsx: ⏱️ طلب عمل إضافي (+ optional attachment) + 📋 طلبات العمل الإضافي.
+// Stage A1: the list is the same request line as «طلباتي» (reason, rejection reason, sent date, 🗑 before approval),
+// which is what the web /me area showed.
 import { useState } from "react";
-import { View } from "react-native";
-import { todayISO } from "@/components/shared";
-import { Badge, Btn, Card, CardTitle, Empty, Input, Page, PickerField, T, useToast } from "@/components/ui";
-import { ApiError, requests } from "@/lib/api";
+import { Alert, View } from "react-native";
+import { RequestItem } from "@/components/request-item";
+import { dmy, todayISO } from "@/components/shared";
+import { Btn, Card, CardTitle, Empty, Input, Page, PickerField, useToast } from "@/components/ui";
+import { ApiError, requests, type MyRequest } from "@/lib/api";
 import { pickFile, type Picked } from "@/lib/files";
 import { submitRequest } from "@/lib/port";
 import { useData } from "@/lib/data";
-import { statusText } from "@/lib/labels";
-import { useTheme } from "@/theme";
-
-const TONE = { gr: "bg", rd: "br", am: "ba" } as const;
 
 export default function Overtime() {
-  const t = useTheme();
   const toast = useToast();
   const { requests: list, refresh } = useData();
   const [date, setDate] = useState(todayISO());
@@ -40,6 +38,15 @@ export default function Overtime() {
     }
   }
 
+  function remove(r: MyRequest) {
+    Alert.alert("حذف الطلب", "هل تريد حذف طلب العمل الإضافي؟", [
+      { text: "إلغاء", style: "cancel" },
+      { text: "حذف", style: "destructive", onPress: async () => {
+        try { await requests.remove(r.id); toast("تم الحذف", "ok"); await refresh(); } catch (e) { toast(e instanceof ApiError ? e.message : "تعذر الحذف", "err"); }
+      } },
+    ]);
+  }
+
   return (
     <Page onRefresh={refresh}>
       <Card>
@@ -56,12 +63,7 @@ export default function Overtime() {
       <Card>
         <CardTitle icon="clipboard">طلبات العمل الإضافي</CardTitle>
         {!ot.length ? <Empty text="لا توجد طلبات" /> : null}
-        {ot.map((r) => (
-          <View key={r.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: t.bd }}>
-            <T size={12}><T size={12} weight={700}>{r.on_date}</T> — {Number(r.hours ?? 0)} ساعة</T>
-            <Badge text={statusText(r).text} tone={TONE[statusText(r).tone]} />
-          </View>
-        ))}
+        {ot.map((r) => <RequestItem key={r.id} r={r} onDelete={remove} meta={`أُرسل ${dmy(r.created_at)}`} />)}
       </Card>
     </Page>
   );

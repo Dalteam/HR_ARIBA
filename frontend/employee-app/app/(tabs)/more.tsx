@@ -1,11 +1,12 @@
 // المزيد — every screen of the app that is not in the dock, in one list (attendance log, my team, goals, overtime, documents,
 // approvals, profile & settings). Nothing here is new: it is where the old scrolling tab bar's other tabs now live.
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { Icon, type IconName } from "@/components/icons";
 import { Card, Page, T } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { useData } from "@/lib/data";
+import { usePhoto } from "@/lib/photo";
 import { select } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 
@@ -16,6 +17,7 @@ export default function More() {
   const { user } = useAuth();
   const { employee, letters, approvals, team, refresh } = useData();
   const pendingDocs = letters.filter((l) => l.status === "pending").length;
+  const photo = usePhoto(employee?.id, employee?.has_photo);
   const go = (p: string) => { select(); router.navigate(p as never); };
   const rows: { icon: IconName; title: string; sub: string; to: string; badge?: number }[] = [
     { icon: "history", title: "سجل الحضور", sub: "حضورك وانصرافك والبحث بفترة", to: "/(tabs)/attendance" },
@@ -29,8 +31,9 @@ export default function More() {
     <Page onRefresh={refresh}>
       <Pressable accessibilityRole="button" accessibilityLabel="ملفي والإعدادات" onPress={() => go("/(tabs)/profile")}
         style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 24, backgroundColor: "#014D3D", marginBottom: 14, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
-        <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: "rgba(255,255,255,.14)", alignItems: "center", justifyContent: "center", transform: [{ skewX: "-8deg" }] }}>
-          <T size={24} weight={800} color="#E4E4BC">{employee?.name_ar?.charAt(0) ?? ""}</T>
+        <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: "rgba(255,255,255,.14)", alignItems: "center", justifyContent: "center", overflow: "hidden", transform: [{ skewX: "-8deg" }] }}>
+          {photo ? <Image source={{ uri: photo }} resizeMode="cover" style={{ width: 62, height: 62, transform: [{ skewX: "8deg" }] }} />
+            : <T size={24} weight={800} color="#E4E4BC">{employee?.name_ar?.charAt(0) ?? ""}</T>}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <T size={16} weight={800} color="#fff" numberOfLines={1}>{employee?.name_ar ?? ""}</T>

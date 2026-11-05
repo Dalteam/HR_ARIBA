@@ -2,10 +2,11 @@
 // which holds every type, rule and attachment that used to be the inline form here.
 import { dateLocale } from "@/i18n";
 import { useEffect, useState } from "react";
-import { Alert, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { Btn, Card, CardTitle, Empty, Page, PickerField, Sheet, T, useToast } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { useComposer } from "@/components/composer";
+import { dmy, todayISO } from "@/components/shared";
 import { ApiError, requests, type LeavePolicy, type MyRequest } from "@/lib/api";
 import { DelegationCard } from "@/components/delegation";
 import { RequestItem } from "@/components/request-item";
@@ -29,6 +30,27 @@ function dayLabel(k: string) {
   if (k === ymd(new Date(now.getTime() - DAY))) return "أمس";
   const [y, mo, d] = k.split("-").map(Number);
   return new Date(y, mo - 1, d).toLocaleDateString(dateLocale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+// Stage A1: the web /me/leaves page listed the official holidays under the request route; in the app they only lived
+// inside the «+» sheet. The same rows here, so a vacation can be planned without opening the composer.
+function HolidaysCard() {
+  const t = useTheme();
+  const { leave } = useData();
+  const today = todayISO();
+  const rows = (leave?.upcoming_holidays ?? []).filter((h) => h.date >= today);
+  if (!rows.length) return null;
+  return (
+    <Card>
+      <CardTitle icon="calendar">إجازات رسمية قادمة</CardTitle>
+      {rows.map((h) => (
+        <View key={h.date} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, paddingVertical: 7, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.bd }}>
+          <T size={12.5} weight={700} numberOfLines={1} style={{ flexShrink: 1 }}>{h.name}</T>
+          <T size={12} color={t.mu}>{`${dmy(h.date)}${h.days > 1 ? ` (${h.days} يوم)` : ""}`}</T>
+        </View>
+      ))}
+    </Card>
+  );
 }
 
 export default function Leaves() {
@@ -111,6 +133,7 @@ export default function Leaves() {
         ))}
       </Card>
       <DelegationCard />
+      <HolidaysCard />
       <Sheet visible={!!editing} onClose={() => setEditing(null)}>
         <T size={15} weight={800} style={{ marginBottom: 10 }}>تعديل تواريخ الإجازة</T>
         {editing ? (

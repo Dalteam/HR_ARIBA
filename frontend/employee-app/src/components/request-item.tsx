@@ -25,7 +25,7 @@ const TONE = { gr: "bg", rd: "br", am: "ba" } as const;
 type Action = [string, ((r: MyRequest) => void) | undefined, string];
 type LeaveActions = { policy?: LeavePolicy | null; onCancel?: (r: MyRequest) => void; onEdit?: (r: MyRequest) => void; onCancelRequest?: (r: MyRequest) => void };
 
-export function RequestItem({ r, onDelete, policy, onCancel, onEdit, onCancelRequest }: { r: MyRequest; onDelete?: (r: MyRequest) => void } & LeaveActions) {
+export function RequestItem({ r, onDelete, policy, onCancel, onEdit, onCancelRequest, meta }: { r: MyRequest; onDelete?: (r: MyRequest) => void; meta?: string } & LeaveActions) {
   const t = useTheme();
   const st = statusText(r);
   // Stage 14: the design's employee leave actions, each shown only while HR's switch for it is on
@@ -51,6 +51,7 @@ export function RequestItem({ r, onDelete, policy, onCancel, onEdit, onCancelReq
         </View>
       </View>
       <T size={11} color={t.mu} style={{ marginTop: 4 }}>{requestDetail(r)}</T>
+      {meta ? <T size={10} color={t.mu} style={{ marginTop: 2 }}>{meta}</T> : null}
       {r.notes ? <T size={10} color={t.dm} style={{ marginTop: 3 }}>{r.notes}</T> : null}
       {r.payload?.cancelled ? (
         <StatusLine name="cancelled" size={12} style={{ marginTop: 3 }}><T size={10} color={t.am}>{"أُلغيت هذه الإجازة" + (r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : "")}</T></StatusLine>

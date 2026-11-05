@@ -99,6 +99,29 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * GET a protected picture (the employee's own photo) as a data: URI for <Image>, or null when there is none.
+ * Same token / refresh dance as api(); a missing photo is not an error.
+ */
+export async function apiImage(path: string): Promise<string | null> {
+  const init: RequestInit = { headers: { Accept: "image/*" } };
+  let token = await store.get(ACCESS);
+  let res = await send(path, init, token);
+  if (res.status === 401 && token) {
+    token = await refreshTokens();
+    if (token) res = await send(path, init, token);
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiError(res.status, "error", `HTTP ${res.status}`);
+  const blob = await res.blob();
+  return await new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
 export const auth = {
   login: (username: string, password: string) =>
     api<Session>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
@@ -163,6 +186,8 @@ export type Employee = {
   annual_leave_days: number;
   years_of_service: string;
   salary: Salary | null;
+  /** GET /employees/{id}/photo answers a file when true (see lib/photo.ts). */
+  has_photo: boolean;
 };
 
 export const me = {

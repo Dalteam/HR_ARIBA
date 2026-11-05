@@ -15,7 +15,6 @@ import { PromptModal } from "@/components/hr/prompt-modal";
 import { request, type EmployeeListItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { listAllEmployees } from "@/lib/employees";
-import { FEATURES, isReady } from "@/lib/features";
 import { todayIso } from "@/lib/format";
 
 type Occ = { k: string; ar: string; ic: string; t?: string; b?: string; ann?: boolean; auto?: boolean };
@@ -199,13 +198,18 @@ function Auto({ can }: { can: boolean }) {
   const toast = useToast();
   const [c, setC] = useState<{ enabled: boolean; birthday: boolean; anniversary: boolean; custom: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  // Stage 16 (S4): HR's own greeting texts; empty = the built-in text, {name} = first name, {years} = years of service
+  type Tpl = Record<"birthday" | "anniversary", { t: string; b: string }>;
+  const [tpl, setTpl] = useState<Tpl>({ birthday: { t: "", b: "" }, anniversary: { t: "", b: "" } });
   useEffect(() => {
     request<{ enabled: boolean; birthday: boolean; anniversary: boolean; custom: boolean }>("/settings/greetings").then(setC).catch(() => setC(null));
+    request<Tpl>("/settings/greeting-templates").then(setTpl).catch(() => undefined);
   }, []);
   async function save(next: NonNullable<typeof c>) {
     setBusy(true);
     try {
       setC(await request("/settings/greetings", { method: "PUT", body: next }));
+      setTpl(await request<Tpl>("/settings/greeting-templates", { method: "PUT", body: tpl }));
       toast("✓ اتحفظ إعداد التهاني التلقائية", "ok");
     } catch (e) {
       toast("⚠️ " + (e instanceof Error ? e.message : String(e)), "err");
@@ -225,7 +229,6 @@ function Auto({ can }: { can: boolean }) {
     }
   }
   if (!c) return <div className="card" style={{ padding: 14 }}>جاري التحميل…</div>;
-  const tplWaits = "غير متاح بعد — يُفتح بعد " + FEATURES.annTemplates.waits?.ar;
   return (
     <div className="card">
       <div className="ch"><div className="ct"><i className="ti ti-robot" /> <span>التهاني التلقائية</span></div></div>
@@ -241,17 +244,17 @@ function Auto({ can }: { can: boolean }) {
           ))}
         </div>
         {([["birthday", "🎂 نص تهنئة الميلاد"], ["anniversary", "🎉 نص سنوية التعيين"]] as const).map(([k, l]) => (
-          <div key={k} style={{ border: "1px solid var(--bd)", borderRadius: 8, padding: 10, display: "grid", gap: 6, opacity: isReady("annTemplates") ? 1 : 0.6 }}>
+          <div key={k} style={{ border: "1px solid var(--bd)", borderRadius: 8, padding: 10, display: "grid", gap: 6 }}>
             <b style={{ fontSize: 13 }}>{l}</b>
-            <input style={INP} disabled placeholder={occ(k).t} />
-            <textarea style={{ ...INP, minHeight: 60 }} disabled placeholder={occ(k).b} />
-            <div style={{ fontSize: 11, color: "var(--mu)" }}>{tplWaits}. يُرسل الآن النص الافتراضي للنظام.</div>
+            <input style={INP} disabled={!can || busy} maxLength={200} value={tpl[k].t} placeholder={occ(k).t} onChange={(e) => setTpl({ ...tpl, [k]: { ...tpl[k], t: e.target.value } })} />
+            <textarea style={{ ...INP, minHeight: 60 }} disabled={!can || busy} maxLength={2000} value={tpl[k].b} placeholder={occ(k).b} onChange={(e) => setTpl({ ...tpl, [k]: { ...tpl[k], b: e.target.value } })} />
+            <div style={{ fontSize: 11, color: "var(--mu)" }}>{"اتركه فارغًا لاستخدام النص الافتراضي. {name} = الاسم الأول" + (k === "anniversary" ? "، {years} = عدد السنوات" : "") + "."}</div>
           </div>
         ))}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" className="btn bpl" disabled={busy || !can} onClick={() => void save(c)}><i className="ti ti-device-floppy" /> حفظ</button>
           <button type="button" className="btn" disabled={busy || !can} onClick={runNow}><i className="ti ti-player-play" /> تشغيل الآن (تهاني اليوم)</button>
-          <button type="button" className="btn" disabled={busy || !can} onClick={() => setC({ ...c, birthday: false, anniversary: false, custom: false })}>استرجاع الافتراضي</button>
+          <button type="button" className="btn" disabled={busy || !can} onClick={() => { setC({ ...c, birthday: false, anniversary: false, custom: false }); setTpl({ birthday: { t: "", b: "" }, anniversary: { t: "", b: "" } }); }}>استرجاع الافتراضي</button>
         </div>
       </div>
     </div>

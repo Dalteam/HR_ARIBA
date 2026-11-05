@@ -12,6 +12,7 @@ import { PasswordDialog } from "@/components/common/password-dialog";
 import { PasswordReveal } from "@/components/hr/password-reveal";
 import { PermsCard } from "@/components/hr/perms-card";
 import { AlertsCard } from "@/components/hr/alerts-card";
+import { AppColoursCard, BrandColoursCard, LetterheadCard, MailCard, PunchLogoCard } from "@/components/hr/settings-extra";
 import { LeavePolicyCard, WorkflowCard } from "@/components/hr/leave-settings";
 import { useToast } from "@/components/common/toast";
 import { request } from "@/lib/api";
@@ -162,10 +163,10 @@ export default function Page() {
     company: [
       <CompanyCard key="co" company={company} att={att} run={run} />,
       <LogoCard key="lg" logo={logo} run={run} />,
-      W("ti-palette", "ألوان الهوية", "Brand colours", ["لوحة ألوان البوابة وتطبيق الموظف، مع ألوان التصميم الجاهزة (أخضر، أزرق، بني، بنفسجي، فيروزي، رمادي).", "The portal and employee-app colours, with the design's presets (green, blue, brown, purple, teal, slate)."], "brandColors", "br"),
+      <BrandColoursCard key="br" />,
     ],
     print: [
-      W("ti-file-text", "الورق الرسمي (الترويسة والتذييل)", "Letterhead (header and footer)", ["رفع صورة الترويسة والتذييل للمطبوعات الرسمية بدل الصور الحالية.", "Upload the header and footer images used on official prints, replacing the current ones."], "letterhead", "lh"),
+      <LetterheadCard key="lh" />,
       <SignerCard key={"hs" + JSON.stringify(signer).length + signer.name_ar} signer={signer} emps={emps} run={run} />,
     ],
     att: [
@@ -178,8 +179,8 @@ export default function Page() {
       W("ti-calendar-repeat", "ترحيل الرصيد وطريقة الاستحقاق والاستحقاقات الخاصة", "Carry-over, accrual method and special entitlements", ["حد الترحيل للسنة التالية، طريقة احتساب الاستحقاق (تقويمي / أيام عمل / شهري)، واستحقاق الاستشاري والتمهير والتدريب. الحالي: 21 يومًا، أيام العمل، ترحيل 10 أيام.", "The carry cap, the accrual method (calendar / working days / monthly) and the entitlement of consultants, Tamheer and trainees. Today: 21 days, working days, 10 days carried."], "leaveRules", "lc"),
     ],
     app: [
-      W("ti-palette", "ألوان تطبيق الموظف", "Employee-app colours", ["ألوان تطبيق الموظف من نفس لوحة الهوية.", "The employee app's colours, from the same brand palette."], "brandColors", "brapp"),
-      W("ti-fingerprint", "شعار خلف زر البصمة (تطبيق الموظف)", "Logo behind the punch button (employee app)", ["صورة باهتة خلف دائرة الحضور والانصراف بشفافية تختارها.", "A faint image behind the check-in circle, with an opacity you choose."], "punchLogo", "pw"),
+      <AppColoursCard key="brapp" />,
+      <PunchLogoCard key="pw" />,
       <DocSignCard key="ds" run={run} />,
       <PushCard key="push" run={run} />,
     ],
@@ -188,7 +189,7 @@ export default function Page() {
       <ExclusionCard key="ex" basis={basis} run={run} />,
     ],
     mail: [
-      W("ti-mail-cog", "حسابات البريد (الشخصي والشركة)", "Mail accounts (personal and company)", ["حفظ بيانات حساب البريد (الخادم، المنفذ، المستخدم، المرسل) بدون كلمة المرور؛ الإرسال يظل متوقفًا.", "Saving the mail account (host, port, user, sender) without the password; sending stays off."], "mailSettings", "mm"),
+      <MailCard key="mm" />,
       <AppLinksCard key={"al" + JSON.stringify(links)} initial={links} run={run} />,
       W("ti-send", "طريقة الإرسال", "Sending mode", ["إرسال التقارير والإشعارات بالبريد.", "Sending reports and notifications by e-mail."], "exportEmail", "mo"),
     ],

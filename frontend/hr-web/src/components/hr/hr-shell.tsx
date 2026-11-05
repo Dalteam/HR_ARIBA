@@ -10,6 +10,7 @@ import { IdleGuard } from "@/components/hr/idle-guard";
 import { OccasionsAuto } from "@/components/hr/occasions-auto";
 import { PageExport } from "@/components/hr/page-export";
 import { request } from "@/lib/api";
+import { loadLetterhead } from "@/lib/letterhead";
 import { useAuth } from "@/lib/auth-context";
 import { applyBrand, logoSrc, type PublicBrand } from "@/lib/brand";
 import type { EmployeeCounts } from "@/lib/api";
@@ -81,6 +82,7 @@ export function HrShell({ children }: { children: React.ReactNode }) {
         applyBrand(b.brand);
       })
       .catch(() => applyBrand(null));
+    void loadLetterhead(); // every print reads the saved letterhead (Stage 16)
   }, [tick]);
 
   // the menu counters: active employees, pending requests, documents inside their alert window

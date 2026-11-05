@@ -3,6 +3,8 @@
 // forms/098-ariba-v114-forms-arabic-send-all.js (Arabic extension, termination, evaluation, contract-end + HR signature),
 // payroll/103-ariba-v117-attachments-bulk-salary.js (salary certificate: Hijri/Gregorian date, ref AR-YYYYMMDD-n, IBAN account).
 // The HR signature block uses the signer saved in Settings (V120): name, title, signature and stamp images.
+// The letterhead is the one saved in Settings (Stage 16, lib/letterhead.ts); nothing saved = the Ariba header and footer.
+import { lhFoot, lhHead } from "../letterhead";
 
 export interface FormEmp {
   id: string;
@@ -107,12 +109,12 @@ export function tfWrap(titleAr: string, titleEn: string, bodyHtml: string) {
   return (
     docCss() +
     '<div class="doc">' +
-    `<img class="lh-head" src="${o}/brand/letterhead-header.jpg">` +
+    lhHead(o) +
     '<div class="doc-body">' +
     (titleAr ? `<div class="doc-title">${esc(titleAr)}${titleEn ? `<span class="en">${esc(titleEn)}</span>` : ""}</div>` : "") +
     bodyHtml +
     "</div>" +
-    `<img class="lh-foot" src="${o}/brand/letterhead-footer.jpg">` +
+    lhFoot(o) +
     "</div>"
   );
 }

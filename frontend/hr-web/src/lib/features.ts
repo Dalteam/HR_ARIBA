@@ -25,7 +25,7 @@ export const FEATURES = {
   bizc: { status: "ready" } as Feature,
   ann: { status: "ready" } as Feature,
   /** announcements: HR's own wording for the automatic birthday / anniversary greetings, and {name} per employee */
-  annTemplates: backend("نصوص التهاني التلقائية وإدراج اسم كل موظف", "custom greeting texts and each employee's name in a greeting"),
+  annTemplates: { status: "ready" } as Feature,
   goals: { status: "ready" } as Feature,
   eval: { status: "ready" } as Feature,
   /** evaluation: HR writes an evaluation (owner decision b; its own backend stage, rules first) */
@@ -75,17 +75,17 @@ export const FEATURES = {
   pwDefaultList: backend("مرحلة «الحسابات بكلمة مرور مؤقتة»", "the accounts-on-a-temporary-password stage"),
   // ---- settings cards of the design whose backend stage is not done (Phase 2b) ----
   /** HR saves the brand colours (owner decision c: a plain colour picker with the design's presets) */
-  brandColors: backend("مرحلة حفظ ألوان الهوية", "the brand-colours save stage"),
+  brandColors: { status: "ready" } as Feature,
   /** uploading the letterhead header / footer images */
-  letterhead: backend("حفظ صور الترويسة والتذييل على الخادم", "storing the letterhead images on the server"),
+  letterhead: { status: "ready" } as Feature,
   /** the carry cap, accrual method and special-type entitlements */
   leaveRules: backend("إعدادات قواعد الإجازات على الخادم", "leave-rule settings on the server"),
   /** the image behind the employee app's punch button */
-  punchLogo: backend("حفظ شعار زر البصمة وقراءته في تطبيق الموظف", "storing the punch-button logo and reading it in the employee app"),
+  punchLogo: { status: "ready" } as Feature,
   /** per-type approvers, escalation deadlines and approval circles */
   wfConfig: { status: "ready" } as Feature,
   /** mail account settings (saved without the password, sending stays off) */
-  mailSettings: backend("مرحلة إعدادات البريد (حفظ فقط)", "the mail-settings stage (save only)"),
+  mailSettings: { status: "ready" } as Feature,
   /** the daily expiry-alerts run */
   expiryAlerts: { status: "ready" } as Feature,
   /** the editable role × page permission matrix */

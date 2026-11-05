@@ -10,6 +10,7 @@ import { calcEmployeeGosi, currencyLabel, isLocalCurrency, MONTHS_AR, money, num
 import { getGosiRates, getSalaryBasis, fN, type SalaryBasisRow } from "@/lib/salary";
 import { getSheet } from "@/lib/sheets";
 import { printIcon } from "@/lib/print-icons";
+import { lhFoot, lhHead } from "@/lib/letterhead";
 
 const row = (l: string, v: React.ReactNode, color?: string) => (
   <div className="prow" style={{ color: color || "var(--dm)" }}>
@@ -113,7 +114,7 @@ export default function Page() {
       .net-box .lbl{font-size:11px;color:#555}.net-box .val{font-size:22px;font-weight:900;color:#014D3D}
       .sign{display:flex;justify-content:space-between;margin-top:14px;font-size:12px;font-weight:700}
     </style>
-    <img class="lh-head" src="/brand/letterhead-header.jpg">
+    ${lhHead("")}
     <div class="hd"><div class="ti">كشف راتب — ${period}</div></div>
     <div class="info-grid">
       <div><b>الاسم:</b> ${emp.name_ar}</div><div><b>الرقم الوظيفي:</b> ${emp.emp_no}</div>
@@ -137,7 +138,7 @@ export default function Page() {
     </div>
     <div class="net-box"><div class="lbl">صافي الراتب المستحق</div><div class="val">${money(rowData.net)} ${cur}</div></div>
     <div class="sign"><div>الموظف: ${emp.name_ar}</div><div>الموارد البشرية: ________________</div></div>
-    <img class="lh-foot" src="/brand/letterhead-footer.jpg">`;
+    ${lhFoot("")}`;
     const w = window.open("", "_blank");
     if (!w) return toast("اسمح بالنوافذ المنبثقة", "err");
     w.document.open();

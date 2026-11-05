@@ -2742,12 +2742,15 @@ def approve_sheet(key: str, request: Request, actor: dict[str, Any] = Depends(cu
     rows, approved, _, _ = _month_rows(db, year, month)
     if not rows:
         raise ApiError(404, "not_found", "Payroll not found")
+    from app.routers import payroll_status  # imported late: it imports this module
+    payroll_status.before_approve(db, actor, year, month)  # Stage 19: finance approves a prepared month only
     payload = json.dumps(rows, ensure_ascii=False)
     db.execute(text("""INSERT INTO public.payroll_periods(pay_year,pay_month,approved,approved_at) VALUES(:y,:m,true,now())
         ON CONFLICT(pay_year,pay_month) DO UPDATE SET approved=true,approved_at=EXCLUDED.approved_at"""), {"y": year, "m": month})
     done = db.execute(text("UPDATE public.payroll_archives_v2 SET approved=true,approved_at=now()::text,rows=CAST(:rows AS jsonb),updated_at=now() WHERE pay_year=:y AND pay_month=:m"), {"rows": payload, "y": year, "m": month})
     if not done.rowcount:
         db.execute(text("INSERT INTO public.payroll_archives_v2(pay_year,pay_month,approved,approved_at,rows,saved_at,updated_at) VALUES(:y,:m,true,now()::text,CAST(:rows AS jsonb),now(),now())"), {"rows": payload, "y": year, "m": month})
+    payroll_status.after_approve(db, actor, year, month)
     _write_audit(db, actor, request, "payroll", "approve", "payroll_month", key)
     db.commit()
     return get_sheet(key, actor, db)
@@ -2760,9 +2763,12 @@ def reopen_payroll(key: str, request: Request, body: dict[str, Any] | None = Non
     if ym is None:
         raise ApiError(422, "invalid_key", "Invalid payroll sheet key")
     year, month = ym
+    from app.routers import payroll_status  # imported late: it imports this module
+    payroll_status.check_reason(body)
     reason = str((body or {}).get("reason") or "Reopened for correction").strip()
     db.execute(text("UPDATE public.payroll_periods SET approved=false,approved_at=NULL WHERE pay_year=:y AND pay_month=:m"), {"y": year, "m": month})
     db.execute(text("UPDATE public.payroll_archives_v2 SET approved=false,approved_at=NULL,updated_at=now() WHERE pay_year=:y AND pay_month=:m"), {"y": year, "m": month})
+    payroll_status.after_reopen(db, actor, year, month, reason)  # Stage 19: the status row and HR's bell
     _write_audit(db, actor, request, "payroll", "reopen", "payroll_month", key, details={"reason": reason})
     db.commit()
     return get_sheet(key, actor, db)

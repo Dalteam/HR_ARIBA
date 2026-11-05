@@ -268,6 +268,9 @@ def test_payroll_approve_flow_upserts_payroll_period(monkeypatch):
     monkeypatch.setattr(canonical_router, "_month_rows", month_rows)
     monkeypatch.setattr(canonical_router, "_require", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(canonical_router, "_write_audit", lambda *_args, **_kwargs: None)
+    from app.routers import payroll_status  # Stage 19's prepared rule has its own tests (test_payroll_status.py)
+    monkeypatch.setattr(payroll_status, "before_approve", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(payroll_status, "after_approve", lambda *_args, **_kwargs: None)
     response = canonical_router.approve_sheet("pay_2026_03", request=None,
                                               actor={"role": "finance", "employee_id": "finance-1"}, db=db)
     assert response["approved"] is True

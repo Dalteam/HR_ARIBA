@@ -1246,6 +1246,25 @@ never a password (3 Nov 2026, decision a).
 - **AC5** `GET /accounts/temporary-password` (`employees_admin: edit`): active accounts still on a temporary password
   (`must_change`), with name, username, role and since when; never a password or a hash.
 
+## Payroll «prepare for finance» — Stage 19, 5 Nov 2026 (`routers/payroll_status.py`, no migration)
+
+The design's payroll cycle draft → prepared → approved (→ reopened) (`reference/hr-v1`: `ariba_payroll_prepare`,
+`ariba_payroll_status_get`, `ariba_payroll_reopen`, the approval rule inside `ariba_sync_payroll`). The table
+`ariba_payroll_status` (one row per month: who prepared, approved or reopened it, when, and the note or reason) was
+already in the schema, empty.
+
+- **PY1** `GET /payroll/status/{key}` (`payroll: view`): the month's status and history. With no row: `approved` when the
+  month is approved, `draft` otherwise.
+- **PY2** `POST /sheets/{key}/prepare {note}` (`payroll_prepare: edit`): a saved, unapproved month becomes `prepared`;
+  every active finance account is told in the bell; audited. An unsaved month is 404, an approved one 409.
+- **PY3** `POST /sheets/{key}/approve` (unchanged URL and answer) now also **refuses `finance` while the month is not
+  `prepared`** (409 `payroll_not_prepared`), as the design does; admin and chairman may still approve directly. The
+  approval is recorded in the status row.
+- **PY4** `POST /sheets/{key}/unapprove` (unchanged URL and answer) records the month as `reopened` with its reason and
+  tells HR's stage people. A reason that is sent must be at least 5 characters; an old caller that sends none keeps
+  today's default text. The portal asks for the reason.
+- **PY5** Editing an approved month stays refused (409), as before.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

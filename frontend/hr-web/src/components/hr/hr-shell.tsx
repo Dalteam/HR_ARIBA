@@ -7,6 +7,7 @@ import { PasswordDialog } from "@/components/common/password-dialog";
 import { useToast } from "@/components/common/toast";
 import { HrBell } from "@/components/hr/hr-bell";
 import { IdleGuard } from "@/components/hr/idle-guard";
+import { CandidateAutoRunner } from "@/components/hr/candidate-auto";
 import { OccasionsAuto } from "@/components/hr/occasions-auto";
 import { PageExport } from "@/components/hr/page-export";
 import { SectionAudit } from "@/components/hr/section-audit";
@@ -227,6 +228,7 @@ export function HrShell({ children }: { children: React.ReactNode }) {
               </span>
               {isReady("bell") && <HrBell />}
               <OccasionsAuto />
+              <CandidateAutoRunner />
               <button className="ib" id="langBtn" type="button" onClick={() => setLang(en ? "ar" : "en")} title={T("تغيير اللغة", "Change language")} style={{ fontSize: 11, fontWeight: 700, padding: "4px 8px" }}>
                 <span id="langBtnTxt">{en ? "AR" : "EN"}</span>
               </button>

@@ -199,3 +199,22 @@ export function readFileBase64(file: File): Promise<string> {
   });
 }
 
+/** Stage 22, the design's «التسجيل التلقائي للمرشحين» (`candidate_auto`): off by default. */
+export interface AutoCfg {
+  on: boolean;
+  employer: string;
+  department: string;
+  nature: "indefinite" | "fixed";
+}
+
+export interface AutoRun {
+  on: boolean;
+  registered: number;
+  employees?: { candidate_id: string; employee_id: string; name: string }[];
+  failed: { candidate_id: string; name: string; reason: string }[];
+  busy?: boolean;
+}
+
+export const getAutoCfg = () => request<AutoCfg>("/candidates/auto");
+export const setAutoCfg = (cfg: AutoCfg) => request<AutoCfg>("/candidates/auto", { method: "PUT", body: cfg });
+export const runAuto = () => request<AutoRun>("/candidates/auto/run", { method: "POST" });

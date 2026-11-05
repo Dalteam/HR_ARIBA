@@ -97,7 +97,7 @@ export const FEATURES = {
   /** the design's per-section «recent changes» strip above every page (the log itself is ready at /audit-log) */
   sectionAudit: backend("شريط «آخر التعديلات» أعلى كل صفحة", "the per-section recent-changes strip"),
   /** the design registers new applicants as employees automatically while HR has the portal open */
-  candidateAuto: backend("التسجيل التلقائي للمرشحين كموظفين", "automatic registration of applicants as employees"),
+  candidateAuto: { status: "ready" } as Feature,
   /** fingerprint / Face ID sign-in on the web (WebAuthn); not in the owner's list of stages yet */
   biometric: backend("مرحلة الدخول بالبصمة (WebAuthn) — لم تُجدول بعد", "a WebAuthn sign-in stage (not scheduled yet)"),
   /** sending an export by e-mail; e-mail stays off until a sender is approved (FOLLOW_UPS #7) */

@@ -23,6 +23,8 @@ import {
   type Candidate, type CandidateList, type CandidateStatus, type InviteList, type MedicalForm,
 } from "@/lib/candidates";
 import { getLookups, listAllEmployees } from "@/lib/employees";
+import { useAuth } from "@/lib/auth-context";
+import { CandidateAutoCard } from "@/components/hr/candidate-auto";
 import type { Lookups } from "@/lib/api";
 
 const INP: React.CSSProperties = {
@@ -53,6 +55,7 @@ async function openCandidateFile(id: string) {
 
 export default function Page() {
   const toast = useToast();
+  const { can } = useAuth();
   const [tab, setTab] = useState<"cands" | "invites" | "med">("cands");
   const [list, setList] = useState<CandidateList | null>(null);
   const [invites, setInvites] = useState<InviteList | null>(null);
@@ -294,6 +297,7 @@ export default function Page() {
             ))}
           </div>
 
+          {tab === "cands" && <CandidateAutoCard lookups={lookups} can={can(["employees", "employees_admin"], "edit")} />}
           {tab === "cands" && (
             <div className="card">
               <div className="ch">

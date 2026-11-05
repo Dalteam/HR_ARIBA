@@ -1,7 +1,7 @@
 // The /me employee web area's own routes: the same /me/* endpoints the employee app uses
 // (backend/app/routers/me.py, me_requests.py). Same client as the rest of hr-web (lib/api.ts):
 // bearer token, refresh, ApiError. Types mirror the API's answers one to one.
-import { fetchBlob, request, type Decimal, type IsoDate, type Uuid } from "./api";
+import { fetchBlob, request, type Decimal, type IsoDate, type Uuid } from "@/lib/api";
 
 // ---------------------------------------------------------------- attendance (me.py)
 

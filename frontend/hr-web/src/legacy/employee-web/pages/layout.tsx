@@ -1,5 +1,5 @@
 import "@tabler/icons-webfont/dist/tabler-icons.min.css";
-import "@/styles/employee.css";
+import "@/legacy/employee-web/styles/employee.css";
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { ToastProvider } from "@/components/common/toast";

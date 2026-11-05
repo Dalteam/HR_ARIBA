@@ -3,11 +3,11 @@
 // The employee web area's team tab, as the design's Team.jsx: the direct reports of the signed-in manager.
 // The design's task/meeting board (its `ariba_my_tasks` RPC) and the team availability screen have no route
 // in our API, so that card says so instead of showing an empty board (docs/DESIGN_PORT.md, Phase 3).
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { StatusIcon } from "@/components/common/status-icon";
 import { initials } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale";
-import { myApprovals, myTeam } from "@/lib/me";
+import { myApprovals, myTeam } from "@/legacy/employee-web/lib/me";
 import { useApi } from "@/lib/use-api";
 
 export default function MeTeam() {

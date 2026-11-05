@@ -5,12 +5,12 @@
 // pop-ups) and the approval path. GET/POST /me/approvals (canonical.py `_can_act`), the same rules as the app.
 import { useState } from "react";
 import { useToast } from "@/components/common/toast";
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { ApiError } from "@/lib/api";
 import { ddmmyyyy } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale";
-import { decideApproval, myApprovals, type MyRequest } from "@/lib/me";
-import { reqLabel } from "@/lib/me-labels";
+import { decideApproval, myApprovals, type MyRequest } from "@/legacy/employee-web/lib/me";
+import { reqLabel } from "@/legacy/employee-web/lib/me-labels";
 import { useApi } from "@/lib/use-api";
 
 /** The one line that says what a request is about (the design's reqDetail). */

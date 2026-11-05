@@ -56,7 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     await logout();
     setUser(null);
-    router.replace(window.location.pathname.startsWith("/me") ? "/me/login" : "/login");
+    // One sign-in screen (the employee web copy is retired: /me only says where the employee app is).
+    router.replace("/login");
     router.refresh();
   }, [router]);
 

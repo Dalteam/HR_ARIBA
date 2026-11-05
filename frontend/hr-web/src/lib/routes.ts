@@ -82,7 +82,9 @@ export const PAGE_MODULES: Record<string, Need> = {
 const ROLE_PAGES = ["/targets", "/evaluation", "/team"];
 
 export const HR_LOGIN = "/login";
-export const EMP_LOGIN = "/me/login";
+// The employee's own pages moved to the Expo app (frontend/employee-app). `/me` is now a single card on the HR
+// side that says where the app is, so there is one sign-in screen for everybody (`docs/ACCEPTANCE_CHECKS.md`
+// §5.5; the retired pages are kept as text-only under `src/legacy/employee-web`).
 // The public application form: the link itself is the key (candidates), so it opens with no session.
 export const PUBLIC_APPLY = "/apply";
 

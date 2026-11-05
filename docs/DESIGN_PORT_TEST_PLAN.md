@@ -1,5 +1,11 @@
 # Test plan — owner walkthrough of the port (3 Nov 2026)
 
+> **Two things here are stale (5 Nov 2026).** The ports this plan uses (`3040` for the HR web, `8090` for the app)
+> are not in the backend's `CORS_ORIGINS` any more — the current stack is in `ACCEPTANCE_CHECKS.md` §1 (`:3000`,
+> `:8081`) — and every line that walks the **web `/me` pages** was retired with that copy (the pages are text-only
+> under `frontend/hr-web/src/legacy/employee-web`; `/me` is one card pointing at the app). The current screen list is
+> `BROWSER_PASS.md`. This file stays as the record of the 3 Nov walkthrough.
+
 Written for the browser pass over phases 2a, 2b, 2c and 3 before committing. Every expectation below
 was checked against the running API today, not guessed.
 

@@ -757,7 +757,12 @@ is complete; what is left is the visual pass on a phone (colours, spacing, the h
 3. **Signing** lives in المستندات here and in الموافقات there. Kept ours: one place to sign.
 4. The two `tsc` errors that were already on the branch are still there (noted above).
 
-### The employee web area `/me` (hr-web), started 3 Nov 2026
+### The employee web area `/me` (hr-web), started 3 Nov 2026 — **retired 5 Nov 2026**
+
+> The whole area below is history: it was a second copy of the employee app in `hr-web`. It is now text-only under
+> `frontend/hr-web/src/legacy/employee-web` (nothing routes it), `/me` on the HR portal is one card that points at
+> the Expo app, and the sign-in screens are one (`/login`). `docs/ACCEPTANCE_CHECKS.md` §5.5 (line 14-4) carries
+> the reason and the way back.
 
 The same employee app on the web (`frontend/hr-web/src/app/(employee)/me/*`). Until this round only «الرئيسية» and
 «ملفي» were built; the other seven tabs answered «هذه الشاشة لم تُبنَ بعد». Built now, on the same `/me/*` routes the

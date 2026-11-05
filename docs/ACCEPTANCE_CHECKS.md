@@ -101,7 +101,7 @@ change-password screen.
 | 11 | الصلاحيات والأشخاص — the 19-module × 4-role matrix in Settings ▸ 10 | 4 Nov 2026 | `345ffc8` | `66b5def` | 4 Nov 2026 | **owner's browser pass** (§5.2 — re-check after §5.4/5.6 touched settings) |
 | 12 | HR leave actions — return to manager, HR cancel, balance undo, policy & workflow cards | 4 Nov 2026 | `b4bcbf7` | `58aedb0` | – | **API-verified, screen pending** (§5.3) |
 | 13 | التنبيهات — the AlertsCard in Settings ▸ 9 | 4 Nov 2026 | `476615a` | `ff3e7b2` | – | **API-verified, screen pending** (§5.4) |
-| 14 | the employee's own leave actions (app + `/me`) | 4 Nov 2026 | `dbebe67` | `6b80aa5`, `da4a8d1` | – | **API-verified, screen pending** (§5.5) |
+| 14 | the employee's own leave actions (the app; the web `/me` copy is retired, see 14-4) | 4 Nov 2026 | `dbebe67` | `6b80aa5`, `da4a8d1` | – | **API-verified, screen pending** (§5.5) |
 | 15 | the evaluation form (HR writes it; HR's save is final) | 4 Nov 2026 | `68844b9` | `274abe2` | – | **API-verified, screen pending** (§5.6) |
 | 16 | ألوان الهوية — brand colours, hex-only | 4 Nov 2026 | `861b26c` | `6ad28ca` | – | **API-verified, screen pending** (§5.7) |
 | 17 | the employee record's extras (certificate, national-address expiry, GOSI, probation, document slots) | 4 Nov 2026 | `7dce11c` | `209ed2b` | – | **API-verified, screen pending** (§5.8) |
@@ -231,10 +231,13 @@ the list these belong to.
 
 **What it changed.** The request line shows «تعديل التواريخ», «إلغاء الطلب» and «طلب إلغاء الإجازة», each only
 while HR's switch for it is on (`GET /me/leave-policy`), plus «طلب إلغاء هذه الإجازة قيد الاعتماد» while one is
-in flight; the same three exist on the web `/me/leaves` page. `da4a8d1` had to hide the cancel button while a
-cancellation is pending (`routers/canonical.py`, `components/request-item.tsx`).
+in flight; the same three existed on the web `/me/leaves` page until that copy was retired (5 Nov 2026 — see the
+note under 14-4). `da4a8d1` had to hide the cancel button while a cancellation is pending
+(`routers/canonical.py`, `components/request-item.tsx`).
 
-**How to get there.** Employee app → «طلباتي»; and HR web → `/me/login` → **`EMP040`** → «طلباتي».
+**How to get there.** Employee app (`http://localhost:8081`) → «طلباتي», signed in as the account each line names.
+The HR web's `/me` pages are gone: `http://localhost:3000/me` is one card that points at the app, and every
+employee screen is in the app.
 
 - [ ] **14-1 the one action visible today.** `EMP040`'s approved sick leave (7→8 Oct) carries «طلب إلغاء
       الإجازة» — the policy has `emp_request_cancel_approved: true`. Confirm → the row reads «طلب إلغاء هذه
@@ -244,8 +247,12 @@ cancellation is pending (`routers/canonical.py`, `components/request-item.tsx`).
 - [ ] **14-3 the pending pair needs data.** «تعديل التواريخ» / «إلغاء الطلب» exist only on a `pending` leave and
       nothing in this copy is pending (§3) → recipe §5.13.1. Then: change 15→19 Nov into 15→16 Nov and the
       stored row must count **2** workdays with «سيتبقى» recomputed before saving.
-- [ ] **14-4 the same on the web `/me/leaves`** — same three labels, same conditions (the page reads the same
-      policy); «حفظ» after «تعديل التواريخ» answers «تم تعديل التواريخ».
+- [x] **14-4 (retired 5 Nov 2026 — no screen to test).** The same three labels lived on the web `/me/leaves` page
+      in `hr-web`. That copy of the employee app was retired: its pages are now text-only under
+      `frontend/hr-web/src/legacy/employee-web` (README there says how to revive them), `/me` on the HR portal is
+      one card that points at the app, and there is a single sign-in screen (`/login`; the old `/me/login` is
+      gone from `lib/routes.ts`, `proxy.ts`, `lib/api.ts` and `lib/auth-context.tsx`). The employee app at
+      `localhost:8081` is the one place these actions live, so 14-1…14-3 and 14-5 are the lines that matter.
 - [ ] **14-5 a cancelled leave reads as cancelled.** After any cancellation the employee's row shows «أُلغيت
       هذه الإجازة» + the reason and loses every action.
 

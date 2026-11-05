@@ -5,13 +5,13 @@
 // link to its tab. The design's big clock and punch button belong to the shell step (docs/DESIGN_PORT.md,
 // Phase 3 «the shell over the area»), so punching is one tap away in الحضور.
 import Link from "next/link";
-import { MeState } from "@/components/me/me-shell";
-import { usePhoto } from "@/components/me/use-photo";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
+import { usePhoto } from "@/legacy/employee-web/components/me/use-photo";
 import { myEmployee } from "@/lib/employees";
 import { initials, longToday, sar2 } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
-import { myLeave, myPayslips } from "@/lib/me";
+import { myLeave, myPayslips } from "@/legacy/employee-web/lib/me";
 import { useApi } from "@/lib/use-api";
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];

@@ -9,13 +9,13 @@
 import { useEffect, useRef, useState } from "react";
 import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { ApiError } from "@/lib/api";
 import { ddmmyyyy } from "@/lib/format";
 import { myEmployee } from "@/lib/employees";
 import { useLocale } from "@/lib/i18n/locale";
-import { letterHtml, myLetters, mySignStates, respondMyLetter, signMyLetter, type MyLetter } from "@/lib/me";
-import { letterLabel } from "@/lib/me-labels";
+import { letterHtml, myLetters, mySignStates, respondMyLetter, signMyLetter, type MyLetter } from "@/legacy/employee-web/lib/me";
+import { letterLabel } from "@/legacy/employee-web/lib/me-labels";
 import { useApi } from "@/lib/use-api";
 
 const SIG_KEY = (owner: string) => "ariba_sig_v1_" + String(owner || "");

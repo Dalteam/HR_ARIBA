@@ -118,11 +118,10 @@ empty Railway Postgres; nothing is deployed yet. The owner is **not a developer*
    عمل إضافي (submit, then delete it); المستندات (draw a signature once, then «موافق مع التوقيع» on a letter, and
    «موافقة بدون توقيع» on another); الموافقات as a manager/HR account; and the home's balance + last payslip.
 2. **Phase 2c remainders:** none. `exportEmail` waits for an approved sender (FOLLOW_UPS #7), not for a screen.
-3. **Phase 3, the employee app:** the ten-tab comparison is in DESIGN_PORT.md and the hr-web `/me` area now has all
-   its tabs (home, attendance, requests, salary, team, overtime, documents with web signing, approvals). What is left
-   there: the design's shell (hero with the clock and the punch button, tiles, quick actions as drawn) over the area,
-   the polygon work-location zones in الحضور (our `/me/attendance` returns circles), and the tabs that wait for backend
-   stages (business card `bizc`, leave cancel / edit, balance snapshots). Needs the owner's eye on a phone.
+3. **Phase 3, the employee app:** the ten-tab comparison is in DESIGN_PORT.md. The hr-web `/me` area that mirrored
+   the app (home, attendance, requests, salary, team, overtime, documents with web signing, approvals) was **retired
+   on 5 Nov 2026** — it is text-only under `frontend/hr-web/src/legacy/employee-web` and `/me` is one card pointing at
+   the app (`docs/ACCEPTANCE_CHECKS.md` §5.5, 14-4), so the app is now the one place these screens live.
 4. **Small fix, separate commit:** two `tsc` errors already on the branch in the employee app
    (`src/components/sig-pad.tsx:52` `touchAction`; `src/lib/diag.ts:3` untyped parameter).
 5. **Backend stages** (owner's order, each with rules first, gate, commit on `backend-new-ui`): roles & permission

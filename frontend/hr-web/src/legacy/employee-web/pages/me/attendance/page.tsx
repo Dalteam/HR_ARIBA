@@ -6,11 +6,11 @@
 // or polygon, an approved remote request, the flexible window), so a refusal is shown in its own words.
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast";
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { ApiError } from "@/lib/api";
 import { ddmmyyyy, todayIso } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale";
-import { myAttendance, myAttendanceRange, punch, submitMyRequest, type MySession, type WorkLocation } from "@/lib/me";
+import { myAttendance, myAttendanceRange, punch, submitMyRequest, type MySession, type WorkLocation } from "@/legacy/employee-web/lib/me";
 import { useApi } from "@/lib/use-api";
 
 const ST: Record<string, [string, string]> = {

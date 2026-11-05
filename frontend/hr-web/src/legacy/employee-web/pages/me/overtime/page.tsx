@@ -6,11 +6,11 @@
 import { useState } from "react";
 import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { ApiError } from "@/lib/api";
 import { ddmmyyyy, todayIso } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale";
-import { deleteMyRequest, myRequests, submitMyRequest, type MyRequest } from "@/lib/me";
+import { deleteMyRequest, myRequests, submitMyRequest, type MyRequest } from "@/legacy/employee-web/lib/me";
 import { useApi } from "@/lib/use-api";
 
 export default function MeOvertime() {

@@ -1,7 +1,7 @@
 "use client";
 
-import { MeState } from "@/components/me/me-shell";
-import { usePhoto } from "@/components/me/use-photo";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
+import { usePhoto } from "@/legacy/employee-web/components/me/use-photo";
 import { listDocuments, myEmployee, openDocument } from "@/lib/employees";
 import { ddmmyyyy, initials, sar2 } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";

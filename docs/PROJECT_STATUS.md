@@ -18,7 +18,9 @@ document/photo uploads (stored on disk; a Railway Volume in production), depende
 automatic employee numbers. New endpoints: `GET /dashboard`, `POST /employees/salary-preview`,
 `GET|POST /employees/{id}/documents`, `GET /documents/{id}/file`, `DELETE /documents/{id}`,
 `GET|PUT|DELETE /employees/{id}/photo`, `GET|POST /employees/{id}/dependents`, `PATCH|DELETE /dependents/{id}`,
-`POST /dependents/{id}/documents`. The employee app has its own login at `/me/login`.
+`POST /dependents/{id}/documents`. The employee app signs in on its own screen (`frontend/employee-app`); on the HR
+web there is one login (`/login`) — the old `/me/login` and the web `/me` pages were retired on 5 Nov 2026 (the
+pages are text-only under `frontend/hr-web/src/legacy/employee-web`).
 
 ## Phase 1 — Foundation + Employees (done)
 

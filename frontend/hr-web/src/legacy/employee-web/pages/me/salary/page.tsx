@@ -4,12 +4,12 @@
 // payslip, the earlier approved months (each opens in place) and the bank details. Read-only: everything comes
 // from GET /me/employee and GET /me/payslips, the same routes the employee app uses.
 import { useState } from "react";
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { myEmployee } from "@/lib/employees";
 import { sar2 } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
-import { myPayslips, type Payslip } from "@/lib/me";
+import { myPayslips, type Payslip } from "@/legacy/employee-web/lib/me";
 import { useApi } from "@/lib/use-api";
 
 const n0 = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);

@@ -7,7 +7,7 @@
 import { useState } from "react";
 import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
-import { MeState } from "@/components/me/me-shell";
+import { MeState } from "@/legacy/employee-web/components/me/me-shell";
 import { ApiError } from "@/lib/api";
 import { myEmployee } from "@/lib/employees";
 import { ddmmyyyy, todayIso } from "@/lib/format";
@@ -16,8 +16,8 @@ import { useLocale } from "@/lib/i18n/locale";
 import {
   cancelMyLeave, deleteMyRequest, editMyLeave, LEAVE_ROW_TYPES, LEAVE_TYPES, myLeave, myLeavePolicy, myRequests, requestLeaveCancel,
   submitMyRequest, type MyRequest, type MyRequestType,
-} from "@/lib/me";
-import { reqLabel } from "@/lib/me-labels";
+} from "@/legacy/employee-web/lib/me";
+import { reqLabel } from "@/legacy/employee-web/lib/me-labels";
 import { useApi } from "@/lib/use-api";
 
 /** The one line that says what a request is about (the design's reqDetail). */

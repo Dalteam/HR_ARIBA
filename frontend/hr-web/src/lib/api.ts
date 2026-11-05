@@ -503,9 +503,9 @@ export async function request<T>(path: string, opts: RequestOptions = {}, retrie
     clearSession();
     if (typeof window !== "undefined" && !/\/login$/.test(location.pathname)) {
       // Full reload on purpose: the session is gone, so drop all in-memory app state too.
-      const login = location.pathname.startsWith("/me") ? "/me/login" : "/login";
+      // One sign-in screen since the employee web copy was retired: /me only says where the employee app is.
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      location.assign(`${login}?next=${encodeURIComponent(location.pathname)}`);
+      location.assign(`/login?next=${encodeURIComponent(location.pathname)}`);
     }
   }
   if (!res.ok) throw await parseError(res);

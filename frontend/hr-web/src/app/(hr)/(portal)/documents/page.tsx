@@ -7,7 +7,6 @@ import { PageState } from "@/components/hr/not-built";
 import { useToast } from "@/components/common/toast";
 import { ddmmyyyy } from "@/lib/format";
 import { printHtml } from "@/lib/print";
-import { FEATURES, type FeatureId } from "@/lib/features";
 import { listDocRegistry, type DocRow } from "@/lib/registry";
 import { printIcon } from "@/lib/print-icons";
 
@@ -17,11 +16,10 @@ const TABS: [Tab, string, string][] = [
   ["dc2", "الجوازات", "ti-world"],
   ["dc3", "التأمين الطبي", "ti-heart-plus"],
   ["dc4", "العقود", "ti-file-certificate"],
-  // the updated design's two extra tabs; our registry API does not return these fields yet (lib/features.ts)
+  // the updated design's two extra tabs (Stage 17: the register returns their fields)
   ["dc5", "العنوان الوطني", "ti-map-pin"],
   ["dc6", "شهادة التأمينات", "ti-shield-check"],
 ];
-const WAITING: Partial<Record<Tab, FeatureId>> = { dc5: "docsNationalAddress", dc6: "docsGosiCert" };
 const fD = (d: string | null) => (d ? ddmmyyyy(d) : "—");
 
 /** Legacy dBadge. */
@@ -98,14 +96,6 @@ export default function Page() {
           <i className="ti ti-printer" /> طباعة الكل
         </button>
       </div>
-      {WAITING[tab] && (() => {
-        const w = FEATURES[WAITING[tab]!].waits;
-        return (
-          <div className="card">
-            <div className="al alb"><i className="ti ti-hourglass" aria-hidden /><div><strong>غير متاح بعد</strong><div>يُفتح بعد {w?.ar}</div></div></div>
-          </div>
-        );
-      })()}
       {!rows ? (
         <PageState loading={!error} error={error} onRetry={() => setTick((t) => t + 1)} />
       ) : (
@@ -189,6 +179,48 @@ export default function Page() {
                         <td>{fD(e.contract_end_date)}</td>
                         <td><DBadge d={e.contract_days} /></td>
                         <td>{!e.contract_end_date ? <span className="b bk">مفتوح</span> : state(true, e.contract_days, "", "منتهي", "ساري")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="dc5" style={{ display: tab === "dc5" ? undefined : "none" }}>
+            <div className="card" style={{ padding: 0 }}>
+              <div className="tw">
+                <table id="NAT" ref={(el) => { tables.current.dc5 = el; }}>
+                  <tbody>
+                    <tr><th>#</th><th>الموظف</th><th>العنوان الوطني</th><th>جهة العمل</th><th>الانتهاء</th><th>المتبقي</th><th>الحالة</th></tr>
+                    {a.map((e) => (
+                      <tr key={e.id}>
+                        {row(e)}
+                        <td>{e.national_address || "—"}</td>
+                        <td>{e.workplace || "—"}</td>
+                        <td>{fD(e.national_address_expiry ?? null)}</td>
+                        <td><DBadge d={e.national_address_days ?? null} /></td>
+                        <td>{state(!!(e.national_address || e.national_address_expiry), e.national_address_days ?? null, "غير مكتمل", "منتهي", "ساري")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="dc6" style={{ display: tab === "dc6" ? undefined : "none" }}>
+            <div className="card" style={{ padding: 0 }}>
+              <div className="tw">
+                <table id="GOS" ref={(el) => { tables.current.dc6 = el; }}>
+                  <tbody>
+                    <tr><th>#</th><th>الموظف</th><th>رقم التأمينات</th><th>جهة العمل</th><th>الانتهاء</th><th>المتبقي</th><th>الحالة</th></tr>
+                    {a.map((e) => (
+                      <tr key={e.id}>
+                        {row(e)}
+                        <td>{e.gosi_no || "—"}</td>
+                        <td>{e.workplace || "—"}</td>
+                        <td>{fD(e.gosi_cert_expiry ?? null)}</td>
+                        <td><DBadge d={e.gosi_cert_days ?? null} /></td>
+                        <td>{state(!!(e.gosi_no || e.gosi_cert_expiry), e.gosi_cert_days ?? null, "غير مكتمل", "منتهي", "ساري")}</td>
                       </tr>
                     ))}
                   </tbody>

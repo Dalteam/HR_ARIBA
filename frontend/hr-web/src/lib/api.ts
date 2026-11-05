@@ -142,6 +142,13 @@ export interface Salary {
 }
 
 export interface Employee {
+  // Stage 17
+  national_address_expiry?: string | null;
+  gosi_no?: string | null;
+  gosi_cert_expiry?: string | null;
+  probation_days?: string;
+  probation_end?: string | null;
+  allow_modes?: Record<string, { pct: number }>;
   id: Uuid;
   emp_no: string;
   name_ar: string;
@@ -194,6 +201,13 @@ export interface Employee {
 
 /** Body for create/update. Empty strings are sent as null. */
 export interface EmployeeInput {
+  // Stage 17
+  national_address_expiry?: string | null;
+  gosi_no?: string | null;
+  gosi_cert_expiry?: string | null;
+  probation_days?: string | null;
+  probation_end?: string | null;
+  allow_modes?: Record<string, { pct: number }>;
   emp_no?: string;
   name_ar?: string;
   name_en?: string | null;
@@ -299,9 +313,11 @@ export interface Dashboard {
   payroll_summary: { year: number; month: number } | null;
 }
 
+// The codes of the `document_types` lookup (the API refuses any other). Stage 17 moved the employee form from names
+// the lookup never had (iqama, graduation_certificate, experience_certificate, gosi_certificate) to these.
 export type DocumentType =
-  | "iqama" | "passport" | "insurance" | "contract" | "graduation_certificate" | "experience_certificate"
-  | "gosi_certificate" | "cv" | "national_address" | "photo" | "letter" | "other";
+  | "identity" | "passport" | "insurance" | "contract" | "degree" | "experience" | "professional" | "course"
+  | "social_insurance" | "cv" | "national_address" | "photo" | "letter" | "other";
 
 export interface DocumentFile {
   id: Uuid;

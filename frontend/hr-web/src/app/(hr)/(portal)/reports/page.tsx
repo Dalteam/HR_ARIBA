@@ -7,6 +7,7 @@
 // (components/hr/extra-reports.tsx); the certificates report waits for its step (lib/features.ts).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomReport, LeaveReport } from "@/components/hr/extra-reports";
+import { CertReport } from "@/components/hr/cert-report";
 import { PageState } from "@/components/hr/not-built";
 import { saveBlob } from "@/lib/exporter";
 import { FEATURES, isReady, type FeatureId } from "@/lib/features";
@@ -249,6 +250,7 @@ export default function Page() {
       </div>
       {tool === "reportCustom" && isReady(tool) && <CustomReport />}
       {tool === "reportLeaves" && isReady(tool) && <LeaveReport />}
+      {tool === "reportCerts" && isReady(tool) && <CertReport />}
       {tool && !isReady(tool) && (
         <div className="al alb" style={{ marginBottom: 12 }}>
           <i className="ti ti-hourglass" aria-hidden />

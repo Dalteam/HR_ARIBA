@@ -15,6 +15,7 @@ import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
 import { DependentsTab } from "./dependents-tab";
+import { EmpCerts } from "./emp-certs";
 import { EmpCustody } from "./emp-custody";
 import { DateField } from "@/components/common/date-time-field";
 
@@ -22,7 +23,10 @@ type Tab = "ft1" | "ft2" | "ft3" | "ft4" | "ft6" | "ft5";
 type V = Record<string, string | boolean>;
 
 // The seven upload slots of the prototype's "الوثائق الإلكترونية" block, in order.
-const DOC_SLOTS: DocumentType[] = ["iqama", "passport", "graduation_certificate", "experience_certificate", "gosi_certificate", "national_address", "cv"];
+const DOC_SLOTS: DocumentType[] = ["identity", "passport", "degree", "experience", "social_insurance", "national_address", "cv"];
+// Stage 17: allowances that may be kept as a % of basic (the design's allowModes)
+const PCT_KEYS = ["housing_allowance", "transport_allowance", "project_allowance", "other_allowances", "extra_allowance"];
+const PCT_LABEL: Record<string, MessageKey> = { housing_allowance: "form.hou", transport_allowance: "form.tra", project_allowance: "form.prj", other_allowances: "form.oth", extra_allowance: "form.extra" };
 const MONEY = ["basic_salary", "housing_allowance", "transport_allowance", "project_allowance", "other_allowances", "other_deductions", "extra_allowance"];
 const SALARY_KEYS = [...MONEY, "currency", "exchange_rate", "gosi_system", "payment_method", "bank_name", "iban"];
 const ID_KEYS = ["national_id", "passport_no", "insurance_card_no", "iban"];
@@ -45,6 +49,9 @@ function initial(e?: Employee): V {
     extra_allowance: s?.extra_allowance ?? "0", currency: s?.currency ?? "SAR", exchange_rate: s?.exchange_rate ?? "1",
     gosi_system: s?.gosi_system ?? "matching", wps_type: e?.wps_type ?? "wps", payment_method: s?.payment_method ?? "mudad",
     exclude_from_payroll: e?.exclude_from_payroll ?? false, exclude_from_eos: e?.exclude_from_eos ?? false,
+    // Stage 17
+    national_address_expiry: e?.national_address_expiry ?? "", gosi_no: e?.gosi_no ?? "", gosi_cert_expiry: e?.gosi_cert_expiry ?? "",
+    probation_days: e?.probation_days ?? "", probation_end: e?.probation_end ?? "",
   };
 }
 
@@ -89,6 +96,10 @@ export function EmployeeForm({
   const [preview, setPreview] = useState<SalaryPreview | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [temp, setTemp] = useState<string | null>(null);
+  // Stage 17: allowances kept as a % of basic ({key: "25"}); the amount box shows basic × % and the API stores both
+  const startModes = useMemo(() => Object.fromEntries(Object.entries(employee?.allow_modes ?? {}).map(([k, m]) => [k, String(m.pct)])) as Record<string, string>, [employee]);
+  const [modes, setModes] = useState<Record<string, string>>(startModes);
+  const modesChanged = JSON.stringify(modes) !== JSON.stringify(startModes);
   const salaryVisible = isNew || !!employee?.salary;
   const masked = !!employee?.ids_masked;
   const ro = !canEdit;
@@ -116,6 +127,17 @@ export function EmployeeForm({
     };
   }, [employee]);
   const wlChanged = JSON.stringify([...wl].sort()) !== JSON.stringify([...wlBase].sort());
+  const pctAmount = (k: string) => String(Math.round((Number(v.basic_salary) || 0) * (Number(modes[k]) || 0)) / 100);
+  useEffect(() => {
+    // an allowance kept as a % follows the basic and its % in the box (the API recomputes it the same way)
+    setV((cur) => {
+      const next = { ...cur };
+      let ch = false;
+      for (const k of Object.keys(modes)) if (next[k] !== pctAmount(k)) { next[k] = pctAmount(k); ch = true; }
+      return ch ? next : cur;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modes, v.basic_salary]);
   const changed = isNew ? [] : Object.keys(start).filter((k) => v[k] !== start[k]);
   const undo = (k: string) =>
     !isNew && !ro && v[k] !== start[k] ? (
@@ -173,6 +195,21 @@ export function EmployeeForm({
       {err(k)}
     </div>
   );
+  // Stage 17: fields whose labels are not in the dictionary yet
+  const plain = (k: string, label: string) => (
+    <div>
+      <label htmlFor={`f-${k}`}>{label}{undo(k)}</label>
+      <input id={`f-${k}`} value={v[k] as string} onChange={(e) => set(k, e.target.value)} disabled={ro} maxLength={30} />
+      {err(k)}
+    </div>
+  );
+  const plainDate = (k: string, label: string) => (
+    <div>
+      <label htmlFor={`f-${k}`}>{label}{undo(k)}</label>
+      <DateField id={`f-${k}`} title={label} value={(v[k] as string) ?? ""} onChange={(x) => set(k, x)} disabled={ro} />
+      {err(k)}
+    </div>
+  );
   const select = (k: string, label: MessageKey, opts: [string, string][], placeholder?: string) => (
     <div>
       <label htmlFor={`f-${k}`}>{t(label)}{undo(k)}</label>
@@ -206,10 +243,13 @@ export function EmployeeForm({
     if (!isNew) keys = keys.filter((k) => v[k] !== start[k]);
     if (!salaryVisible) keys = keys.filter((k) => !SALARY_KEYS.includes(k));
     if (masked) keys = keys.filter((k) => !ID_KEYS.includes(k) && k !== "notes");
-    if (!isNew && keys.length === 0 && !wlChanged) return;
+    const sendModes = salaryVisible && modesChanged;
+    if (!isNew && keys.length === 0 && !wlChanged && !sendModes) return;
     setBusy(true);
     try {
-      if (isNew || keys.length) await onSubmit(toBody(v, keys));
+      const body = toBody(v, keys);
+      if (sendModes) body.allow_modes = Object.fromEntries(Object.entries(modes).map(([k, p]) => [k, { pct: Number(p) || 0 }]));
+      if (isNew || keys.length || sendModes) await onSubmit(body);
       if (employee && wlChanged) {
         await request(`/employees/${employee.id}/work-locations`, { method: "PUT", body: { location_ids: wl } });
         setWlBase(wl);
@@ -378,17 +418,10 @@ export function EmployeeForm({
                       <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={(e) => { onDoc(d, e.target.files?.[0]); e.target.value = ""; }} />
                     </div>
                   ))}
-                {canEdit && (
-                  <div className="ff" id="EMP_CERTS" style={{ border: "1px dashed var(--bd)", borderRadius: 10, padding: 10, margin: "10px 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <b><i className="ti ti-certificate" /> {T("إضافة شهادة للموظف", "Add a certificate")}</b>
-                    <span style={{ fontSize: 11, color: "var(--mu)", flex: 1 }}>{T("بنوعها واسمها وجهتها وتاريخها", "with its type, title, issuer and dates")}</span>
-                    {waitBtn("empCerts", T("إضافة الشهادة", "Add certificate"), "ti-plus")}
-                  </div>
-                )}
-                <div className="ff" style={{ fontSize: 11, color: "var(--mu)" }}>
-                  {T("العنوان الوطني وانتهاؤه، ورقم التأمينات وانتهاء شهادتها: ", "National address and its expiry, GOSI number and certificate expiry: ")}
-                  {T("غير متاح بعد — يُفتح بعد ", "not available yet — opens after ")}{lang === "en" ? FEATURES.docsNationalAddress.waits?.en : FEATURES.docsNationalAddress.waits?.ar}
-                </div>
+                {canEdit && employee && <EmpCerts employeeId={employee.id} onSaved={() => docs.reload()} />}
+                {plainDate("national_address_expiry", T("انتهاء العنوان الوطني", "National address expiry"))}
+                {plain("gosi_no", T("رقم التأمينات الاجتماعية", "GOSI number"))}
+                {plainDate("gosi_cert_expiry", T("انتهاء شهادة التأمينات", "GOSI certificate expiry"))}
                 <div className="ff" style={{ marginTop: 10 }}>
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>{T("الوثائق المرفوعة", "Uploaded documents")}</div>
                   {docs.data && !docs.data.length && <div style={{ color: "var(--mu)" }}>{T("لا توجد وثائق", "No documents")}</div>}
@@ -423,10 +456,14 @@ export function EmployeeForm({
             {field("annual_leave_days", "form.ldc", "number")}
             <div className="fsec" style={{ marginTop: 8 }}>{T("فترة التجربة", "Probation period")}</div>
             <div>
-              <label>{T("مدة التجربة (من تاريخ المباشرة)", "Probation (from the joining date)")}</label>
-              <select disabled value=""><option value="">{T("الافتراضي: 90 يوم", "Default: 90 days")}</option></select>
+              <label htmlFor="f-probation_days">{T("مدة التجربة (من تاريخ المباشرة)", "Probation (from the joining date)")}{undo("probation_days")}</label>
+              <select id="f-probation_days" value={v.probation_days as string} disabled={ro} onChange={(e) => set("probation_days", e.target.value)}>
+                <option value="">{T("الافتراضي (من إعدادات التنبيهات)", "Default (from the alerts settings)")}</option>
+                {["30", "60", "90", "180"].map((d) => <option key={d} value={d}>{d} {T("يوم", "days")}</option>)}
+                <option value="custom">{T("تاريخ يدوي (تمديد)", "A date of its own (extension)")}</option>
+              </select>
             </div>
-            <div style={{ display: "flex", alignItems: "flex-end" }}>{waitBtn("empProbation", T("تمديد / تاريخ يدوي", "Extend / set a date"), "ti-calendar-plus")}</div>
+            {v.probation_days === "custom" && plainDate("probation_end", T("نهاية التجربة", "Probation ends"))}
             <div className="ff" style={{ fontSize: 10, color: "var(--mu)", padding: "4px 0" }}>{T("تُحسب نهاية التجربة تلقائيًا من تاريخ المباشرة، ولتمديدها اختر مدة أطول أو تاريخًا يدويًا.", "The probation end follows the joining date; to extend it pick a longer period or a date.")}</div>
           </div>
         )}
@@ -436,13 +473,32 @@ export function EmployeeForm({
             <div id="ft4" className="fg">
               <div className="fsec">{t("form.salarySec")}</div>
               {field("basic_salary", "form.sal", "number", { step: "any" })}
-              {field("housing_allowance", "form.hou", "number", { step: "any" })}
-              {field("transport_allowance", "form.tra", "number", { step: "any" })}
-              {field("project_allowance", "form.prj", "number", { step: "any" })}
-              {field("other_allowances", "form.oth", "number", { step: "any" })}
+              {field("housing_allowance", "form.hou", "number", { step: "any", disabled: "housing_allowance" in modes })}
+              {field("transport_allowance", "form.tra", "number", { step: "any", disabled: "transport_allowance" in modes })}
+              {field("project_allowance", "form.prj", "number", { step: "any", disabled: "project_allowance" in modes })}
+              {field("other_allowances", "form.oth", "number", { step: "any", disabled: "other_allowances" in modes })}
               {field("other_deductions", "form.ded", "number", { step: "any" })}
-              {field("extra_allowance", "form.extra", "number", { step: "any" })}
-              {canEdit && <div style={{ display: "flex", alignItems: "flex-end" }}>{waitBtn("empAllowPct", T("البدل كنسبة % من الأساسي", "Allowance as % of basic"), "ti-percentage")}</div>}
+              {field("extra_allowance", "form.extra", "number", { step: "any", disabled: "extra_allowance" in modes })}
+              {canEdit && (
+                <div className="ff" style={{ border: "1px dashed var(--bd)", borderRadius: 10, padding: 10 }}>
+                  <b style={{ fontSize: 12 }}><i className="ti ti-percentage" /> {T("البدل كنسبة % من الأساسي", "Allowance as % of basic")}</b>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 6 }}>
+                    {PCT_KEYS.map((k) => (
+                      <label key={k} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                        <input type="checkbox" checked={k in modes} onChange={(e) => {
+                          const next = { ...modes };
+                          if (e.target.checked) { const b = Number(v.basic_salary) || 0; next[k] = b ? String(Math.round(((Number(v[k]) || 0) / b) * 10000) / 100) : "0"; }
+                          else delete next[k];
+                          setModes(next);
+                        }} />
+                        {t(PCT_LABEL[k])}
+                        {k in modes && <><input type="number" min={0} max={1000} step="0.01" value={modes[k]} style={{ width: 70 }} onChange={(e) => { setModes({ ...modes, [k]: e.target.value }); }} />%</>}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--mu)", marginTop: 4 }}>{T("البدل المحدّد يُحسب = الأساسي × النسبة، ويتغيّر تلقائيًا مع الأساسي.", "A ticked allowance = basic × %, and follows the basic automatically.")}</div>
+                </div>
+              )}
               <div className="fsec" style={{ marginTop: 8 }}>{t("form.gosiSec")}</div>
               {select("currency", "form.currency", enumOpts("currency", ["SAR", "USD", "EUR", "EGP"]))}
               {field("exchange_rate", "form.rate", "number", { step: "any", disabled: v.currency === "SAR" })}

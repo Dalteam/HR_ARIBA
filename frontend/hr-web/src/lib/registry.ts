@@ -1,6 +1,13 @@
 import { request } from "./api";
 
 export interface DocRow {
+  // Stage 17
+  national_address?: string | null;
+  national_address_expiry?: string | null;
+  national_address_days?: number | null;
+  gosi_no?: string | null;
+  gosi_cert_expiry?: string | null;
+  gosi_cert_days?: number | null;
   id: string;
   emp_no: string;
   name_ar: string;

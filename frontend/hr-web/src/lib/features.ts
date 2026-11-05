@@ -47,11 +47,11 @@ export const FEATURES = {
   /** employees list: import employees from an Excel file */
   empImport: { status: "ready" } as Feature,
   /** documents: the design's national-address and GOSI-certificate tabs (our registry does not return them yet) */
-  docsNationalAddress: backend("إضافة حقل العنوان الوطني إلى سجل الوثائق", "adding the national address to the documents registry"),
-  docsGosiCert: backend("إضافة حقل شهادة التأمينات إلى سجل الوثائق", "adding the GOSI certificate to the documents registry"),
+  docsNationalAddress: { status: "ready" } as Feature,
+  docsGosiCert: { status: "ready" } as Feature,
   /** reports: the design's custom-report builder, certificates report and comprehensive leave report */
   reportCustom: { status: "ready" } as Feature,
-  reportCerts: backend("مسار يجمع وثائق كل الموظفين (سجل الشهادات)", "a route listing every employee's documents (certificates)"),
+  reportCerts: { status: "ready" } as Feature,
   reportLeaves: { status: "ready" } as Feature,
   /** templates: the design's job-offer letter for a candidate (a printed document, no backend) */
   templatesOffer: { status: "ready" } as Feature,
@@ -66,11 +66,11 @@ export const FEATURES = {
   /** payroll: HR prepares the month and sends it to finance, who approves (the design's prepare / status steps) */
   payPrepare: backend("مرحلة تجهيز المسير للمالية (حالة المسير: مسودة ← جاهز ← معتمد)", "the payroll prepare-for-finance stage (draft → prepared → approved)"),
   /** employee form: a certificate with its type, title, issuer and dates (the design's EmpCerts; needs document metadata) */
-  empCerts: backend("إضافة اسم الشهادة وجهتها وتواريخها إلى الوثائق", "adding certificate title, issuer and dates to documents"),
+  empCerts: { status: "ready" } as Feature,
   /** employee form: a per-employee probation period or end date */
-  empProbation: backend("حقل فترة التجربة لكل موظف", "a per-employee probation field"),
+  empProbation: { status: "ready" } as Feature,
   /** employee form: an allowance kept as a percentage of the basic salary */
-  empAllowPct: backend("حفظ البدل كنسبة من الأساسي", "storing an allowance as a percentage of basic"),
+  empAllowPct: { status: "ready" } as Feature,
   /** employee form: the accounts still on a default / temporary password (owner decision a) */
   pwDefaultList: backend("مرحلة «الحسابات بكلمة مرور مؤقتة»", "the accounts-on-a-temporary-password stage"),
   // ---- settings cards of the design whose backend stage is not done (Phase 2b) ----

@@ -14,7 +14,8 @@ from app.core.security import SecurityHeadersMiddleware
 from app.database import engine
 from app.models import configure_models
 from app.routers import alerts, announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals
-from app.routers import health, leave_actions, manager, me_leave, permissions, public, push, recycle_bin, tasks
+from app.routers import health, leave_actions, manager, me_leave, permissions, public, push, recycle_bin
+from app.routers import settings_extra, tasks
 from app.services import escalation, notify_email
 
 API_PREFIX = "/api/v1"
@@ -130,6 +131,8 @@ def create_app() -> FastAPI:
     # The employee's own leave actions (Stage 14): cancel / edit a pending leave, ask to cancel an approved one.
     # The cancel request needs migration 006 (006_leave_cancel_type.sql); without it that one route answers 503.
     app.include_router(me_leave.router, prefix=API_PREFIX)
+    # Small settings saves (Stage 16): brand colours, punch logo, letterhead, greeting texts, mailboxes (no password).
+    app.include_router(settings_extra.router, prefix=API_PREFIX)
     return app
 
 

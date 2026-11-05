@@ -1180,6 +1180,28 @@ This replaces P7 of § Goals ("HR never writes evaluations") for the HR set (hr,
   the same period, HR's version replaces the manager's unsigned one.
 - **H4** `GET /evaluations/...` answers `can_write` so the screen shows HR's form only to those who may use it.
 
+## Small settings saves — Stage 16, 5 Nov 2026 (`routers/settings_extra.py`, no migration)
+
+The design's settings cards that only store a value (`reference/hr-v1` `settings/BrandCard.jsx`, `LetterheadCard.jsx`,
+`PunchCard.jsx`, `MailCard.jsx`, and the greeting texts of `lib/occasions.js`). Owner (3–4 Nov 2026): every feature of
+the design except the AI assistant; brand colours by a plain colour picker, the server never fetches a website; mail
+details saved only, **never a password**, sending stays off.
+
+| # | Setting (`ariba_app_settings` key) | Read | Save |
+|---|---|---|---|
+| S1 | Brand colours (`brand_colors`: `p`, `s`, `a`) | `settings: view` (and `/public/brand`, unchanged) | `settings: edit`; hex only (`#rgb`/`#rrggbb`), `a` optional; `{reset: true}` puts the default colours back |
+| S2 | Punch-button logo (`punch_watermark`: `data`) | `settings: view` (and `/public/brand`) | `settings: edit`; a raster `data:image/…` of at most 512 KiB, or empty to remove; an older copy inside `brand_colors.punch` is removed so the new one shows |
+| S3 | Letterhead (`letterhead`: `mode` default / page / hf, `page`, `head`, `foot`, `top`, `bottom`, `preset`) | every HR-portal role (`staff: view`): every print uses it | `settings: edit`; images as S2 (at most 1.5 MiB each), margins 0–120 mm |
+| S4 | Greeting texts (`greeting_templates`: birthday / anniversary `{t, b}`) | as the greetings switch (HR) | as the greetings switch; `{name}` = first name, `{years}` = years of service; empty = the built-in text; at most 200 / 2000 characters |
+| S5 | Mailboxes (`ariba_mail_accounts`, owner `company` or the user's employee id) | company: `settings: view`; mine: myself | company: `settings: edit`; mine: myself. Host, port, secure, username, sender name / address. **No password field exists**: the password stays in the server environment (`SMTP_PASSWORD`) |
+
+- Every save is audited (module `settings`), with the field names, never an image or an address book.
+- Prints: the forms, letters, payslip, offer letter and settlement read `letterhead`. With nothing saved they keep today's
+  Ariba header and footer (the design's «ورق أريبا الجاهز»); `page` draws the saved A4 background with its margins;
+  `default` explicitly chosen prints without letterhead. `ariba_src` holds a `page` letterhead the client saved.
+- **Not built (needs a decision):** the employee app's *own* colours (`emp_brand_colors`). The app is painted from
+  `/public/brand`, which by § Public brand reads five named keys and must not widen; the app follows the program colours.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

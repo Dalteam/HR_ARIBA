@@ -386,6 +386,14 @@ def run_auto(db: Session, today: date | None = None) -> int:
         return 0
     today = today or now_riyadh().date()
     sent = 0
+    # Stage 16 (S4): HR's own greeting texts, when saved; the built-in text otherwise
+    saved = _setting(db, "greeting_templates")
+    texts = saved if isinstance(saved, dict) else {}
+
+    def text_of(kind: str, title: str, body: str, name: str, years: int | None = None) -> tuple[str, str]:
+        own = texts.get(kind) if isinstance(texts.get(kind), dict) else {}
+        fill = lambda s: str(s).replace("{name}", name).replace("{years}", str(years) if years is not None else "")
+        return (fill(own["t"]) if own.get("t") else title), (fill(own["b"]) if own.get("b") else body)
 
     def once(eid: str, occasion: str, key: str, title: str, body: str) -> None:
         nonlocal sent
@@ -403,16 +411,18 @@ def run_auto(db: Session, today: date | None = None) -> int:
                 FROM public.employee_directory d WHERE {CURRENT} AND d.dob IS NOT NULL
                 AND EXTRACT(month FROM d.dob)=:m AND EXTRACT(day FROM d.dob)=:d"""),
                 {"m": today.month, "d": today.day}).all():
-            once(eid, "birthday", f"birthday:{eid}:{today.year}", f"كل عام وأنت بخير يا {_first(name)}",
-                 "تتمنى لك إدارة الموارد البشرية عامًا مليئًا بالصحة والنجاح والسعادة.")
+            once(eid, "birthday", f"birthday:{eid}:{today.year}", *text_of(
+                "birthday", f"كل عام وأنت بخير يا {_first(name)}",
+                "تتمنى لك إدارة الموارد البشرية عامًا مليئًا بالصحة والنجاح والسعادة.", _first(name)))
     if cfg["anniversary"]:
         for eid, name, years in db.execute(text(f"""SELECT d.employee_id, COALESCE(d.name_ar, d.name_en, d.employee_id),
                 CAST(:y - EXTRACT(year FROM d.join_date) AS int) FROM public.employee_directory d
                 WHERE {CURRENT} AND d.join_date IS NOT NULL AND EXTRACT(year FROM d.join_date) < :y
                 AND EXTRACT(month FROM d.join_date)=:m AND EXTRACT(day FROM d.join_date)=:d"""),
                 {"y": today.year, "m": today.month, "d": today.day}).all():
-            once(eid, "anniversary", f"anniversary:{eid}:{today.year}", f"{years} سنة معنا يا {_first(name)}",
-                 "نشكرك على جهودك وإخلاصك، ونتمنى لك دوام التوفيق في مسيرتك معنا.")
+            once(eid, "anniversary", f"anniversary:{eid}:{today.year}", *text_of(
+                "anniversary", f"{years} سنة معنا يا {_first(name)}",
+                "نشكرك على جهودك وإخلاصك، ونتمنى لك دوام التوفيق في مسيرتك معنا.", _first(name), years))
     if cfg["custom"]:
         for oid, eid, occasion, name in db.execute(text(f"""SELECT o.id, o.employee_id, o.occasion,
                 COALESCE(d.name_ar, d.name_en, o.employee_id) FROM public.ariba_emp_occasions o

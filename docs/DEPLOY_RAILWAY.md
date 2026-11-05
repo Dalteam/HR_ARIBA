@@ -18,9 +18,11 @@ web addresses into the backend's `CORS_ORIGINS` → prove it (section 7). Railwa
 ## 2. Backend service
 Service **Settings**:
 - **Root Directory**: `/backend`.
-- **Config as code → file path**: `/backend/railway.json` (start command, health check `/health`). Railway looks
-  for the file at the repo root unless told, even with a root directory set; without this a build may fail with
-  «No start command detected».
+- **Deploy settings** (type them in; Railway retired pointing a service at a `railway.json`, and does not read the
+  one in `backend/`, which stays as the record of these values): **Start Command**
+  `uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*`, **Healthcheck Path**
+  `/health`, timeout `60`, restart **On Failure**. Without a start command a build can fail with «No start command
+  detected».
 - **Networking → Generate Domain** (note it, e.g. `https://backend-xxx.up.railway.app`).
 - **Volumes → Add Volume**, mount path **`/data`** (uploaded photos and documents).
 
@@ -62,8 +64,8 @@ e-mail (Stage 8) is parked on the branch `stage-8-on-hold` until e-mail is switc
 ## 3. hr-web service (the HR portal and the public job-application page)
 Add the same repo again (**+ Create → GitHub Repo → Dalteam/HR_ARIBA**), then **Settings**:
 - **Root Directory**: `/frontend/hr-web`.
-- **Config as code → file path**: `/frontend/hr-web/railway.json` (`npm run build`, `npm run start`, health check
-  `/login`).
+- **Build Command** `npm run build`, **Start Command** `npm run start`, **Healthcheck Path** `/login`, restart **On
+  Failure** (the values of `frontend/hr-web/railway.json`).
 - **Networking → Generate Domain**.
 
 **Variables** (see `frontend/hr-web/.env.example`). Both are baked in at **build** time: redeploy after a change.
@@ -85,8 +87,8 @@ app. Nothing goes through an app store (owner, 5 Nov 2026).
 Add the repo a third time, then **Settings**:
 - **Root Directory**: `/frontend/employee-app` (no space before the slash: the build then fails with «directory
   does not exist»).
-- **Config as code → file path**: `/frontend/employee-app/railway.json` (`npm run build:web`, then
-  `npm run serve:web`, health check `/manifest.webmanifest`).
+- **Build Command** `npm run build:web`, **Start Command** `npm run serve:web`, **Healthcheck Path** `/` (Railway
+  refuses a path with a dot, so not `/manifest.webmanifest`), restart **On Failure**.
 - **Networking → Generate Domain**.
 
 **Variables** (see `frontend/employee-app/.env.example`):

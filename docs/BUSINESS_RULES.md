@@ -1223,6 +1223,29 @@ The design's employee-form and document fields we did not carry (`reference/hr-v
   file documents with name, type, size, dates and details, **never the file**; request attachments (sick-leave reports and
   the like) stay with their requests and are not listed.
 
+## Accounts — Stage 18, 5 Nov 2026 (`routers/accounts_admin.py`, `services/employee_delete.py`, no migration)
+
+The design's delete-employee route (`reference/hr-v1` SQL `27_recycle_bin.sql`, `ariba_hr_delete_employee`) and its list of
+accounts on a default password. Owner: deleting is allowed for HR and admin (4 Nov 2026); the list shows names only,
+never a password (3 Nov 2026, decision a).
+
+- **AC1** `DELETE /employees/{id}` needs `employees_admin: edit` (hr, admin_manager, admin, chairman). Nobody deletes
+  their own record (403). An unknown id is 404.
+- **AC2** Refused with 409 `employee_linked`, naming the reasons, while someone else's data points at the employee:
+  direct manager of others, workflow approver, delegation manager, manager on others' letters, creator of others'
+  tasks, submitter of requests on others' behalf, or approver in others' request history. HR reassigns first, or
+  terminates instead (a termination keeps everything).
+- **AC3** Otherwise every row of the employee's own is snapshotted into the recycle bin (kind `employee`): the directory
+  row, accounts, requests and their actions, leaves, documents with their files, attendance, payroll rows, and their
+  permissions, termination archive, targets, evaluations, leave files, occasions, delegations, manager permissions,
+  tasks, letter-signing rows, business card and alert rows. Then they are deleted. Notifications and sign-in sessions are
+  not kept (as in the design). Other people's targets or evaluations the employee *created* keep their rows with the
+  author left empty (the database's own rule).
+- **AC4** The recycle bin's restore puts every one of those back (documents before leaves, a leave may point at its
+  attachment), with the certificate details of Stage 17. Audited both ways.
+- **AC5** `GET /accounts/temporary-password` (`employees_admin: edit`): active accounts still on a temporary password
+  (`must_change`), with name, username, role and since when; never a password or a hash.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

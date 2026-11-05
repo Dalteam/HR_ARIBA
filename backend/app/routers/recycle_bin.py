@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import ApiError
 from app.database import get_db
 from app.routers import canonical
+from app.services import employee_delete
 
 router = APIRouter(tags=["bin"])
 
@@ -120,6 +121,11 @@ def _restore_documents(db: Session, documents: list[dict[str, Any]], employee_id
             "file_name": doc.get("file_name"), "mime_type": doc.get("mime_type"),
             "b64": doc.get("base64") or doc.get("b64"),
             "uploaded_by": doc.get("uploaded_by"), "created_at": doc.get("created_at")})
+        if doc.get("title") or doc.get("issuer") or doc.get("issue_date") or doc.get("expiry_date"):
+            db.execute(text("""UPDATE public.ariba_documents SET title=:t, issuer=:i, issue_date=CAST(:d1 AS date),
+                expiry_date=CAST(:d2 AS date) WHERE id=CAST(:id AS uuid)"""),
+                {"t": doc.get("title"), "i": doc.get("issuer"), "d1": doc.get("issue_date"), "d2": doc.get("expiry_date"),
+                 "id": doc.get("id")})
 
 
 
@@ -182,17 +188,25 @@ def bin_restore(item_id: str, request: Request, actor: dict[str, Any] = Depends(
             raise _refuse("SNAPSHOT_INCOMPLETE")
         if canonical._row(db, "SELECT 1 AS x FROM public.employee_directory WHERE employee_id=:e", e=employee_id):
             raise _refuse("EMPLOYEE_EXISTS")
+        # parents first; documents before leaves, because a leave may point at its attachment (Stage 18)
         for table, key in (("employee_directory", "employee"), ("ariba_auth_accounts", "accounts"),
-                           ("workflow_requests", "requests"), ("leave_requests", "leaves"),
-                           ("workflow_actions", "actions"), ("attendance", "attendance"),
-                           ("employee_payrolls", "payrolls")):
+                           ("workflow_requests", "requests"), ("documents", "documents"),
+                           ("leave_requests", "leaves"), ("workflow_actions", "actions"),
+                           ("attendance", "attendance"), ("employee_payrolls", "payrolls")):
+            if key == "documents":
+                _restore_documents(db, snap.get("documents") or [], employee_id, None)
+                continue
             rows = snap.get(key)
             if key == "employee":
                 rows = [rows] if rows else []
             if not rows:
                 continue
             _insert_snapshots(db, table, rows)
-        _restore_documents(db, snap.get("documents") or [], employee_id, None)
+        # Stage 18: the employee's rows in the other tables (services/employee_delete.EXTRAS, same order)
+        extras = snap.get("extras") or {}
+        for table, _column in employee_delete.EXTRAS:
+            if extras.get(table) and employee_delete.exists(db, table):
+                _insert_snapshots(db, table, extras[table])
     else:
         raise _refuse("KIND_NOT_RESTORABLE")
 

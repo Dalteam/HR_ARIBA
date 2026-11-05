@@ -43,7 +43,7 @@ export const FEATURES = {
   // ---- buttons inside existing screens (Phase 2b) ----
   /** employees list: delete an employee (the design archives it to the recycle bin; the bin screen exists, the
    *  `DELETE /employees/{id}` route that would put a row in it does not yet) */
-  empDelete: backend("مسار حذف موظف إلى سلة المهملات", "a delete-employee route that archives to the recycle bin"),
+  empDelete: { status: "ready" } as Feature,
   /** employees list: import employees from an Excel file */
   empImport: { status: "ready" } as Feature,
   /** documents: the design's national-address and GOSI-certificate tabs (our registry does not return them yet) */
@@ -72,7 +72,7 @@ export const FEATURES = {
   /** employee form: an allowance kept as a percentage of the basic salary */
   empAllowPct: { status: "ready" } as Feature,
   /** employee form: the accounts still on a default / temporary password (owner decision a) */
-  pwDefaultList: backend("مرحلة «الحسابات بكلمة مرور مؤقتة»", "the accounts-on-a-temporary-password stage"),
+  pwDefaultList: { status: "ready" } as Feature,
   // ---- settings cards of the design whose backend stage is not done (Phase 2b) ----
   /** HR saves the brand colours (owner decision c: a plain colour picker with the design's presets) */
   brandColors: { status: "ready" } as Feature,

@@ -8,7 +8,6 @@ import { ApiError, type DocumentType, type Employee, type EmployeeInput, type Em
 import { accountForEmployee, createAccount, issueTemporaryPassword } from "@/lib/auth";
 import { deleteDocument, listDocuments, openDocument, photoBlob, salaryPreview, uploadDocument, uploadPhoto } from "@/lib/employees";
 import { request } from "@/lib/api";
-import { FEATURES, isReady, type FeatureId } from "@/lib/features";
 import { listLocations, type Location } from "@/lib/locations";
 import { dmy, sar } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
@@ -16,6 +15,8 @@ import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
 import { DependentsTab } from "./dependents-tab";
 import { EmpCerts } from "./emp-certs";
+import { TempPasswordList } from "./temp-password-list";
+import { useAuth } from "@/lib/auth-context";
 import { EmpCustody } from "./emp-custody";
 import { DateField } from "@/components/common/date-time-field";
 
@@ -96,6 +97,8 @@ export function EmployeeForm({
   const [preview, setPreview] = useState<SalaryPreview | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [temp, setTemp] = useState<string | null>(null);
+  const [tempList, setTempList] = useState(false);
+  const { can } = useAuth();
   // Stage 17: allowances kept as a % of basic ({key: "25"}); the amount box shows basic × % and the API stores both
   const startModes = useMemo(() => Object.fromEntries(Object.entries(employee?.allow_modes ?? {}).map(([k, m]) => [k, String(m.pct)])) as Record<string, string>, [employee]);
   const [modes, setModes] = useState<Record<string, string>>(startModes);
@@ -105,7 +108,6 @@ export function EmployeeForm({
   const ro = !canEdit;
   const docs = useApi(() => (employee ? listDocuments(employee.id) : Promise.resolve([])), `docs:${employee?.id}`);
   const T = (ar: string, en: string) => (lang === "en" ? en : ar);
-  const waiting = (id: FeatureId) => toast(T("غير متاح بعد — يُفتح بعد ", "Not available yet — opens after ") + (lang === "en" ? FEATURES[id].waits?.en : FEATURES[id].waits?.ar), "info");
   // fingerprint work locations (the design's WL_BOX): saved with «حفظ وتحديث», existing employees only
   const [locs, setLocs] = useState<Location[]>([]);
   const [wl, setWl] = useState<string[]>([]);
@@ -309,9 +311,6 @@ export function EmployeeForm({
       toast(e instanceof ApiError ? e.message : t("common.error"), "err");
     }
   }
-  const waitBtn = (id: FeatureId, label: string, icon: string) => (
-    <button type="button" className="btn bsm" style={{ opacity: isReady(id) ? 1 : 0.6 }} onClick={() => waiting(id)}><i className={"ti " + icon} aria-hidden /> {label}</button>
-  );
 
   const tabs: [Tab, string][] = [["ft1", t("form.tab1")], ["ft2", t("form.tab2")], ["ft3", t("form.tab3")], ["ft4", t("form.tab4")], ["ft6", T("العهدة", "Custody")], ["ft5", t("form.tab5")]];
 
@@ -541,12 +540,13 @@ export function EmployeeForm({
                 ↺ {T("استرجاع الكل", "Restore all")}{changed.length + (wlChanged ? 1 : 0) ? " (" + (changed.length + (wlChanged ? 1 : 0)) + ")" : ""}
               </button>
             )}
-            {!isNew && waitBtn("pwDefaultList", T("الحسابات بكلمة افتراضية", "Accounts on a default password"), "ti-list-check")}
+            {!isNew && can("employees_admin", "edit") && <button type="button" className="btn bsm" onClick={() => setTempList(true)}><i className="ti ti-list-check" aria-hidden /> {T("الحسابات بكلمة مؤقتة", "Accounts on a temporary password")}</button>}
             <Link href="/employees" className="btn bsm" id="t_cancel">{t("common.cancel")}</Link>
             <span style={{ fontSize: 11, color: "var(--gr)" }}>⚡ {T("يمكنك التعديل دائماً — يمكن التراجع بعد الحفظ", "You can always edit — and undo after saving")}</span>
           </div>
         )}
       </form>
+      {tempList && <TempPasswordList onClose={() => setTempList(false)} />}
 
       {tab === "ft6" && <EmpCustody employeeId={employee?.id ?? null} lang={lang} />}
 

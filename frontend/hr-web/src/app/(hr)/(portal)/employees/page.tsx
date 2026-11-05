@@ -8,14 +8,14 @@ import { EmployeeDetails } from "@/components/hr/employee-details";
 import { EmployeeImport } from "@/components/hr/employee-import";
 import { PageState } from "@/components/hr/not-built";
 import { TerminateModal } from "@/components/hr/terminate-modal";
-import { ApiError, type EmployeeTab } from "@/lib/api";
+import { PromptModal } from "@/components/hr/prompt-modal";
+import { ApiError, request, type EmployeeTab } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getLookups, listEmployees, reactivateEmployee } from "@/lib/employees";
 import { initials, sar, sarFixed } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
-import { FEATURES, type FeatureId } from "@/lib/features";
 
 // The prototype's six category tabs, in order.
 const TABS: [EmployeeTab, MessageKey][] = [
@@ -35,6 +35,19 @@ export default function EmployeesPage() {
   const { can: may } = useAuth();
   const toast = useToast();
   const canEdit = may("employees", "edit");
+  // Stage 18: deleting needs employees_admin (HR and admin); the API refuses a linked employee and says why
+  const canDelete = may("employees_admin", "edit");
+  const [del, setDel] = useState<{ id: string; name: string } | null>(null);
+  async function remove(target: { id: string; name: string }) {
+    setDel(null);
+    try {
+      await request(`/employees/${target.id}`, { method: "DELETE" });
+      toast("✓ " + (lang === "en" ? "Deleted — a copy is in the recycle bin" : "اتحذف الموظف — نسخته في سلة المهملات"), "ok");
+      list.reload();
+    } catch (x) {
+      toast(x instanceof ApiError ? x.message : String(x), "err");
+    }
+  }
   const [tab, setTab] = useState<EmployeeTab>("all");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -69,8 +82,6 @@ export default function EmployeesPage() {
   }
 
   // a button whose step is not done yet says so instead of doing nothing (lib/features.ts)
-  const waiting = (id: FeatureId) =>
-    toast((lang === "en" ? "Not available yet — opens after " + FEATURES[id].waits?.en : "غير متاح بعد — يُفتح بعد " + FEATURES[id].waits?.ar), "info");
 
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE));
@@ -135,7 +146,7 @@ export default function EmployeesPage() {
                   <td>
                     <button type="button" className="btn bsm" onClick={() => setDetails(e.id)} aria-label="view"><i className="ti ti-eye" /></button>{" "}
                     {canEdit && <><Link href={`/employees/${e.id}`} className="btn bsm" title={lang === "en" ? "Edit" : "تعديل"} aria-label="edit"><i className="ti ti-edit" /></Link>{" "}</>}
-                    {canEdit && <><button type="button" className="btn bsm" style={{ color: "var(--rd)", opacity: 0.7 }} title={lang === "en" ? "Delete" : "حذف"} onClick={() => waiting("empDelete")}><i className="ti ti-trash" /></button>{" "}</>}
+                    {canDelete && <><button type="button" className="btn bsm" style={{ color: "var(--rd)", opacity: 0.7 }} title={lang === "en" ? "Delete" : "حذف"} onClick={() => setDel({ id: e.id, name: nm(e) })}><i className="ti ti-trash" /></button>{" "}</>}
                     {canEdit && !e.is_terminated && (
                       <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} title={lang === "en" ? "End service" : "إنهاء خدمة"} onClick={() => setTerminate({ id: e.id, name: nm(e) })} aria-label="end service">
                         <i className="ti ti-user-off" />
@@ -169,6 +180,7 @@ export default function EmployeesPage() {
       )}
       {details && <EmployeeDetails id={details} onClose={() => setDetails(null)} />}
       {importOpen && <EmployeeImport onClose={() => setImportOpen(false)} onDone={() => list.reload()} />}
+      {del && <PromptModal noInput danger title={lang === "en" ? "Delete employee" : "حذف موظف"} confirmText={lang === "en" ? "Delete" : "حذف"} message={lang === "en" ? `Delete ${del.name} with everything recorded for them? A full copy goes to the recycle bin and can be restored. To end their service instead, use «End service».` : `حذف ${del.name} مع كل بياناته؟ تُحفظ نسخة كاملة في سلة المهملات ويمكن استرجاعها. لإنهاء الخدمة بدل الحذف استخدم «إنهاء خدمة».`} onClose={() => setDel(null)} onConfirm={() => void remove(del)} />}
       {terminate && (
         <TerminateModal
           {...terminate}

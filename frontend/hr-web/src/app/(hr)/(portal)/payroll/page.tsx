@@ -5,7 +5,7 @@
 // with its review panel, and other users' edits picked up every 6 seconds. The calculation is OUR V119 port
 // (lib/calc/payroll.ts) with rows stored through the `sheets` API (pay_YYYY_MM). Edits for HR and admin; approval
 // and reopening (with a reason) for finance, HR and admin, as our API allows. The design's «تجهيز للمالية» step
-// (HR prepares, finance approves) waits for its backend stage (lib/features.ts `payPrepare`).
+// (Stage 19): HR prepares the month (optional note), finance is told and may approve a prepared month only.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
@@ -14,7 +14,6 @@ import { PageState } from "@/components/hr/not-built";
 import { PromptModal } from "@/components/hr/prompt-modal";
 import { useAuth } from "@/lib/auth-context";
 import { saveBlob } from "@/lib/exporter";
-import { FEATURES, isReady } from "@/lib/features";
 import { getCompany } from "@/lib/settings";
 import { loadPrintCols, payrollPrintHtml, payrollXlsx, PRINT_COLS, defaultPrintCols, savePrintCols, sameCur } from "@/lib/calc/payroll-out";
 import { PAYX } from "@/lib/calc/payx";
@@ -113,6 +112,8 @@ export default function Page() {
   const { can: may } = useAuth();
   const canEdit = may("payroll", "edit");
   const canApprove = may("payroll_approve", "edit");
+  const canPrepare = may("payroll_prepare", "edit");
+  const { user } = useAuth();
   const now = new Date();
   const [basis, setBasis] = useState<SalaryBasisRow[] | null>(null);
   const [rates, setRates] = useState<Awaited<ReturnType<typeof getGosiRates>> | null>(null);
@@ -130,7 +131,12 @@ export default function Page() {
   const [reloadTick, setReloadTick] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saveState, setSaveState] = useState("");
-  const [dlg, setDlg] = useState<"approve" | "rebuild" | "reopen" | "print" | null>(null);
+  const [dlg, setDlg] = useState<"approve" | "rebuild" | "reopen" | "print" | "prepare" | null>(null);
+  // Stage 19: the month's cycle (draft → prepared → approved → reopened), with who and when
+  type PayStatus = { status: "draft" | "prepared" | "approved" | "reopened"; prepared_by: string | null; prepared_at: string | null;
+    prepare_note: string | null; approved_by: string | null; reopened_by: string | null; reopened_at: string | null; reopen_reason: string | null };
+  const [pst, setPst] = useState<PayStatus | null>(null);
+  const [stTick, setStTick] = useState(0);
   const [company, setCompany] = useState("");
   const [review, setReview] = useState<{ y: number; m: number; rows: PayRow[] } | null>(null);
   // what we last sent or loaded, so the 6-second check only takes other users' edits
@@ -144,6 +150,13 @@ export default function Page() {
     [year, month, days],
   );
   const key = `pay_${year}_${p2(month)}`;
+  useEffect(() => {
+    let alive = true;
+    request<PayStatus>(`/payroll/status/${key}`).then((s) => alive && setPst(s)).catch(() => alive && setPst(null));
+    return () => {
+      alive = false;
+    };
+  }, [key, stTick]);
   const empMap = useMemo(() => new Map((basis ?? []).map((e) => [String(e.id), e])), [basis]);
   const employers = useMemo(() => [...new Set(rows.map((r) => r.employer || "").filter(Boolean))].sort(), [rows]);
   const list = useMemo(() => (filter ? rows.filter((r) => r.employer === filter) : rows), [rows, filter]);
@@ -292,6 +305,7 @@ export default function Page() {
       const s = await approveSheet(key);
       setApproved(true);
       setApprovedAt(s.approved_at);
+      setStTick((n) => n + 1);
       toast("تم اعتماد مسير الرواتب", "ok");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
@@ -305,7 +319,20 @@ export default function Page() {
       await unapproveSheet(key, reason);
       setApproved(false);
       setApprovedAt(null);
+      setStTick((n) => n + 1);
       toast("✓ اتفتح المسير", "ok");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), "err");
+    }
+  }
+
+  async function prepare(note: string) {
+    setDlg(null);
+    if (!rows.length) return toast("لا توجد بيانات", "err");
+    try {
+      if (canEdit) await putSheet(key, rows); // the figures finance will see are the ones on screen
+      setPst(await request<PayStatus>(`/sheets/${key}/prepare`, { method: "POST", body: { note } }));
+      toast("📤 جُهّز المسير — أُرسل إشعار للمالية", "ok");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
     }
@@ -635,11 +662,23 @@ export default function Page() {
   };
   const years: number[] = [];
   for (let y = 2011; y <= 2086; y++) years.push(y);
-  const chip = approved ? ["rgba(41,179,94,.15)", "var(--gr)", "🔒 معتمد"] : ["rgba(148,163,184,.18)", "var(--mu)", "📝 مسودة"];
-  const sub = approved
-    ? "اعتُمد" + (approvedAt ? " — " + new Date(approvedAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh" }) : "")
-    : canEdit ? "جهّز المسير واعتمده" : "مستني تجهيز الموارد البشرية";
-  const prepWaits = "غير متاح بعد — يُفتح بعد " + FEATURES.payPrepare.waits?.ar;
+  const when = (v: string | null | undefined) => (v ? new Date(v).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh" }) : "");
+  const state = approved ? "approved" : pst?.status ?? "draft";
+  const chip = {
+    approved: ["rgba(41,179,94,.15)", "var(--gr)", "🔒 معتمد"],
+    prepared: ["rgba(59,130,246,.15)", "var(--bl)", "📤 جاهز للاعتماد"],
+    reopened: ["rgba(245,158,11,.15)", "var(--am)", "🔓 مفتوح بعد الاعتماد"],
+    draft: ["rgba(148,163,184,.18)", "var(--mu)", "📝 مسودة"],
+  }[state];
+  const sub = state === "approved"
+    ? "اعتُمد" + (pst?.approved_by ? " بواسطة " + pst.approved_by : "") + (approvedAt ? " — " + when(approvedAt) : "")
+    : state === "prepared"
+      ? "جهّزه " + (pst?.prepared_by || "الموارد البشرية") + " — " + when(pst?.prepared_at) + (pst?.prepare_note ? " — " + pst.prepare_note : "") + " — بانتظار اعتماد المالية"
+      : state === "reopened"
+        ? "فتحه " + (pst?.reopened_by || "") + " — " + when(pst?.reopened_at) + (pst?.reopen_reason ? " — السبب: " + pst.reopen_reason : "")
+        : canPrepare ? "جهّز المسير ثم أرسله للمالية للاعتماد" : "مستني تجهيز الموارد البشرية";
+  // the design's rule (the API enforces it): finance approves a prepared month only
+  const approveBlocked = user?.role === "finance" && state !== "prepared";
   const kpis: [string, string, string][] = [
     ["إجمالي صافي العملات", Object.entries(byCur).map(([c, v]) => money(v) + (c === "ريال سعودي" ? " ر.س" : " " + c)).join(" | "), "var(--bl)"],
     ["إجمالي الصافي (ر.س)", money(sAll.netSAR), "var(--gr)"],
@@ -693,7 +732,7 @@ export default function Page() {
           </>
         )}
         <div style={{ marginInlineStart: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {canApprove && <button type="button" className="btn bgr bsm" disabled={approved || !rows.length} onClick={() => setDlg("approve")}><i className="ti ti-check" /> اعتماد</button>}
+          {canApprove && <button type="button" className="btn bgr bsm" disabled={approved || !rows.length || approveBlocked} title={approveBlocked ? "يُعتمد بعد أن تجهّزه الموارد البشرية" : undefined} onClick={() => setDlg("approve")}><i className="ti ti-check" /> اعتماد</button>}
           {!locked && <button type="button" className="btn bsm" id="PAY_ADDROW" style={{ background: "var(--cy)", color: "#fff", borderColor: "var(--cy)" }} onClick={addRow}><i className="ti ti-plus" /> إضافة صف</button>}
           {!locked && <button type="button" className="btn bsm" style={{ background: "var(--am)", color: "#fff" }} onClick={() => setDlg("rebuild")}><i className="ti ti-refresh" /> إعادة بناء</button>}
           <button type="button" className="btn bsm" style={{ background: "var(--pu)", color: "#fff" }} onClick={exportXlsx}><i className="ti ti-file-spreadsheet" /> Excel</button>
@@ -705,7 +744,7 @@ export default function Page() {
         <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontWeight: 800, padding: "3px 10px", borderRadius: 999, background: chip[0], color: chip[1] }}>{chip[2]}</span>
         <span style={{ color: "var(--mu)", fontSize: 11.5 }}>{sub}</span>
         <span style={{ flex: 1 }} />
-        {canEdit && !approved && <button type="button" className="btn bpl bsm" style={{ opacity: isReady("payPrepare") ? 1 : 0.6 }} title={prepWaits} onClick={() => toast(prepWaits, "info")}>📤 تجهيز للمالية</button>}
+        {canPrepare && !approved && <button type="button" className="btn bpl bsm" disabled={!rows.length} onClick={() => setDlg("prepare")}>📤 {state === "prepared" ? "إعادة التجهيز" : "تجهيز للمالية"}</button>}
         {canApprove && approved && <button type="button" className="btn bsm" style={{ borderColor: "var(--am)", color: "var(--am)" }} onClick={() => setDlg("reopen")}>🔓 فتح المسير</button>}
       </div>
 
@@ -806,6 +845,7 @@ export default function Page() {
       {dlg === "rebuild" && <PromptModal noInput danger title="إعادة بناء المسير" message="إعادة بناء المسير من بيانات الموظفين؟ ستُفقد التعديلات اليدوية غير المعتمدة." confirmText="إعادة بناء" onClose={() => setDlg(null)} onConfirm={() => void rebuild()} />}
       {dlg === "reopen" && <PromptModal required danger title="فتح المسير بعد اعتماده" label="السبب (إلزامي — يُسجَّل في سجل التعديلات، 5 حروف على الأقل)" confirmText="فتح" onClose={() => setDlg(null)} onConfirm={(v) => void reopen(v)} />}
       {dlg === "print" && <PrintCols onClose={() => setDlg(null)} onPrint={doPrint} />}
+      {dlg === "prepare" && <PromptModal title="تجهيز المسير للمالية" message="يُحفظ المسير كما هو ويُرسل إشعار للمالية لاعتماده." label="ملاحظة للمالية (اختياري)" confirmText="تجهيز وإرسال" onClose={() => setDlg(null)} onConfirm={(v) => void prepare(v)} />}
     </div>
   );
 }

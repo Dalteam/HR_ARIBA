@@ -64,7 +64,7 @@ export const FEATURES = {
   /** leaves: undo the last balance save (the design keeps the last ten saves) */
   lvBalanceUndo: { status: "ready" } as Feature,
   /** payroll: HR prepares the month and sends it to finance, who approves (the design's prepare / status steps) */
-  payPrepare: backend("مرحلة تجهيز المسير للمالية (حالة المسير: مسودة ← جاهز ← معتمد)", "the payroll prepare-for-finance stage (draft → prepared → approved)"),
+  payPrepare: { status: "ready" } as Feature,
   /** employee form: a certificate with its type, title, issuer and dates (the design's EmpCerts; needs document metadata) */
   empCerts: { status: "ready" } as Feature,
   /** employee form: a per-employee probation period or end date */

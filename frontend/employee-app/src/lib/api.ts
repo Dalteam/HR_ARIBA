@@ -282,6 +282,9 @@ export type MyLeave = {
   year_end: number;
   annual: number;
   upcoming_holidays: { name: string; date: string; days: number }[];
+  /** Stage A2: the whole announced calendar, so the composer can count workdays like the server. Optional: a backend
+   *  that does not send it yet still answers, and then only the four upcoming rows are known. */
+  holidays?: { name: string; date: string; days: number; recurring?: boolean }[];
 };
 
 export type TeamMember = { id: string; emp_no: string; name_ar: string; job_title: string | null };

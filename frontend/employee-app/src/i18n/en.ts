@@ -246,10 +246,13 @@ export const EN: [string, string][] = [
   ["إلى تاريخ", "To date"],
   ["المتاح لك {#}", "Available to you: {1}"],
   ["سيتبقى {#}", "Remaining after: {1}"],
+  // Stage A2: the composer counts annual leave in workdays, like the API
+  ["المدة المحتسبة {#} يوم عمل", "Counted: {1} working day(s)"],
+  ["بدون الجمعة والسبت والإجازات الرسمية", "Fridays, Saturdays and official holidays are not counted"],
   // Stage A1: the carry-over and the nearest public holiday on the home, and the sent date on an overtime request
-  ["مرحّل: {#} يوم", "Carried: {#} day(s)"],
-  ["أقرب إجازة رسمية: {#}", "Next public holiday: {#}"],
-  ["أُرسل {#}", "Sent {#}"],
+  ["مرحّل: {#} يوم", "Carried: {1} day(s)"],
+  ["أقرب إجازة رسمية: {#}", "Next public holiday: {1}"],
+  ["أُرسل {#}", "Sent {1}"],
   ["هل تريد حذف طلب العمل الإضافي؟", "Do you want to delete this overtime request?"],
   ["السبب", "Reason"],
   ["ملاحظات", "Notes"],

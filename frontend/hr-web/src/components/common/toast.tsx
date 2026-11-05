@@ -29,9 +29,15 @@ export function ToastProvider({ variant, children }: { variant: "hr" | "emp"; ch
     <ToastContext.Provider value={show}>
       {children}
       {variant === "hr" ? (
-        <div className={`toast ${hrClass} ${state.on ? "on" : ""}`} role="status" aria-live="polite">
-          <i className={`ti ${state.kind === "err" ? "ti-circle-x" : state.kind === "ok" ? "ti-circle-check" : "ti-info-circle"}`} aria-hidden style={{ marginInlineEnd: 6 }} />
-          {state.message}
+        // the design's message box (react-extra.css #TC): top centre under the top bar, above the side menu - pinned
+        // bottom-right it sat under the menu, which covers that corner in RTL (owner's test, 5 Nov 2026)
+        <div id="TC" role="status" aria-live="polite">
+          {state.on && (
+            <div className={`toast ${hrClass} on`}>
+              <i className={`ti ${state.kind === "err" ? "ti-circle-x" : state.kind === "ok" ? "ti-circle-check" : "ti-info-circle"}`} aria-hidden style={{ marginInlineEnd: 6 }} />
+              {state.message}
+            </div>
+          )}
         </div>
       ) : (
         <div className="toast-wrap" role="status" aria-live="polite">

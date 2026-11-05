@@ -9,8 +9,8 @@ import { useApi } from "@/lib/use-api";
 
 export default function EmployeePage() {
   const { id } = useParams<{ id: string }>();
-  const { hasRole } = useAuth();
-  const canEdit = hasRole("hr", "admin");
+  const { can: may } = useAuth();
+  const canEdit = may("employees", "edit");
   const emp = useApi(() => getEmployee(id), `emp:${id}`);
   const lookups = useApi(getLookups, "lookups");
   const managers = useApi(() => (canEdit ? listEmployees({ tab: "active", page_size: 100, sort: "name_ar" }) : Promise.resolve(null)), `managers:${canEdit}`);

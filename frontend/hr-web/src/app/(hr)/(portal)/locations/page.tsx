@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { LinkedEmployees } from "@/components/hr/linked-employees";
 import { Modal } from "@/components/hr/modal";
+import { useAuth } from "@/lib/auth-context";
 import { PageState } from "@/components/hr/not-built";
 import { useToast } from "@/components/common/toast";
 import { getLookups } from "@/lib/employees";
@@ -21,6 +22,8 @@ const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", paddi
 
 export default function Page() {
   const toast = useToast();
+  const { can: may } = useAuth();
+  const canEdit = may("locations", "edit");
   const [locs, setLocs] = useState<Location[] | null>(null);
   const [workplaces, setWorkplaces] = useState<{ id: string; name_ar: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -126,21 +129,24 @@ export default function Page() {
   const hasCoords = Number.isFinite(previewLat) && Number.isFinite(previewLng) && previewLat >= -90 && previewLat <= 90 && previewLng >= -180 && previewLng <= 180;
 
   return (
-    <div className="pg on" id="pg-loc">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <div className="ct"><i className="ti ti-map-pin" /> مواقع البصمة الجغرافية</div>
-          <div style={{ fontSize: 11, color: "var(--mu)" }}>تُستخدم هذه المواقع في تطبيق الموظف للبصمة الجغرافية</div>
-        </div>
-        <button type="button" className="btn bgr" onClick={openAdd}>
-          <i className="ti ti-plus" /> إضافة موقع
-        </button>
+    <div className="pg on" id="pg-loc" style={{ padding: "12px 16px" }}>
+      <div className="ch">
+        <div className="ct"><i className="ti ti-map-pin" /> <span>مواقع البصمة الجغرافية</span></div>
+        {canEdit && (
+          <button type="button" className="btn bpl bsm" id="LOC_ADD" onClick={openAdd}>
+            <i className="ti ti-plus" /> إضافة موقع
+          </button>
+        )}
+      </div>
+      <div className="al alb" style={{ marginBottom: 12 }}>
+        <i className="ti ti-info-circle" />
+        <span>تُستخدم هذه المواقع في تطبيق الموظف للبصمة الجغرافية</span>
       </div>
 
       {locs.length === 0 ? (
         <div className="card" style={{ textAlign: "center", color: "var(--mu)", padding: 30 }}>لا توجد مواقع بعد</div>
       ) : (
-        <div id="LCG" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 12 }}>
+        <div id="LCG" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
           {locs.map((l) => {
             const c = TYPE_COLOR[l.type];
             return (
@@ -163,8 +169,12 @@ export default function Page() {
                       <i className="ti ti-brand-google-maps" /> Google Maps
                     </a>
                   )}
-                  <button type="button" className="btn bsm" onClick={() => openEdit(l)}><i className="ti ti-edit" /> تعديل</button>
-                  <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => del(l)}><i className="ti ti-trash" /></button>
+                  {canEdit && (
+                    <>
+                      <button type="button" className="btn bsm" onClick={() => openEdit(l)}><i className="ti ti-edit" /> تعديل</button>
+                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => del(l)}><i className="ti ti-trash" /></button>
+                    </>
+                  )}
                 </div>
               </div>
             );

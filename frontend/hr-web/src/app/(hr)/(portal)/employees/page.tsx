@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast";
 import { DaysBadge } from "@/components/hr/badges";
 import { EmployeeDetails } from "@/components/hr/employee-details";
+import { EmployeeImport } from "@/components/hr/employee-import";
 import { PageState } from "@/components/hr/not-built";
 import { TerminateModal } from "@/components/hr/terminate-modal";
-import { ApiError, type EmployeeTab } from "@/lib/api";
+import { PromptModal } from "@/components/hr/prompt-modal";
+import { ApiError, request, type EmployeeTab } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getLookups, listEmployees, reactivateEmployee } from "@/lib/employees";
 import { initials, sar, sarFixed } from "@/lib/format";
@@ -25,12 +27,27 @@ const TABS: [EmployeeTab, MessageKey][] = [
   ["consultants", "emps.consultant"],
 ];
 const PAGE = 100;
+// the design alternates the two brand greens for the avatars
+const avColor = (id: string) => ([...id].reduce((n, c) => n + c.charCodeAt(0), 0) % 2 ? "#29B35E" : "#014D3D");
 
 export default function EmployeesPage() {
   const { t, lang } = useLocale();
-  const { hasRole } = useAuth();
+  const { can: may } = useAuth();
   const toast = useToast();
-  const canEdit = hasRole("hr", "admin");
+  const canEdit = may("employees", "edit");
+  // Stage 18: deleting needs employees_admin (HR and admin); the API refuses a linked employee and says why
+  const canDelete = may("employees_admin", "edit");
+  const [del, setDel] = useState<{ id: string; name: string } | null>(null);
+  async function remove(target: { id: string; name: string }) {
+    setDel(null);
+    try {
+      await request(`/employees/${target.id}`, { method: "DELETE" });
+      toast("✓ " + (lang === "en" ? "Deleted — a copy is in the recycle bin" : "حُذف الموظف — توجد نسخة منه في سلة المهملات"), "ok");
+      list.reload();
+    } catch (x) {
+      toast(x instanceof ApiError ? x.message : String(x), "err");
+    }
+  }
   const [tab, setTab] = useState<EmployeeTab>("all");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -38,6 +55,7 @@ export default function EmployeesPage() {
   const [page, setPage] = useState(1);
   const [details, setDetails] = useState<string | null>(null);
   const [terminate, setTerminate] = useState<{ id: string; name: string } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const h = setTimeout(() => {
@@ -63,6 +81,8 @@ export default function EmployeesPage() {
     }
   }
 
+  // a button whose step is not done yet says so instead of doing nothing (lib/features.ts)
+
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
@@ -86,6 +106,11 @@ export default function EmployeesPage() {
             <i className="ti ti-plus" /> <span id="t_add">{t("emps.add")}</span>
           </Link>
         )}
+        {canEdit && (
+          <button type="button" className="btn bsm" id="EI_OPEN" onClick={() => setImportOpen(true)}>
+            <i className="ti ti-file-import" /> <span>{lang === "en" ? "Import from Excel" : "استيراد من Excel"}</span>
+          </button>
+        )}
       </div>
       <div className="card" style={{ padding: 0 }}>
         <div className="tw">
@@ -98,18 +123,18 @@ export default function EmployeesPage() {
               </tr>
               {list.data?.items.map((e) => (
                 <tr key={e.id} className={e.is_terminated ? "terminated-row" : undefined}>
-                  <td>{e.emp_no}</td>
+                  <td style={{ color: "var(--dm)", fontWeight: 700 }}>{e.emp_no}</td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <div className="av" style={{ width: 28, height: 28, background: "#29B35E22", color: "#29B35E", fontSize: 10 }}>{initials(e.name_ar)}</div>
+                      <div className="av" style={{ width: 28, height: 28, background: avColor(e.id) + "22", color: avColor(e.id), fontSize: 10 }}>{initials(e.name_ar)}</div>
                       <div>
                         <div style={{ fontWeight: 600 }}>{nm(e)}</div>
                         <div style={{ fontSize: 10, color: "var(--dm)" }}>{t("emps.empNo", { no: e.emp_no })}</div>
-                        {e.is_terminated && <span className="b ba">{t("emps.terminated")}</span>}
+                        {e.is_terminated && <span style={{ display: "inline-block", marginTop: 3, padding: "2px 6px", borderRadius: 6, background: "#f3e9d0", color: "var(--ariba-dark,#014D3D)", fontSize: 9, fontWeight: 800 }}>{t("emps.terminated")}</span>}
                       </div>
                     </div>
                   </td>
-                  <td>{e.job_title || "—"}</td>
+                  <td style={{ color: "var(--mu)" }}>{e.job_title || "—"}</td>
                   <td><span className="b bb">{lk(e.workplace)}</span></td>
                   <td>{lk(e.department)}</td>
                   <td>{lk(e.nationality)}</td>
@@ -120,10 +145,11 @@ export default function EmployeesPage() {
                   <td style={{ color: "var(--cy)", fontWeight: 600 }}>{e.net_salary === null ? "—" : sarFixed(e.net_salary)}</td>
                   <td>
                     <button type="button" className="btn bsm" onClick={() => setDetails(e.id)} aria-label="view"><i className="ti ti-eye" /></button>{" "}
-                    <Link href={`/employees/${e.id}`} className="btn bsm" aria-label="edit"><i className="ti ti-edit" /></Link>{" "}
+                    {canEdit && <><Link href={`/employees/${e.id}`} className="btn bsm" title={lang === "en" ? "Edit" : "تعديل"} aria-label="edit"><i className="ti ti-edit" /></Link>{" "}</>}
+                    {canDelete && <><button type="button" className="btn bsm" style={{ color: "var(--rd)", opacity: 0.7 }} title={lang === "en" ? "Delete" : "حذف"} onClick={() => setDel({ id: e.id, name: nm(e) })}><i className="ti ti-trash" /></button>{" "}</>}
                     {canEdit && !e.is_terminated && (
-                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => setTerminate({ id: e.id, name: nm(e) })} aria-label="end service">
-                        <i className="ti ti-trash" />
+                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} title={lang === "en" ? "End service" : "إنهاء خدمة"} onClick={() => setTerminate({ id: e.id, name: nm(e) })} aria-label="end service">
+                        <i className="ti ti-user-off" />
                       </button>
                     )}
                     {canEdit && e.is_terminated && (
@@ -153,6 +179,8 @@ export default function EmployeesPage() {
         </div>
       )}
       {details && <EmployeeDetails id={details} onClose={() => setDetails(null)} />}
+      {importOpen && <EmployeeImport onClose={() => setImportOpen(false)} onDone={() => list.reload()} />}
+      {del && <PromptModal noInput danger title={lang === "en" ? "Delete employee" : "حذف موظف"} confirmText={lang === "en" ? "Delete" : "حذف"} message={lang === "en" ? `Delete ${del.name} with everything recorded for them? A full copy goes to the recycle bin and can be restored. To end their service instead, use «End service».` : `حذف ${del.name} مع كل بياناته؟ تُحفظ نسخة كاملة في سلة المهملات ويمكن استرجاعها. لإنهاء الخدمة بدل الحذف استخدم «إنهاء خدمة».`} onClose={() => setDel(null)} onConfirm={() => void remove(del)} />}
       {terminate && (
         <TerminateModal
           {...terminate}

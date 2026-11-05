@@ -6,19 +6,28 @@ import { PasswordReveal } from "./password-reveal";
 import { useToast } from "@/components/common/toast";
 import { ApiError, type DocumentType, type Employee, type EmployeeInput, type EmployeeListItem, type Lookups, type SalaryPreview } from "@/lib/api";
 import { accountForEmployee, createAccount, issueTemporaryPassword } from "@/lib/auth";
-import { listDocuments, openDocument, photoBlob, salaryPreview, uploadDocument, uploadPhoto } from "@/lib/employees";
+import { deleteDocument, listDocuments, openDocument, photoBlob, salaryPreview, uploadDocument, uploadPhoto } from "@/lib/employees";
+import { request } from "@/lib/api";
+import { listLocations, type Location } from "@/lib/locations";
 import { dmy, sar } from "@/lib/format";
 import type { MessageKey } from "@/lib/i18n/ar";
 import { useLocale } from "@/lib/i18n/locale";
 import { useApi } from "@/lib/use-api";
 import { DependentsTab } from "./dependents-tab";
+import { EmpCerts } from "./emp-certs";
+import { TempPasswordList } from "./temp-password-list";
+import { useAuth } from "@/lib/auth-context";
+import { EmpCustody } from "./emp-custody";
 import { DateField } from "@/components/common/date-time-field";
 
-type Tab = "ft1" | "ft2" | "ft3" | "ft4" | "ft5";
+type Tab = "ft1" | "ft2" | "ft3" | "ft4" | "ft6" | "ft5";
 type V = Record<string, string | boolean>;
 
 // The seven upload slots of the prototype's "الوثائق الإلكترونية" block, in order.
-const DOC_SLOTS: DocumentType[] = ["iqama", "passport", "graduation_certificate", "experience_certificate", "gosi_certificate", "national_address", "cv"];
+const DOC_SLOTS: DocumentType[] = ["identity", "passport", "degree", "experience", "social_insurance", "national_address", "cv"];
+// Stage 17: allowances that may be kept as a % of basic (the design's allowModes)
+const PCT_KEYS = ["housing_allowance", "transport_allowance", "project_allowance", "other_allowances", "extra_allowance"];
+const PCT_LABEL: Record<string, MessageKey> = { housing_allowance: "form.hou", transport_allowance: "form.tra", project_allowance: "form.prj", other_allowances: "form.oth", extra_allowance: "form.extra" };
 const MONEY = ["basic_salary", "housing_allowance", "transport_allowance", "project_allowance", "other_allowances", "other_deductions", "extra_allowance"];
 const SALARY_KEYS = [...MONEY, "currency", "exchange_rate", "gosi_system", "payment_method", "bank_name", "iban"];
 const ID_KEYS = ["national_id", "passport_no", "insurance_card_no", "iban"];
@@ -41,6 +50,9 @@ function initial(e?: Employee): V {
     extra_allowance: s?.extra_allowance ?? "0", currency: s?.currency ?? "SAR", exchange_rate: s?.exchange_rate ?? "1",
     gosi_system: s?.gosi_system ?? "matching", wps_type: e?.wps_type ?? "wps", payment_method: s?.payment_method ?? "mudad",
     exclude_from_payroll: e?.exclude_from_payroll ?? false, exclude_from_eos: e?.exclude_from_eos ?? false,
+    // Stage 17
+    national_address_expiry: e?.national_address_expiry ?? "", gosi_no: e?.gosi_no ?? "", gosi_cert_expiry: e?.gosi_cert_expiry ?? "",
+    probation_days: e?.probation_days ?? "", probation_end: e?.probation_end ?? "",
   };
 }
 
@@ -57,7 +69,10 @@ function toBody(v: V, keys: string[]): EmployeeInput {
   return out as EmployeeInput;
 }
 
-/** The prototype's #pg-form employee form: 5 tabs, same sections, labels and field order. */
+/** The employee form in the updated design's form (its EmpForm.jsx): six tabs (basic, documents, contract, salary,
+ *  custody, dependents), a «↺» on every changed field and «استرجاع الكل», the fingerprint work locations (OUR
+ *  /locations/assignments + PUT /employees/{id}/work-locations), document download and delete. Waiting (lib/features.ts):
+ *  custody, certificates with title and issuer, the probation period, allowances as a % of basic, the default-password list. */
 export function EmployeeForm({
   employee,
   lookups,
@@ -82,10 +97,60 @@ export function EmployeeForm({
   const [preview, setPreview] = useState<SalaryPreview | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [temp, setTemp] = useState<string | null>(null);
+  const [tempList, setTempList] = useState(false);
+  const { can } = useAuth();
+  // Stage 17: allowances kept as a % of basic ({key: "25"}); the amount box shows basic × % and the API stores both
+  const startModes = useMemo(() => Object.fromEntries(Object.entries(employee?.allow_modes ?? {}).map(([k, m]) => [k, String(m.pct)])) as Record<string, string>, [employee]);
+  const [modes, setModes] = useState<Record<string, string>>(startModes);
+  const modesChanged = JSON.stringify(modes) !== JSON.stringify(startModes);
   const salaryVisible = isNew || !!employee?.salary;
   const masked = !!employee?.ids_masked;
   const ro = !canEdit;
   const docs = useApi(() => (employee ? listDocuments(employee.id) : Promise.resolve([])), `docs:${employee?.id}`);
+  const T = (ar: string, en: string) => (lang === "en" ? en : ar);
+  // fingerprint work locations (the design's WL_BOX): saved with «حفظ وتحديث», existing employees only
+  const [locs, setLocs] = useState<Location[]>([]);
+  const [wl, setWl] = useState<string[]>([]);
+  const [wlBase, setWlBase] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    listLocations().then((l) => alive && setLocs(l.filter((x) => x.is_active !== false && x.type !== "remote"))).catch(() => undefined);
+    if (employee)
+      request<{ employee_id: string; location_ids: string[] }[]>("/locations/assignments")
+        .then((a) => {
+          if (!alive) return;
+          const ids = (a.find((x) => x.employee_id === employee.id)?.location_ids ?? []).map(String);
+          setWl(ids);
+          setWlBase(ids);
+        })
+        .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [employee]);
+  const wlChanged = JSON.stringify([...wl].sort()) !== JSON.stringify([...wlBase].sort());
+  const pctAmount = (k: string) => String(Math.round((Number(v.basic_salary) || 0) * (Number(modes[k]) || 0)) / 100);
+  useEffect(() => {
+    // an allowance kept as a % follows the basic and its % in the box (the API recomputes it the same way)
+    setV((cur) => {
+      const next = { ...cur };
+      let ch = false;
+      for (const k of Object.keys(modes)) if (next[k] !== pctAmount(k)) { next[k] = pctAmount(k); ch = true; }
+      return ch ? next : cur;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modes, v.basic_salary]);
+  const changed = isNew ? [] : Object.keys(start).filter((k) => v[k] !== start[k]);
+  const undo = (k: string) =>
+    !isNew && !ro && v[k] !== start[k] ? (
+      <button type="button" className="undo-f" title={T("استرجاع القيمة المحفوظة: ", "Restore the saved value: ") + (String(start[k] ?? "") || T("(فارغ)", "(empty)")).slice(0, 40)} onClick={() => set(k, start[k])}>↺</button>
+    ) : null;
+  function revertAll() {
+    if (!window.confirm(T("استرجاع كل البيانات لآخر قيمة محفوظة؟ ستضيع التعديلات غير المحفوظة.", "Restore every field to its saved value? Unsaved changes are lost."))) return;
+    setV(start);
+    setWl(wlBase);
+    toast("↺ " + T("أُعيدت كل البيانات إلى القيم المحفوظة", "Every field restored"), "info");
+  }
 
   // Photo preview (protected file -> object URL).
   useEffect(() => {
@@ -125,16 +190,31 @@ export function EmployeeForm({
   const err = (k: string) => errors[k] && <div style={{ color: "var(--rd)", fontSize: 10, marginTop: 2 }}>{errors[k]}</div>;
   const field = (k: string, label: MessageKey, type = "text", extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
     <div>
-      <label htmlFor={`f-${k}`}>{t(label)}</label>
+      <label htmlFor={`f-${k}`}>{t(label)}{undo(k)}</label>
       {type === "date"
         ? <DateField id={`f-${k}`} title={t(label)} value={(v[k] as string) ?? ""} onChange={(x) => set(k, x)} disabled={ro || !!extra.disabled} />
         : <input id={`f-${k}`} type={type} value={v[k] as string} onChange={(e) => set(k, e.target.value)} disabled={ro || extra.disabled} {...extra} />}
       {err(k)}
     </div>
   );
+  // Stage 17: fields whose labels are not in the dictionary yet
+  const plain = (k: string, label: string) => (
+    <div>
+      <label htmlFor={`f-${k}`}>{label}{undo(k)}</label>
+      <input id={`f-${k}`} value={v[k] as string} onChange={(e) => set(k, e.target.value)} disabled={ro} maxLength={30} />
+      {err(k)}
+    </div>
+  );
+  const plainDate = (k: string, label: string) => (
+    <div>
+      <label htmlFor={`f-${k}`}>{label}{undo(k)}</label>
+      <DateField id={`f-${k}`} title={label} value={(v[k] as string) ?? ""} onChange={(x) => set(k, x)} disabled={ro} />
+      {err(k)}
+    </div>
+  );
   const select = (k: string, label: MessageKey, opts: [string, string][], placeholder?: string) => (
     <div>
-      <label htmlFor={`f-${k}`}>{t(label)}</label>
+      <label htmlFor={`f-${k}`}>{t(label)}{undo(k)}</label>
       <select id={`f-${k}`} value={v[k] as string} onChange={(e) => set(k, e.target.value)} disabled={ro}>
         {placeholder !== undefined && <option value="">{placeholder}</option>}
         {opts.map(([val, txt]) => <option key={val} value={val}>{txt}</option>)}
@@ -165,10 +245,17 @@ export function EmployeeForm({
     if (!isNew) keys = keys.filter((k) => v[k] !== start[k]);
     if (!salaryVisible) keys = keys.filter((k) => !SALARY_KEYS.includes(k));
     if (masked) keys = keys.filter((k) => !ID_KEYS.includes(k) && k !== "notes");
-    if (!isNew && keys.length === 0) return;
+    const sendModes = salaryVisible && modesChanged;
+    if (!isNew && keys.length === 0 && !wlChanged && !sendModes) return;
     setBusy(true);
     try {
-      await onSubmit(toBody(v, keys));
+      const body = toBody(v, keys);
+      if (sendModes) body.allow_modes = Object.fromEntries(Object.entries(modes).map(([k, p]) => [k, { pct: Number(p) || 0 }]));
+      if (isNew || keys.length || sendModes) await onSubmit(body);
+      if (employee && wlChanged) {
+        await request(`/employees/${employee.id}/work-locations`, { method: "PUT", body: { location_ids: wl } });
+        setWlBase(wl);
+      }
       setErrors({});
       toast(t("form.saved"), "ok");
     } catch (e) {
@@ -214,19 +301,30 @@ export function EmployeeForm({
     }
   }
 
-  const tabs: [Tab, MessageKey][] = [["ft1", "form.tab1"], ["ft2", "form.tab2"], ["ft3", "form.tab3"], ["ft4", "form.tab4"], ["ft5", "form.tab5"]];
+  async function removeDoc(id: string) {
+    if (!window.confirm(T("حذف هذا المستند نهائيًا؟", "Delete this document for good?"))) return;
+    try {
+      await deleteDocument(id);
+      toast("✓ " + T("تم الحذف", "Deleted"), "ok");
+      docs.reload();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : t("common.error"), "err");
+    }
+  }
+
+  const tabs: [Tab, string][] = [["ft1", t("form.tab1")], ["ft2", t("form.tab2")], ["ft3", t("form.tab3")], ["ft4", t("form.tab4")], ["ft6", T("العهدة", "Custody")], ["ft5", t("form.tab5")]];
 
   return (
     <div className="card">
       <div className="ch">
         <div className="ct"><i className="ti ti-user-plus" /> <span id="t_ft">{isNew ? t("form.add") : t("form.edit")}</span></div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link href="/employees" className="btn bsm" aria-label={t("common.close")}><i className="ti ti-x" /></Link>
+          <Link href="/employees" className="btn bsm"><i className="ti ti-arrow-back-up" /> {T("تراجع", "Back")}</Link>
         </div>
       </div>
       <div className="tbar">
         {tabs.map(([k, l]) => (
-          <div key={k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{k === "ft5" && <><i className="ti ti-users-group" aria-hidden /> </>}{t(l)}</div>
+          <div key={k} className={`tab ${tab === k ? "on" : ""}`} onClick={() => setTab(k)}>{k === "ft5" && <>👨‍👩‍👧 </>}{k === "ft6" && <><i className="ti ti-package" aria-hidden /> </>}{l}</div>
         ))}
       </div>
       {masked && <div className="al alb"><i className="ti ti-lock" /><div>{t("form.idsMasked")}</div></div>}
@@ -238,6 +336,28 @@ export function EmployeeForm({
             {field("name_en", "form.nameEn")}
             {field("emp_no", "form.empNo", "text", { placeholder: t("form.empNoPh"), disabled: !isNew, dir: "ltr" })}
             {select("workplace_id", "form.employer", lookupOpts(lookups.workplaces), t("common.choose"))}
+            <div id="WL_BOX" style={{ gridColumn: "1/-1", background: "var(--c2)", border: "1px solid var(--bd)", borderRadius: 10, padding: "10px 12px" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 3 }}>
+                <i className="ti ti-map-pin" /> {T("مواقع العمل (مربوطة بمواقع البصمة)", "Work locations (linked to fingerprint locations)")}
+                {!isNew && !ro && wlChanged && <button type="button" className="undo-f" title={T("استرجاع المواقع المحفوظة", "Restore the saved locations")} onClick={() => setWl(wlBase)}>↺</button>}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--mu)", lineHeight: 1.7, marginBottom: 6 }}>
+                {isNew
+                  ? T("احفظ الموظف أولًا، ثم اختر مواقع البصمة الخاصة به.", "Save the employee first, then choose their fingerprint locations.")
+                  : T("اختر موقعًا أو أكثر — سيبصم الموظف في هذه المواقع فقط. وإذا تُركت فارغة فسيبصم في مواقع جهة عمله كما كان.", "Pick one or more — the employee punches only there. Left empty, they punch at their workplace's locations as before.")}
+              </div>
+              {!isNew && (
+                <div id="WL_LIST" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: "4px 12px" }}>
+                  {locs.length ? locs.map((l) => (
+                    <label key={l.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, cursor: ro ? "default" : "pointer", margin: 0, fontWeight: 500, color: "var(--tx)" }}>
+                      <input type="checkbox" style={{ width: "auto", margin: 0 }} disabled={ro} checked={wl.includes(String(l.id))} onChange={(ev) => setWl((a) => (ev.target.checked ? [...a, String(l.id)] : a.filter((x) => x !== String(l.id))))} />
+                      <span>{l.name}</span>
+                      <span style={{ fontSize: 9.5, background: "rgba(41,179,94,.15)", color: "#1f9a4f", borderRadius: 8, padding: "0 6px" }}>{l.type === "hq" ? T("مقر رئيسي", "HQ") : T("مشروع", "Project")}</span>
+                    </label>
+                  )) : <div style={{ fontSize: 11, color: "var(--mu)" }}>{T("لا توجد مواقع بصمة — أضفها من «مواقع البصمة».", "No fingerprint locations — add them on the locations page.")}</div>}
+                </div>
+              )}
+            </div>
             {select("nationality_id", "form.nat", lookupOpts(lookups.nationalities), "—")}
             {select("department_id", "form.dept", lookupOpts(lookups.departments), "—")}
             {field("job_title", "form.job")}
@@ -297,11 +417,20 @@ export function EmployeeForm({
                       <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={(e) => { onDoc(d, e.target.files?.[0]); e.target.value = ""; }} />
                     </div>
                   ))}
+                {canEdit && employee && <EmpCerts employeeId={employee.id} onSaved={() => docs.reload()} />}
+                {plainDate("national_address_expiry", T("انتهاء العنوان الوطني", "National address expiry"))}
+                {plain("gosi_no", T("رقم التأمينات الاجتماعية", "GOSI number"))}
+                {plainDate("gosi_cert_expiry", T("انتهاء شهادة التأمينات", "GOSI certificate expiry"))}
                 <div className="ff" style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{T("الوثائق المرفوعة", "Uploaded documents")}</div>
+                  {docs.data && !docs.data.length && <div style={{ color: "var(--mu)" }}>{T("لا توجد وثائق", "No documents")}</div>}
                   {docs.data?.map((f) => (
                     <div key={f.id} className="di" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span className="dv">{tEnum("doc", f.type)} — {f.file_name} <span className="dl">({dmy(f.created_at)})</span></span>
-                      <button type="button" className="btn bsm" onClick={() => openDocument(f.id)}><i className="ti ti-eye" /></button>
+                      <span style={{ display: "flex", gap: 4 }}>
+                        <button type="button" className="btn bsm" title={T("عرض", "View")} onClick={() => openDocument(f.id)}><i className="ti ti-eye" /></button>
+                        {canEdit && <button type="button" className="btn bsm" title={T("حذف", "Delete")} onClick={() => removeDoc(f.id)}><i className="ti ti-trash" /></button>}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -324,6 +453,17 @@ export function EmployeeForm({
               {v.contract_nature === "fixed" ? t("form.cHintFixed") : t("form.cHintIndefinite")}
             </div>
             {field("annual_leave_days", "form.ldc", "number")}
+            <div className="fsec" style={{ marginTop: 8 }}>{T("فترة التجربة", "Probation period")}</div>
+            <div>
+              <label htmlFor="f-probation_days">{T("مدة التجربة (من تاريخ المباشرة)", "Probation (from the joining date)")}{undo("probation_days")}</label>
+              <select id="f-probation_days" value={v.probation_days as string} disabled={ro} onChange={(e) => set("probation_days", e.target.value)}>
+                <option value="">{T("الافتراضي (من إعدادات التنبيهات)", "Default (from the alerts settings)")}</option>
+                {["30", "60", "90", "180"].map((d) => <option key={d} value={d}>{d} {T("يوم", "days")}</option>)}
+                <option value="custom">{T("تاريخ يدوي (تمديد)", "A date of its own (extension)")}</option>
+              </select>
+            </div>
+            {v.probation_days === "custom" && plainDate("probation_end", T("نهاية التجربة", "Probation ends"))}
+            <div className="ff" style={{ fontSize: 10, color: "var(--mu)", padding: "4px 0" }}>{T("تُحسب نهاية التجربة تلقائيًا من تاريخ المباشرة، ولتمديدها اختر مدة أطول أو تاريخًا يدويًا.", "The probation end follows the joining date; to extend it pick a longer period or a date.")}</div>
           </div>
         )}
 
@@ -332,12 +472,32 @@ export function EmployeeForm({
             <div id="ft4" className="fg">
               <div className="fsec">{t("form.salarySec")}</div>
               {field("basic_salary", "form.sal", "number", { step: "any" })}
-              {field("housing_allowance", "form.hou", "number", { step: "any" })}
-              {field("transport_allowance", "form.tra", "number", { step: "any" })}
-              {field("project_allowance", "form.prj", "number", { step: "any" })}
-              {field("other_allowances", "form.oth", "number", { step: "any" })}
+              {field("housing_allowance", "form.hou", "number", { step: "any", disabled: "housing_allowance" in modes })}
+              {field("transport_allowance", "form.tra", "number", { step: "any", disabled: "transport_allowance" in modes })}
+              {field("project_allowance", "form.prj", "number", { step: "any", disabled: "project_allowance" in modes })}
+              {field("other_allowances", "form.oth", "number", { step: "any", disabled: "other_allowances" in modes })}
               {field("other_deductions", "form.ded", "number", { step: "any" })}
-              {field("extra_allowance", "form.extra", "number", { step: "any" })}
+              {field("extra_allowance", "form.extra", "number", { step: "any", disabled: "extra_allowance" in modes })}
+              {canEdit && (
+                <div className="ff" style={{ border: "1px dashed var(--bd)", borderRadius: 10, padding: 10 }}>
+                  <b style={{ fontSize: 12 }}><i className="ti ti-percentage" /> {T("البدل كنسبة % من الأساسي", "Allowance as % of basic")}</b>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 6 }}>
+                    {PCT_KEYS.map((k) => (
+                      <label key={k} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                        <input type="checkbox" checked={k in modes} onChange={(e) => {
+                          const next = { ...modes };
+                          if (e.target.checked) { const b = Number(v.basic_salary) || 0; next[k] = b ? String(Math.round(((Number(v[k]) || 0) / b) * 10000) / 100) : "0"; }
+                          else delete next[k];
+                          setModes(next);
+                        }} />
+                        {t(PCT_LABEL[k])}
+                        {k in modes && <><input type="number" min={0} max={1000} step="0.01" value={modes[k]} style={{ width: 70 }} onChange={(e) => { setModes({ ...modes, [k]: e.target.value }); }} />%</>}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--mu)", marginTop: 4 }}>{T("البدل المحدّد يُحسب = الأساسي × النسبة، ويتغيّر تلقائيًا مع الأساسي.", "A ticked allowance = basic × %, and follows the basic automatically.")}</div>
+                </div>
+              )}
               <div className="fsec" style={{ marginTop: 8 }}>{t("form.gosiSec")}</div>
               {select("currency", "form.currency", enumOpts("currency", ["SAR", "USD", "EUR", "EGP"]))}
               {field("exchange_rate", "form.rate", "number", { step: "any", disabled: v.currency === "SAR" })}
@@ -367,7 +527,7 @@ export function EmployeeForm({
             <div className="al alb"><i className="ti ti-lock" /><div>{t("form.salaryHidden")}</div></div>
           ))}
 
-        {tab !== "ft5" && canEdit && (
+        {tab !== "ft5" && tab !== "ft6" && canEdit && (
           <div style={{ marginTop: 14, display: "flex", gap: 8, alignItems: "center" }}>
             <button type="submit" className="btn bpl" disabled={busy}><i className="ti ti-check" /> <span id="t_save">{t("form.saveUpdate")}</span></button>
             {!isNew && !employee?.is_terminated && (
@@ -375,10 +535,20 @@ export function EmployeeForm({
                 <i className="ti ti-key" aria-hidden /> {employee?.has_account ? t("form.newPassword") : t("form.createLogin")}
               </button>
             )}
+            {!isNew && (
+              <button type="button" className="btn bsm" id="EMP_REVERT_ALL" disabled={!changed.length && !wlChanged} title={T("استرجاع كل البيانات لآخر قيمة محفوظة", "Restore every field to its saved value")} onClick={revertAll}>
+                ↺ {T("استرجاع الكل", "Restore all")}{changed.length + (wlChanged ? 1 : 0) ? " (" + (changed.length + (wlChanged ? 1 : 0)) + ")" : ""}
+              </button>
+            )}
+            {!isNew && can("employees_admin", "edit") && <button type="button" className="btn bsm" onClick={() => setTempList(true)}><i className="ti ti-list-check" aria-hidden /> {T("الحسابات بكلمة مؤقتة", "Accounts on a temporary password")}</button>}
             <Link href="/employees" className="btn bsm" id="t_cancel">{t("common.cancel")}</Link>
+            <span style={{ fontSize: 11, color: "var(--gr)" }}>⚡ {T("يمكنك التعديل دائماً — يمكن التراجع بعد الحفظ", "You can always edit — and undo after saving")}</span>
           </div>
         )}
       </form>
+      {tempList && <TempPasswordList onClose={() => setTempList(false)} />}
+
+      {tab === "ft6" && <EmpCustody employeeId={employee?.id ?? null} lang={lang} />}
 
       {tab === "ft5" &&
         (employee ? (

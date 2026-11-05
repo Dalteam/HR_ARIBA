@@ -1,0 +1,49 @@
+/* Rules our own HR screens still need that the updated design does not define (the date-time field,
+   the gender icons, the KPI icon, the department bar, the calendar cells). Taken unchanged from the former
+   14-ariba-cohesive-brand-v42.css when the HR portal moved to the design's stylesheets (docs/DESIGN_PORT.md). */
+/* Dashboard gender avatars (components/hr/gender-icons.tsx, masks in public/icons) */
+.ariba-gender-ic.male,.ariba-gender-ic.female{color:#014D3D}
+html[data-ariba-theme="dark"] .ariba-gender-ic.male,body.ariba-dark .ariba-gender-ic.male{color:#29B35E}
+html[data-ariba-theme="dark"] .ariba-gender-ic.female,body.ariba-dark .ariba-gender-ic.female{color:#29B35E}
+/* Unified date / time picker (components/common/date-time-field.tsx) — same look as the employee app */
+:root{--ariba-dt-accent:#014D3D;--ariba-dt-on:#fff}
+.ariba-dt{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:7px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--c2);color:var(--tx);font:inherit;font-size:13px;font-weight:600;text-align:right;cursor:pointer;white-space:nowrap}
+.ariba-dt:hover:not(:disabled),.ariba-dt:focus-visible{border-color:var(--ariba-dt-accent);outline:none}
+.ariba-dt i{color:var(--ariba-dt-accent);font-size:16px}
+.ariba-dt.empty .v{color:var(--mu);font-weight:500}
+.ariba-dt:disabled{opacity:.6;cursor:default}
+.ariba-dt .v{overflow:hidden;text-overflow:ellipsis}
+.ariba-dt-ov{position:fixed;inset:0;z-index:10000;background:rgba(1,32,26,.55);display:flex;align-items:center;justify-content:center;padding:18px;direction:rtl}
+.ariba-dt-panel{width:100%;max-width:360px;background:var(--c);color:var(--tx);border:1px solid var(--bd);border-radius:16px;padding:14px;box-shadow:0 18px 50px rgba(0,0,0,.3);font-family:var(--ariba-font,inherit)}
+.ariba-dt-panel button{font:inherit;cursor:pointer}
+.ariba-dt-title{text-align:center;font-size:11px;font-weight:700;color:var(--mu);margin-bottom:4px}
+.ariba-dt-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ariba-dt-head b{font-size:15px;font-weight:800}
+.ariba-dt-head button{background:none;border:0;color:var(--ariba-dt-accent);font-size:20px;padding:2px 6px;border-radius:8px}
+.ariba-dt-head button:hover{background:var(--c2)}
+.ariba-dt-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;justify-items:center}
+.ariba-dt-grid .wd{font-size:10px;font-weight:700;color:var(--mu);padding:4px 0}
+.ariba-dt-grid .day{width:36px;height:36px;border-radius:50%;border:1.5px solid transparent;background:none;color:var(--tx);font-size:13px;font-weight:600}
+.ariba-dt-grid .day:hover:not(:disabled){background:var(--c2)}
+.ariba-dt-grid .day.today{border-color:var(--ariba-dt-accent)}
+.ariba-dt-grid .day.on{background:var(--ariba-dt-accent);border-color:var(--ariba-dt-accent);color:var(--ariba-dt-on);font-weight:800}
+.ariba-dt-grid .day:disabled{color:var(--bd);cursor:default}
+.ariba-dt-foot{display:flex;justify-content:center;margin-top:10px}
+.ariba-dt-foot .pill{border:1.5px solid var(--ariba-dt-accent);background:none;color:var(--ariba-dt-accent);border-radius:999px;padding:6px 24px;font-size:12px;font-weight:800}
+.ariba-dt-foot .pill.solid{background:var(--ariba-dt-accent);color:var(--ariba-dt-on)}
+.ariba-dt-time{text-align:center;font-size:28px;font-weight:900;color:var(--ariba-dt-accent)}
+.ariba-dt-time12{text-align:center;font-size:11px;color:var(--mu);margin-bottom:6px}
+.ariba-dt-lbl{font-size:11px;font-weight:700;color:var(--mu);margin:8px 0 4px}
+.ariba-dt-chips{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.ariba-dt-chips.two{grid-template-columns:1fr 1fr;margin-top:8px}
+.ariba-dt-chips button{border:1px solid var(--bd);background:var(--c2);color:var(--tx);border-radius:9px;padding:8px 0;font-size:13px;font-weight:600}
+.ariba-dt-chips button:hover{border-color:var(--ariba-dt-accent)}
+.ariba-dt-chips button.on{background:var(--ariba-dt-accent);border-color:var(--ariba-dt-accent);color:var(--ariba-dt-on);font-weight:800}
+.ariba-dt-head .ym{font-size:15px;font-weight:800;color:var(--tx);display:inline-flex;align-items:center;gap:4px}
+.ariba-dt-head .ym i{font-size:14px;color:var(--ariba-dt-accent)}
+.ariba-dt-chips.three{grid-template-columns:repeat(3,1fr)}
+.ariba-dt-chips.three button{padding:12px 0}
+/* Dashboard tweaks: KPI icons, payroll figure readable, department bars */
+#KR .ariba-kpi-icon{color:#014D3D}
+html[data-ariba-theme="dark"] #KR .ariba-kpi-icon{color:#29B35E}
+#KR .ariba-dept-bar{background:linear-gradient(90deg,#29B35E,#014D3D)}

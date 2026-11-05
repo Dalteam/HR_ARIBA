@@ -123,3 +123,43 @@ export function calendarDays(from: string, to: string): number {
   const a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
   return Number.isFinite(a) && Number.isFinite(b) && b >= a ? Math.round((b - a) / 86400000) + 1 : 0;
 }
+
+/** Their workdays() for annual leave: Sunday to Thursday, official holidays out — the rule of the API
+ *  (`services/leave.py` is_workday + request_days). The composer shows «سيتبقى» with it so it cannot promise a balance
+ *  the server then refuses; the server stays the judge of what is stored. */
+export function workdays(from: string, to: string, holidays: { date: string; days?: number; recurring?: boolean }[] = []): number {
+  const a = Date.parse(from + "T00:00:00Z"), b = Date.parse(to + "T00:00:00Z");
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0;
+  const off = holidayDates(holidays, new Date(a).getUTCFullYear(), new Date(b).getUTCFullYear());
+  let n = 0;
+  for (let t = a; t <= b; t += 86400000) {
+    const d = new Date(t);
+    if (d.getUTCDay() !== 5 && d.getUTCDay() !== 6 && !off.has(d.toISOString().slice(0, 10))) n++;   // Friday, Saturday = weekend
+  }
+  return n;
+}
+
+/** Every date the announced holidays cover between two years, a recurring row projected the way the engine does it
+ *  (a 29 February holiday falls on 1 March in a year without one) and each row's extra days counted. */
+function holidayDates(holidays: { date: string; days?: number; recurring?: boolean }[], y1: number, y2: number): Set<string> {
+  const out = new Set<string>();
+  const add = (iso: string, days: number) => {
+    const t = Date.parse(iso + "T00:00:00Z");
+    if (!Number.isFinite(t)) return;
+    for (let i = 0; i < days; i++) out.add(new Date(t + i * 86400000).toISOString().slice(0, 10));
+  };
+  for (const h of holidays) {
+    const base = (h.date || "").slice(0, 10);
+    const [, m, d] = base.split("-").map(Number);
+    const days = Math.max(1, Number(h.days) || 1);
+    add(base, days);
+    if (h.recurring && m && d) {
+      for (let y = y1; y <= y2; y++) {
+        const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        const iso = d <= last ? `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` : `${y}-03-01`;   // the engine rolls 29 Feb to 1 Mar
+        add(iso, days);
+      }
+    }
+  }
+  return out;
+}

@@ -17,17 +17,17 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#014D3D" };
 
-// HR portal root layout. Like the prototype it stays right-to-left in both languages and opens
-// in night mode by default.
+// HR portal root layout. Like the updated design it opens in night mode by default and turns
+// left-to-right in English (its lib/i18n.js sets dir="ltr" for English).
 export default async function HrRootLayout({ children }: { children: React.ReactNode }) {
   const jar = await cookies();
   const lang: Lang = jar.get(LANG_COOKIE)?.value === "en" ? "en" : "ar";
   const theme: Theme = jar.get(HR_THEME_COOKIE)?.value === "light" ? "light" : "dark";
 
   return (
-    <html id="H" lang={lang} dir="rtl" data-ariba-theme={theme}>
+    <html id="H" lang={lang} dir={lang === "en" ? "ltr" : "rtl"} data-ariba-theme={theme}>
       <body>
-        <LocaleProvider lang={lang} flipDir={false}>
+        <LocaleProvider lang={lang} flipDir>
           <ThemeProvider initial={theme} cookie={HR_THEME_COOKIE} bodyClass={false}>
             <ToastProvider variant="hr">
               <AuthProvider>

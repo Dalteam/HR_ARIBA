@@ -10,6 +10,7 @@ import { calcEmployeeGosi, currencyLabel, isLocalCurrency, MONTHS_AR, money, num
 import { getGosiRates, getSalaryBasis, fN, type SalaryBasisRow } from "@/lib/salary";
 import { getSheet } from "@/lib/sheets";
 import { printIcon } from "@/lib/print-icons";
+import { lhFoot, lhHead } from "@/lib/letterhead";
 
 const row = (l: string, v: React.ReactNode, color?: string) => (
   <div className="prow" style={{ color: color || "var(--dm)" }}>
@@ -113,7 +114,7 @@ export default function Page() {
       .net-box .lbl{font-size:11px;color:#555}.net-box .val{font-size:22px;font-weight:900;color:#014D3D}
       .sign{display:flex;justify-content:space-between;margin-top:14px;font-size:12px;font-weight:700}
     </style>
-    <img class="lh-head" src="/brand/letterhead-header.jpg">
+    ${lhHead("")}
     <div class="hd"><div class="ti">كشف راتب — ${period}</div></div>
     <div class="info-grid">
       <div><b>الاسم:</b> ${emp.name_ar}</div><div><b>الرقم الوظيفي:</b> ${emp.emp_no}</div>
@@ -137,7 +138,7 @@ export default function Page() {
     </div>
     <div class="net-box"><div class="lbl">صافي الراتب المستحق</div><div class="val">${money(rowData.net)} ${cur}</div></div>
     <div class="sign"><div>الموظف: ${emp.name_ar}</div><div>الموارد البشرية: ________________</div></div>
-    <img class="lh-foot" src="/brand/letterhead-footer.jpg">`;
+    ${lhFoot("")}`;
     const w = window.open("", "_blank");
     if (!w) return toast("اسمح بالنوافذ المنبثقة", "err");
     w.document.open();
@@ -161,13 +162,13 @@ export default function Page() {
   return (
     <div className="pg on" id="pg-slip">
       <div className="card" style={{ padding: 0 }}>
-        <div className="ch" style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div className="ch" style={{ padding: "12px 14px", flexWrap: "wrap", gap: 8 }}>
           <div className="ct" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <i className="ti ti-receipt" />
             <span id="t_slip">كشف الراتب التفصيلي</span>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <select value={empId} onChange={(e) => setEmpId(e.target.value)} style={{ maxWidth: 220 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "nowrap", alignItems: "center", width: "100%" }}>
+            <select id="SLE" value={empId} onChange={(e) => setEmpId(e.target.value)} style={{ flex: "2 1 0", minWidth: 0 }}>
               <option value="">— اختر موظفاً —</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -175,22 +176,22 @@ export default function Page() {
                 </option>
               ))}
             </select>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ maxWidth: 120 }}>
+            <select id="SLM" value={month} onChange={(e) => setMonth(Number(e.target.value))} style={{ flex: "1 1 0", minWidth: 0 }}>
               {MONTHS_AR.slice(1).map((name, i) => (
                 <option key={i + 1} value={i + 1}>
                   {name}
                 </option>
               ))}
             </select>
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ maxWidth: 100 }}>
+            <select id="SLY" value={year} onChange={(e) => setYear(Number(e.target.value))} style={{ flex: "0 1 80px", minWidth: 0 }}>
               {Array.from({ length: 26 }, (_, i) => now.getFullYear() - 15 + i).map((y) => (
                 <option key={y} value={y}>
                   {y}
                 </option>
               ))}
             </select>
-            <button type="button" className="btn bsm" style={{ background: "#014D3D", color: "#fff", whiteSpace: "nowrap" }} onClick={printOfficial}>
-              <i className="ti ti-file-certificate" /> طباعة رسمية
+            <button type="button" className="btn bpl bsm" id="SL_PRINT" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }} disabled={!emp || !rowData} onClick={printOfficial}>
+              <i className="ti ti-printer" /> طباعة رسمية
             </button>
           </div>
         </div>

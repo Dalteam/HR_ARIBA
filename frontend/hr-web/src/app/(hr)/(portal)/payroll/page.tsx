@@ -1,10 +1,21 @@
 "use client";
 
-// Payroll (مسير الرواتب V119) — port of #pg-pay + js/payroll/107-ariba-v119-payroll.js and
-// js/calculations/06-payroll-module.js, with rows stored through the `sheets` API (pay_YYYY_MM).
-import { useEffect, useMemo, useRef, useState } from "react";
+// Payroll (مسير الرواتب) in the updated design's form (its pages/payroll/*): the toolbar, the status bar, the sheet
+// grouped by employer with subtotals, the formula Excel file, the printed sheet with its column chooser, the archive
+// with its review panel, and other users' edits picked up every 6 seconds. The calculation is OUR V119 port
+// (lib/calc/payroll.ts) with rows stored through the `sheets` API (pay_YYYY_MM). Edits for HR and admin; approval
+// and reopening (with a reason) for finance, HR and admin, as our API allows. The design's «تجهيز للمالية» step
+// (Stage 19): HR prepares the month (optional note), finance is told and may approve a prepared month only.
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
+import { Modal } from "@/components/hr/modal";
 import { PageState } from "@/components/hr/not-built";
+import { PromptModal } from "@/components/hr/prompt-modal";
+import { useAuth } from "@/lib/auth-context";
+import { saveBlob } from "@/lib/exporter";
+import { getCompany } from "@/lib/settings";
+import { loadPrintCols, payrollPrintHtml, payrollXlsx, PRINT_COLS, defaultPrintCols, savePrintCols, sameCur } from "@/lib/calc/payroll-out";
 import { PAYX } from "@/lib/calc/payx";
 import {
   USED_CACHE,
@@ -18,7 +29,6 @@ import {
   dmy,
   empDefault,
   enrich,
-  EXCEL_COLS,
   isLocalCurrency,
   isoDate,
   MONTHS_AR,
@@ -27,8 +37,8 @@ import {
   num,
   p2,
   recalc,
-  rowValue,
   sums,
+  SUMCOL,
   type MonthCtx,
   type PayRow,
 } from "@/lib/calc/payroll";
@@ -91,16 +101,6 @@ const INP: React.CSSProperties = {
   textAlign: "right",
   padding: 2,
 };
-const box = (c: string): React.CSSProperties => ({
-  background: `color-mix(in srgb, ${c} 9%, transparent)`,
-  border: `1px solid color-mix(in srgb, ${c} 27%, transparent)`,
-  borderRadius: 8,
-  padding: "7px 14px",
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  whiteSpace: "nowrap",
-});
 
 const cloneRow = (r: PayRow): PayRow => ({ ...r, manualEdits: { ...r.manualEdits } });
 const setField = (r: PayRow, k: string, v: unknown) => {
@@ -109,6 +109,11 @@ const setField = (r: PayRow, k: string, v: unknown) => {
 
 export default function Page() {
   const toast = useToast();
+  const { can: may } = useAuth();
+  const canEdit = may("payroll", "edit");
+  const canApprove = may("payroll_approve", "edit");
+  const canPrepare = may("payroll_prepare", "edit");
+  const { user } = useAuth();
   const now = new Date();
   const [basis, setBasis] = useState<SalaryBasisRow[] | null>(null);
   const [rates, setRates] = useState<Awaited<ReturnType<typeof getGosiRates>> | null>(null);
@@ -125,14 +130,36 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveState, setSaveState] = useState("");
+  const [dlg, setDlg] = useState<"approve" | "rebuild" | "reopen" | "print" | "prepare" | null>(null);
+  // Stage 19: the month's cycle (draft → prepared → approved → reopened), with who and when
+  type PayStatus = { status: "draft" | "prepared" | "approved" | "reopened"; prepared_by: string | null; prepared_at: string | null;
+    prepare_note: string | null; approved_by: string | null; reopened_by: string | null; reopened_at: string | null; reopen_reason: string | null };
+  const [pst, setPst] = useState<PayStatus | null>(null);
+  const [stTick, setStTick] = useState(0);
+  const [company, setCompany] = useState("");
+  const [review, setReview] = useState<{ y: number; m: number; rows: PayRow[] } | null>(null);
+  // what we last sent or loaded, so the 6-second check only takes other users' edits
+  const lastJson = useRef("");
+  useEffect(() => {
+    getCompany().then((c) => setCompany(c.company_name_ar)).catch(() => undefined);
+  }, []);
 
   const m: MonthCtx = useMemo(
     () => ({ y: year, m: month, days, start: new Date(year, month - 1, 1), end: new Date(year, month - 1, days) }),
     [year, month, days],
   );
   const key = `pay_${year}_${p2(month)}`;
+  useEffect(() => {
+    let alive = true;
+    request<PayStatus>(`/payroll/status/${key}`).then((s) => alive && setPst(s)).catch(() => alive && setPst(null));
+    return () => {
+      alive = false;
+    };
+  }, [key, stTick]);
   const empMap = useMemo(() => new Map((basis ?? []).map((e) => [String(e.id), e])), [basis]);
   const employers = useMemo(() => [...new Set(rows.map((r) => r.employer || "").filter(Boolean))].sort(), [rows]);
+  const list = useMemo(() => (filter ? rows.filter((r) => r.employer === filter) : rows), [rows, filter]);
 
   const recalcRow = (r: PayRow) => recalc(r, empMap.get(String(r.id)), m, rates!);
 
@@ -156,12 +183,23 @@ export default function Page() {
   }, [rows, approved, rates, m, empMap]);
 
   function scheduleSave(next: PayRow[]) {
+    if (!canEdit) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSaveState("…");
     saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      const json = JSON.stringify(next);
       putSheet(key, next)
-        .then(() => toast("تم حفظ المسير", "ok"))
-        .catch((e) => toast(e instanceof Error ? e.message : String(e), "err"));
-    }, 500);
+        .then(() => {
+          lastJson.current = json;
+          setSaveState("✓ محفوظ");
+          setTimeout(() => setSaveState(""), 2000);
+        })
+        .catch((e) => {
+          setSaveState("⚠");
+          toast("تعذر حفظ المسير: " + (e instanceof Error ? e.message : String(e)), "err");
+        });
+    }, 700);
   }
 
   useEffect(() => {
@@ -184,6 +222,7 @@ export default function Page() {
         const [r, sheet] = await Promise.all([getGosiRates(isoDate(m.end)), getSheet(key)]);
         if (!alive) return;
         setRates(r);
+        lastJson.current = JSON.stringify(sheet.data ?? null);
         if (Array.isArray(sheet.data)) {
           const saved = sheet.data as PayRow[];
           const next = sheet.approved
@@ -259,38 +298,55 @@ export default function Page() {
   }
 
   async function approve() {
-    if (!window.confirm("اعتماد مسير الرواتب؟ لن يمكن التعديل بعد الاعتماد.")) return;
+    setDlg(null);
     if (!rows.length) return toast("لا توجد بيانات", "err");
     try {
-      await putSheet(key, rows);
+      if (canEdit) await putSheet(key, rows);
       const s = await approveSheet(key);
       setApproved(true);
       setApprovedAt(s.approved_at);
+      setStTick((n) => n + 1);
       toast("تم اعتماد مسير الرواتب", "ok");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
     }
   }
 
-  async function unapprove() {
+  async function reopen(reason: string) {
+    if (reason.length < 5) return toast("اكتب سببًا واضحًا (5 أحرف على الأقل)", "err");
+    setDlg(null);
     try {
-      await unapproveSheet(key);
+      await unapproveSheet(key, reason);
       setApproved(false);
       setApprovedAt(null);
-      toast("تم فك الاعتماد", "ok");
+      setStTick((n) => n + 1);
+      toast("✓ أُعيد فتح المسير", "ok");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), "err");
+    }
+  }
+
+  async function prepare(note: string) {
+    setDlg(null);
+    if (!rows.length) return toast("لا توجد بيانات", "err");
+    try {
+      if (canEdit) await putSheet(key, rows); // the figures finance will see are the ones on screen
+      setPst(await request<PayStatus>(`/sheets/${key}/prepare`, { method: "POST", body: { note } }));
+      toast("📤 جُهّز المسير — أُرسل إشعار للمالية", "ok");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
     }
   }
 
   async function rebuild() {
+    setDlg(null);
     if (approved) return toast("المسير معتمد — لا يمكن إعادة بنائه.", "err");
-    if (!window.confirm("إعادة بناء المسير من بيانات الموظفين؟ ستُفقد التعديلات اليدوية غير المعتمدة.")) return;
     const fresh = buildRows(basis!, m, []).map((r) => recalc(r, empMap.get(String(r.id)), m, rates!));
     setRows(fresh);
     try {
       await putSheet(key, fresh);
-      toast("تم إعادة بناء المسير", "ok");
+      lastJson.current = JSON.stringify(fresh);
+      toast("✓ تم إعادة بناء المسير", "ok");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
     }
@@ -343,61 +399,20 @@ export default function Page() {
     scheduleSave(next);
   }
 
-  function exportCsv() {
-    const head = EXCEL_COLS.map((c) => c.t);
-    const data = rows.map((r) => EXCEL_COLS.map((c) => rowValue(r, c.t)));
-    const csv = "﻿" + [head, ...data].map((line) => line.map((v) => `"${v}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    a.download = `payroll_${year}_${p2(month)}.csv`;
-    a.click();
+  // the design's Excel with real formulas, over the on-screen column titles
+  function exportXlsx() {
+    if (!list.length) return toast("لا توجد بيانات", "err");
+    const { blob, name } = payrollXlsx(list, cols.map((c) => c.t), SUMCOL, year, month);
+    saveBlob({ blob, name, mime: blob.type });
   }
-
-  function print() {
-    const H = [
-      "م", "الاسم", "أيام", "أيام التأمينات", "الأساسي", "سكن", "مواصلات", "مشروع + أخرى", "إضافي",
-      "بدل إجازة", "مكافأة نهاية الخدمة", "إجمالي المستحق", "سلف / غياب", "تأمينات الموظف", "خصومات أخرى",
-      "إجمالي المستقطع", "الصافي", "العملة", "الصافي (ر.س)",
-    ];
-    const list = filter ? rows.filter((r) => r.employer === filter) : rows;
-    const tr = (r: PayRow, i: number) =>
-      `<tr><td>${i + 1}</td><td style="text-align:right;font-weight:700;white-space:normal">${r.name.split(" ").slice(0, 3).join(" ")}${PAYX.findReason(r.reason) ? ' <span style="color:#a15c00">●</span>' : ""}</td>` +
-      `<td>${num(r.workDays)}</td><td>${num(r.insDays)}</td><td>${money(r.sal)}</td><td>${money(r.houPay)}</td><td>${money(r.traPay)}</td>` +
-      `<td>${money(num(r.prjPay) + num(r.othPay) + num(r.otherAllow))}</td><td>${money(r.overtime)}</td><td>${money(r.leaveComp)}</td><td>${money(r.eosAmt)}</td>` +
-      `<td><b>${money(r.totalDue)}</b></td><td>${money(r.loanDeduct)}</td><td>${money(r.insEmp && !r.noInsDeduct ? r.insEmp : 0)}</td>` +
-      `<td>${money(r.otherDeduct)}</td><td><b>${money(r.totalDeduct)}</b></td><td><b>${money(r.net)}</b></td>` +
-      `<td style="color:#a15c00">${isLocalCurrency(r.currency) ? "ر.س" : currencyLabel(r.currency)}</td><td><b>${money(r.netSAR)}</b></td></tr>`;
-    const srow = (label: string, subset: PayRow[], cls: string) => {
-      const s = sums(subset);
-      return `<tr class="${cls}"><td colspan="4" style="text-align:right">${label} (${subset.length})</td>` +
-        `<td>${money(s.sal)}</td><td>${money(s.houPay)}</td><td>${money(s.traPay)}</td><td>${money(s.prjPay + s.othPay)}</td>` +
-        `<td>${money(s.overtime)}</td><td>${money(s.leaveComp)}</td><td>${money(s.eosAmt)}</td><td>${money(s.totalDue)}</td>` +
-        `<td>${money(s.loanDeduct)}</td><td>${money(subset.reduce((a, r) => a + (r.noInsDeduct ? 0 : num(r.insEmp)), 0))}</td>` +
-        `<td>${money(s.otherDeduct)}</td><td>${money(s.totalDeduct)}</td><td>${money(s.net)}</td><td></td><td>${money(s.netSAR)}</td></tr>`;
-    };
-    const order = [...new Set(list.map((r) => r.employer || "—"))];
-    let body = "";
-    let n = 0;
-    for (const k of order) {
-      const grp = list.filter((r) => (r.employer || "—") === k);
-      body += `<tr class="g"><td colspan="${H.length}">${k}</td></tr>`;
-      body += grp.map((r) => tr(r, n++)).join("");
-      body += srow(`إجمالي ${k}`, grp, "s");
-    }
-    body += srow("الإجمالي العام", list, "gt");
-    const css =
-      '<style>@page{size:A4 landscape;margin:8mm 9mm}*{box-sizing:border-box}body{margin:0;font-family:"ARIBA Two","Segoe UI",Tahoma,Arial,sans-serif;color:#10231c;font-size:8.2px;direction:rtl}' +
-      '.hd{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #014D3D;padding-bottom:4px;margin-bottom:5px}.hd .t{text-align:center;flex:1}.hd .t b{display:block;font-size:13px;color:#014D3D}.hd .t span{font-size:9.5px;color:#555}' +
-      'table{width:100%;border-collapse:collapse}thead{display:table-header-group}tr{page-break-inside:avoid}th{background:#014D3D;color:#fff;padding:3px 2px;font-size:8px;font-weight:700;text-align:center;border:1px solid #014D3D}td{padding:1.5px 3px;border:1px solid #d9e3df;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}' +
-      'tr.g td{background:#e8f3ee;font-weight:800;color:#014D3D;text-align:right}tr.s td{background:#f1f6f4;font-weight:800}tr.gt td{background:#014D3D;color:#fff;font-weight:800;font-size:9px}</style>';
-    const html =
-      `<div class="hd"><div class="t"><b>كشف رواتب ومكافآت موظفي شركة حلول أريبا لخدمات الأعمال</b>` +
-      `<span>عن شهر ${MONTHS_AR[month]} ${year} — عدد الموظفين ${list.length}</span></div></div>` +
-      `<table><thead><tr>${H.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+  function doPrint(keys: string[]) {
+    setDlg(null);
+    savePrintCols(keys);
+    const html = payrollPrintHtml(list, { y: year, m: month, cols: keys, companyTitle: company ? "كشف رواتب ومكافآت موظفي " + company : undefined });
     const w = window.open("", "_blank");
     if (!w) return toast("اسمح بالنوافذ المنبثقة", "err");
     w.document.open();
-    w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>مسير الرواتب ${MONTHS_AR[month]} ${year}</title>${css}</head><body>${html}</body></html>`);
+    w.document.write(`<!doctype html><html dir="rtl"><head><meta charset="utf-8"><title>مسير الرواتب ${MONTHS_AR[month]} ${year}</title></head><body>${html}</body></html>`);
     w.document.close();
     setTimeout(() => {
       try {
@@ -409,8 +424,50 @@ export default function Page() {
     }, 400);
   }
 
-  const locked = approved;
-  const list = filter ? rows.filter((r) => r.employer === filter) : rows;
+  // other users' edits: every 6 s while the tab is visible, nothing is being typed and nothing of ours is unsent
+  const pollRef = useRef<() => void>(() => undefined);
+  pollRef.current = () => {
+    if (document.hidden || loading || !rates || !basis || saveTimer.current) return;
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && ae.closest("#payBody")) return;
+    getSheet(key)
+      .then((sheet) => {
+        const json = JSON.stringify(sheet.data ?? null);
+        if (json === lastJson.current && sheet.approved === approved) return;
+        lastJson.current = json;
+        if (!Array.isArray(sheet.data)) return;
+        const saved = sheet.data as PayRow[];
+        setRows(sheet.approved ? saved.map((row) => recalc(cloneRow(row), empMap.get(String(row.id)), m, rates)) : buildRows(basis, m, saved).map((row) => recalc(row, empMap.get(String(row.id)), m, rates)));
+        setApproved(sheet.approved);
+        setApprovedAt(sheet.approved_at);
+        toast("🔄 حدّث مستخدم آخر المسير", "info");
+      })
+      .catch(() => undefined);
+  };
+  useEffect(() => {
+    const t = setInterval(() => pollRef.current(), 6000);
+    return () => clearInterval(t);
+  }, []);
+
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const openArchive = useCallback(async (y: number, mo: number) => {
+    setArchiveBusy(true);
+    try {
+      const sh = await getSheet(`pay_${y}_${p2(mo)}`);
+      setReview({ y, m: mo, rows: Array.isArray(sh.data) ? (sh.data as PayRow[]) : [] });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [toast]);
+  useEffect(() => {
+    // the design loads the approved-payroll history with the page
+    loadArchive();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const locked = approved || !canEdit;
+
   const sAll = sums(list);
   const byCur: Record<string, number> = {};
   for (const r of list) {
@@ -532,12 +589,13 @@ export default function Page() {
     { g: "الإجمالي", t: "إجمالي المستحق", render: (r) => <b style={{ color: "var(--bl)" }}>{money(r.totalDue)}</b> },
     { g: "الاستقطاعات", t: "سلف / غياب", render: (r) => input(r, "loanDeduct", 64, "number", "0.01", true) },
     { t: "تأمينات موظف", render: (r) => (
-        <span>
+        // amount above, «بدون خصم» below: side by side the label spilled into the «أخرى» column next to it
+        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
           <span style={{ color: r.noInsDeduct ? "var(--dm)" : "var(--am)", textDecoration: r.noInsDeduct ? "line-through" : "none" }}>
             {money(r.insEmp)}
           </span>
           {!locked && (
-            <label title="لا يُخصم من الموظف" style={{ fontSize: 9, color: "var(--mu)", marginInlineStart: 4 }}>
+            <label title="لا يُخصم من الموظف" style={{ fontSize: 9, color: "var(--mu)", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 3 }}>
               <input type="checkbox" checked={!!r.noInsDeduct} onChange={(e) => update(String(r.id), "noInsDeduct", e.target.checked)} /> بدون خصم
             </label>
           )}
@@ -568,6 +626,67 @@ export default function Page() {
   }
 
   const termEmps = (basis ?? []).filter((e) => e.is_terminated && !rows.some((r) => String(r.id) === String(e.id)) && num(e.basic_salary) > 0);
+  const insAuto = () => {
+    if (locked || !rates) return;
+    const next = rows.map(cloneRow);
+    for (const r of next) {
+      if (r.manualEdits) delete r.manualEdits.insDays;
+      r.insDays = defaultInsDays(r, empMap.get(String(r.id)), m);
+      r.edited = true;
+      recalc(r, empMap.get(String(r.id)), m, rates);
+    }
+    setRows(next);
+    scheduleSave(next);
+  };
+  const order: string[] = [];
+  const byEmp: Record<string, PayRow[]> = {};
+  for (const r of list) {
+    const k = r.employer || "—";
+    if (!byEmp[k]) {
+      byEmp[k] = [];
+      order.push(k);
+    }
+    byEmp[k].push(r);
+  }
+  const totalRow = (label: string, rs: PayRow[], bg: string, k: string) => {
+    const t = sums(rs);
+    return (
+      <tr key={k}>
+        <td colSpan={3} style={{ ...TDS, background: bg, fontWeight: 800, position: "sticky", right: 0 }}>{label} ({rs.length})</td>
+        {cols.slice(3).map((c) => {
+          const sk = SUMCOL[c.t];
+          return <td key={c.t} style={{ ...TDS, background: bg, fontWeight: 800 }}>{sk ? (sk === "net" && !sameCur(rs) ? "—" : money(t[sk])) : ""}</td>;
+        })}
+      </tr>
+    );
+  };
+  const years: number[] = [];
+  for (let y = 2011; y <= 2086; y++) years.push(y);
+  const when = (v: string | null | undefined) => (v ? new Date(v).toLocaleString("ar-SA-u-ca-gregory-nu-latn", { timeZone: "Asia/Riyadh" }) : "");
+  const state = approved ? "approved" : pst?.status ?? "draft";
+  const chip = {
+    approved: ["rgba(41,179,94,.15)", "var(--gr)", "🔒 معتمد"],
+    prepared: ["rgba(59,130,246,.15)", "var(--bl)", "📤 جاهز للاعتماد"],
+    reopened: ["rgba(245,158,11,.15)", "var(--am)", "🔓 مفتوح بعد الاعتماد"],
+    draft: ["rgba(148,163,184,.18)", "var(--mu)", "📝 مسودة"],
+  }[state];
+  const sub = state === "approved"
+    ? "اعتُمد" + (pst?.approved_by ? " بواسطة " + pst.approved_by : "") + (approvedAt ? " — " + when(approvedAt) : "")
+    : state === "prepared"
+      ? "جهّزه " + (pst?.prepared_by || "الموارد البشرية") + " — " + when(pst?.prepared_at) + (pst?.prepare_note ? " — " + pst.prepare_note : "") + " — بانتظار اعتماد المالية"
+      : state === "reopened"
+        ? "فتحه " + (pst?.reopened_by || "") + " — " + when(pst?.reopened_at) + (pst?.reopen_reason ? " — السبب: " + pst.reopen_reason : "")
+        : canPrepare ? "جهّز المسير ثم أرسله للمالية للاعتماد" : "بانتظار تجهيز الموارد البشرية";
+  // the design's rule (the API enforces it): finance approves a prepared month only
+  const approveBlocked = user?.role === "finance" && state !== "prepared";
+  const kpis: [string, string, string][] = [
+    ["إجمالي صافي العملات", Object.entries(byCur).map(([c, v]) => money(v) + (c === "ريال سعودي" ? " ر.س" : " " + c)).join(" | "), "var(--bl)"],
+    ["إجمالي الصافي (ر.س)", money(sAll.netSAR), "var(--gr)"],
+    ["تأمينات المنشأة", money(sAll.insEr), "var(--am)"],
+    ...(sAll.leaveComp ? [["بدل الإجازة", money(sAll.leaveComp), "var(--pu)"] as [string, string, string]] : []),
+    ...(sAll.eosAmt ? [["مكافأة نهاية الخدمة", money(sAll.eosAmt), "var(--pu)"] as [string, string, string]] : []),
+    ["عدد الموظفين", String(list.length), "var(--cy)"],
+  ];
 
   return (
     <div className="pg on" id="pg-pay">
@@ -575,124 +694,114 @@ export default function Page() {
         <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--c2)", padding: "6px 10px", borderRadius: 8, border: "1px solid var(--bd)" }}>
           <label style={{ fontSize: 11, color: "var(--mu)", fontWeight: 600 }}>الشهر:</label>
           <select value={month} onChange={(e) => { const mo = Number(e.target.value); setMonth(mo); setDays(new Date(year, mo, 0).getDate()); }} style={{ fontSize: 12, background: "transparent", border: "none", color: "var(--tx)" }}>
-            {MONTHS_AR.slice(1).map((name, i) => (
-              <option key={i + 1} value={i + 1}>{name}</option>
-            ))}
+            {MONTHS_AR.slice(1).map((name, i) => <option key={i + 1} value={i + 1}>{name}</option>)}
           </select>
           <select value={year} onChange={(e) => { const y = Number(e.target.value); setYear(y); setDays(new Date(y, month, 0).getDate()); }} style={{ fontSize: 12, background: "transparent", border: "none", color: "var(--tx)" }}>
-            {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--c2)", padding: "6px 10px", borderRadius: 8, border: "1px solid var(--bd)" }}>
           <label style={{ fontSize: 11, color: "var(--mu)", fontWeight: 600 }}>أيام الشهر:</label>
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ fontSize: 12, background: "transparent", border: "none", color: "var(--tx)" }}>
-            {[28, 29, 30, 31].map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
+          <select value={days} disabled={locked} onChange={(e) => setDays(Number(e.target.value))} style={{ fontSize: 12, background: "transparent", border: "none", color: "var(--tx)" }}>
+            {[28, 29, 30, 31].map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ fontSize: 12, maxWidth: 160 }}>
-          <option value="">كل نطاقات العمل</option>
-          {employers.map((em) => (
-            <option key={em} value={em}>{em}</option>
-          ))}
+          <option value="">كل جهات العمل</option>
+          {employers.map((em) => <option key={em} value={em}>{em}</option>)}
         </select>
         <div id="payStatus">
           {approved ? (
-            <span style={{ background: "rgba(16,185,129,.15)", color: "var(--gr)", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-              <i className="ti ti-circle-check" aria-hidden /> معتمد {approvedAt ? `— ${approvedAt.slice(0, 10)}` : ""}
-            </span>
+            <span style={{ background: "rgba(16,185,129,.15)", color: "var(--gr)", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>✓ معتمد {approvedAt ? "— " + approvedAt.slice(0, 10) : ""}</span>
           ) : (
-            <span style={{ background: "rgba(245,158,11,.1)", color: "var(--am)", padding: "3px 10px", borderRadius: 6, fontSize: 11 }}>⏳ غير معتمد</span>
+            <span style={{ background: "rgba(245,158,11,.1)", color: "var(--am)", padding: "3px 10px", borderRadius: 6, fontSize: 11 }}><StatusIcon name="wait" size={12} />غير معتمد</span>
           )}
         </div>
-        <div style={{ marginRight: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {!approved && (
-            <button type="button" className="btn bgr bsm" onClick={approve}><i className="ti ti-check" /> اعتماد</button>
-          )}
-          {approved && (
-            <button type="button" className="btn bsm" style={{ background: "var(--am)", color: "#fff" }} onClick={unapprove}><i className="ti ti-arrow-back-up" /> فك الاعتماد</button>
-          )}
-          {!approved && <button type="button" className="btn bsm" style={{ background: "var(--cy)", color: "#fff", borderColor: "var(--cy)" }} onClick={addRow}><i className="ti ti-plus" /> إضافة صف</button>}
-          {!approved && <button type="button" className="btn bsm" style={{ background: "var(--am)", color: "#fff" }} onClick={rebuild}><i className="ti ti-refresh" /> إعادة بناء</button>}
-          <button type="button" className="btn bsm" style={{ background: "var(--pu)", color: "#fff" }} onClick={exportCsv}><i className="ti ti-file-spreadsheet" /> Excel</button>
-          <button type="button" className="btn bsm" style={{ background: "var(--rd)", color: "#fff" }} onClick={print}><i className="ti ti-printer" /> طباعة المسير</button>
+        <span style={{ fontSize: 11, color: "var(--mu)" }}>{saveState}</span>
+        {!locked && (
+          <>
+            {termEmps.length > 0 && (
+              <select value="" onChange={(e) => e.target.value && addTerminated(e.target.value)} style={{ fontSize: 11, maxWidth: 190 }}>
+                <option value="">+ إضافة موظف منتهي الخدمة…</option>
+                {termEmps.map((e) => <option key={e.id} value={e.id}>{e.name_ar}</option>)}
+              </select>
+            )}
+            <button type="button" className="btn bsm" style={{ fontSize: 11, padding: "3px 9px" }} title="ترجع أيام العمل لأيام الشهر (أو من المباشرة/لآخر يوم) لكل الموظفين" onClick={() => bulk("workDays")}>↺ أيام العمل تلقائي</button>
+            <button type="button" className="btn bsm" style={{ fontSize: 11, padding: "3px 9px" }} title="تنسخ أيام العمل لأيام التأمينات لكل الموظفين" onClick={() => bulk("insDays")}>أيام التأمينات = أيام العمل</button>
+            <button type="button" className="btn bsm" style={{ fontSize: 11, padding: "3px 9px" }} title="ترجع أيام التأمينات لأيام الشهر لكل الموظفين" onClick={insAuto}>↺ أيام التأمينات تلقائي</button>
+          </>
+        )}
+        <div style={{ marginInlineStart: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {canApprove && <button type="button" className="btn bgr bsm" disabled={approved || !rows.length || approveBlocked} title={approveBlocked ? "يُعتمد بعد أن تجهّزه الموارد البشرية" : undefined} onClick={() => setDlg("approve")}><i className="ti ti-check" /> اعتماد</button>}
+          {!locked && <button type="button" className="btn bsm" id="PAY_ADDROW" style={{ background: "var(--cy)", color: "#fff", borderColor: "var(--cy)" }} onClick={addRow}><i className="ti ti-plus" /> إضافة صف</button>}
+          {!locked && <button type="button" className="btn bsm" style={{ background: "var(--am)", color: "#fff" }} onClick={() => setDlg("rebuild")}><i className="ti ti-refresh" /> إعادة بناء</button>}
+          <button type="button" className="btn bsm" style={{ background: "var(--pu)", color: "#fff" }} onClick={exportXlsx}><i className="ti ti-file-spreadsheet" /> Excel</button>
+          <button type="button" className="btn bsm" style={{ background: "var(--rd)", color: "#fff" }} onClick={() => (list.length ? setDlg("print") : toast("لا توجد بيانات للطباعة", "err"))}><i className="ti ti-printer" /> طباعة المسير</button>
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "8px 0", padding: "8px 12px", borderRadius: 12, border: "1px solid var(--bd)", background: "var(--c2)", fontSize: 12.5 }}>
+        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontWeight: 800, padding: "3px 10px", borderRadius: 999, background: chip[0], color: chip[1] }}>{chip[2]}</span>
+        <span style={{ color: "var(--mu)", fontSize: 11.5 }}>{sub}</span>
+        <span style={{ flex: 1 }} />
+        {canPrepare && !approved && <button type="button" className="btn bpl bsm" disabled={!rows.length} onClick={() => setDlg("prepare")}>📤 {state === "prepared" ? "إعادة التجهيز" : "تجهيز للمالية"}</button>}
+        {canApprove && approved && <button type="button" className="btn bsm" style={{ borderColor: "var(--am)", color: "var(--am)" }} onClick={() => setDlg("reopen")}>🔓 فتح المسير</button>}
       </div>
 
       {error ? (
         <PageState error={error} onRetry={() => { setError(null); setLoading(true); setReloadTick((t) => t + 1); }} />
-      ) : loading ? (
-        <PageState loading />
       ) : (
         <>
           <div id="payKPIs" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-            <div style={box("var(--bl)")}><span style={{ fontSize: 11, color: "var(--mu)" }}>إجمالي صافي العملات</span><span style={{ fontSize: 14, fontWeight: 800, color: "var(--bl)" }}>{Object.entries(byCur).map(([c, v]) => money(v) + (c === "ريال سعودي" ? " ر.س" : " " + c)).join(" | ")}</span></div>
-            <div style={box("var(--gr)")}><span style={{ fontSize: 11, color: "var(--mu)" }}>إجمالي الصافي (ر.س)</span><span style={{ fontSize: 14, fontWeight: 800, color: "var(--gr)" }}>{money(sAll.netSAR)}</span></div>
-            <div style={box("var(--am)")}><span style={{ fontSize: 11, color: "var(--mu)" }}>تأمينات المنشأة</span><span style={{ fontSize: 14, fontWeight: 800, color: "var(--am)" }}>{money(sAll.insEr)}</span></div>
-            {sAll.leaveComp ? <div style={box("var(--pu)")}><span style={{ fontSize: 11, color: "var(--mu)" }}>بدل الإجازة</span><span style={{ fontSize: 14, fontWeight: 800, color: "var(--pu)" }}>{money(sAll.leaveComp)}</span></div> : null}
-            {sAll.eosAmt ? <div style={box("var(--pu)")}><span style={{ fontSize: 11, color: "var(--mu)" }}>مكافأة نهاية الخدمة</span><span style={{ fontSize: 14, fontWeight: 800, color: "var(--pu)" }}>{money(sAll.eosAmt)}</span></div> : null}
-            <div style={box("var(--cy)")}><span style={{ fontSize: 11, color: "var(--mu)" }}>عدد الموظفين</span><span style={{ fontSize: 14, fontWeight: 800, color: "var(--cy)" }}>{list.length}</span></div>
+            {kpis.map(([l, v, c]) => (
+              <div key={l} className="kpi" style={{ ["--ac" as string]: c }}><div className="kl">{l}</div><div className="kv" style={{ fontSize: 15 }}>{v}</div></div>
+            ))}
           </div>
 
-          {!approved && termEmps.length > 0 && (
-            <div style={{ marginBottom: 8, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <select defaultValue="" onChange={(e) => addTerminated(e.target.value)} style={{ fontSize: 11, maxWidth: 190 }}>
-                <option value="">+ إضافة موظف منتهي الخدمة…</option>
-                {termEmps.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name_ar}</option>
-                ))}
-              </select>
-              <button type="button" className="btn bsm" style={{ fontSize: 11, padding: "3px 9px" }} onClick={() => bulk("workDays")}><i className="ti ti-arrow-back-up" aria-hidden /> أيام العمل تلقائي</button>
-              <button type="button" className="btn bsm" style={{ fontSize: 11, padding: "3px 9px" }} onClick={() => bulk("insDays")}>أيام التأمينات = أيام العمل</button>
-              <button type="button" className="btn bsm" style={{ fontSize: 11, padding: "3px 9px" }} onClick={() => { if (!approved) { const next = rows.map(cloneRow); for (const r of next) { if (r.manualEdits) delete r.manualEdits.insDays; r.insDays = defaultInsDays(r, empMap.get(String(r.id)), m); r.edited = true; recalc(r, empMap.get(String(r.id)), m, rates!); } setRows(next); scheduleSave(next); } }}><i className="ti ti-arrow-back-up" aria-hidden /> أيام التأمينات تلقائي</button>
-            </div>
-          )}
-
           <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 2000 }}>
-              <thead>
-                <tr>{groups.map((g) => <th key={g.t} colSpan={g.n} style={GROUPS}>{g.t}</th>)}</tr>
-                <tr>{cols.map((c) => <th key={c.t} style={THS}>{c.t}</th>)}</tr>
-              </thead>
-              <tbody>
-                {list.map((r) => (
-                  <tr key={r.id} style={PAYX.findReason(r.reason) ? { background: "rgba(217,119,6,.07)" } : undefined}>
-                    {cols.map((c) => <td key={c.t} style={{ ...TDS, ...c.st }}>{c.render(r)}</td>)}
+            {loading ? (
+              <div style={{ padding: 30, textAlign: "center", color: "var(--mu)" }}>جاري تحميل المسير…</div>
+            ) : (
+              <table id="payTable" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 2000 }}>
+                <thead>
+                  <tr>{groups.map((g) => <th key={g.t} colSpan={g.n} style={GROUPS}>{g.t}</th>)}</tr>
+                  <tr>{cols.map((c) => <th key={c.t} style={THS}>{c.t}</th>)}</tr>
+                </thead>
+                <tbody id="payBody">
+                  {order.map((k) => (
+                    <Fragment key={k}>
+                      {byEmp[k].map((r) => (
+                        <tr key={r.id} style={PAYX.findReason(r.reason) ? { background: "rgba(217,119,6,.07)" } : undefined}>
+                          {cols.map((c) => <td key={c.t} style={{ ...TDS, ...c.st }}>{c.render(r)}</td>)}
+                        </tr>
+                      ))}
+                      {order.length > 1 && totalRow("إجمالي " + k, byEmp[k], "rgba(1,77,61,.10)", "t" + k)}
+                    </Fragment>
+                  ))}
+                  {!list.length && <tr><td colSpan={cols.length} style={{ ...TDS, textAlign: "center", padding: 24, color: "var(--mu)" }}>لا توجد صفوف</td></tr>}
+                </tbody>
+                <tfoot>
+                  {totalRow("الإجمالي العام", list, "rgba(59,130,246,.12)", "gt")}
+                  <tr>
+                    <td colSpan={cols.length} style={{ ...TDS, background: "rgba(59,130,246,.06)", fontSize: 11 }}>
+                      إجمالي حسب طريقة الدفع (ر.س): {Object.entries(byPay).map(([k, v], i) => <span key={k}>{i ? " | " : ""}{k}: <b>{money(v)}</b></span>)}
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={3} style={{ ...TDS, background: "rgba(59,130,246,.12)", fontWeight: 800 }}>الإجمالي العام ({list.length})</td>
-                  {cols.slice(3).map((c) => {
-                    const k = ["الأساسي", "الراتب حسب الأيام", "إضافي", "سكن", "مواصلات", "مشروع (شهري)", "أخرى (شهري)", "بدل أجازة", "مكافأة نهاية الخدمة", "إجمالي المستحق", "سلف / غياب", "تأمينات موظف", "أخرى", "الأجر الخاضع للتأمينات", "تأمينات شركة", "إجمالي المستقطع", "المستحق بالعملة", "الصافي (ريال سعودي)"].includes(c.t) ? c.t : "";
-                    const keyMap: Record<string, string> = { "الأساسي": "sal", "الراتب حسب الأيام": "salByDays", "إضافي": "overtime", "سكن": "houPay", "مواصلات": "traPay", "مشروع (شهري)": "prjPay", "أخرى (شهري)": "othPay", "بدل أجازة": "leaveComp", "مكافأة نهاية الخدمة": "eosAmt", "إجمالي المستحق": "totalDue", "سلف / غياب": "loanDeduct", "تأمينات موظف": "insEmp", "أخرى": "otherDeduct", "الأجر الخاضع للتأمينات": "insBase", "تأمينات شركة": "insEr", "إجمالي المستقطع": "totalDeduct", "المستحق بالعملة": "net", "الصافي (ريال سعودي)": "netSAR" };
-                    const sk = keyMap[k] as keyof typeof sAll | undefined;
-                    return <td key={c.t} style={{ ...TDS, background: "rgba(59,130,246,.12)", fontWeight: 800 }}>{sk ? money(sAll[sk]) : ""}</td>;
-                  })}
-                </tr>
-                <tr>
-                  <td colSpan={cols.length} style={{ ...TDS, background: "rgba(59,130,246,.06)", fontSize: 11 }}>
-                    إجمالي حسب طريقة الدفع (ر.س): {Object.entries(byPay).map(([k, v]) => `${k}: ${money(v)}`).join(" | ")}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            )}
           </div>
         </>
       )}
-      {/* V53 سجل المسيرات المعتمدة */}
-      <div className="card" style={{ marginTop: 12 }}>
+
+      <div className="card" style={{ marginTop: 12 }} id="ARIBA_PAYROLL_ARCHIVE_CARD">
         <div className="ch">
-          <div className="ct"><i className="ti ti-archive" /> سجل المسيرات المعتمدة</div>
-          <button type="button" className="btn bsm" onClick={loadArchive}><i className="ti ti-refresh" /> تحديث</button>
+          <div className="ct">📁 سجل المسيرات المعتمدة</div>
+          <button type="button" className="btn bpl bsm" onClick={loadArchive}>تحديث</button>
         </div>
-        <div id="ARIBA_PAYROLL_ARCHIVE">
+        <div id="ARIBA_PAYROLL_ARCHIVE" style={{ padding: 0 }}>
           {archive === null ? (
-            <div style={{ padding: 18, textAlign: "center", color: "var(--mu)" }}>اضغط «تحديث» لعرض المسيرات المعتمدة</div>
+            <div style={{ padding: 18, textAlign: "center", color: "var(--mu)" }}>جاري تحميل سجل المسيرات المعتمدة...</div>
           ) : archive.length === 0 ? (
             <div style={{ padding: 22, textAlign: "center", color: "var(--mu)" }}>لا توجد مسيرات رواتب معتمدة محفوظة حتى الآن.</div>
           ) : (
@@ -702,14 +811,78 @@ export default function Page() {
                   <strong>{MONTHS_AR[x.month]} {x.year}</strong>
                   <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 3 }}>معتمد — {x.approved_at ? new Date(x.approved_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn") : ""} | {x.employees} موظف</div>
                 </div>
-                <div className="b bgr" style={{ padding: "5px 9px" }}>{x.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} إجمالي</div>
-                <div className="b ba" style={{ padding: "5px 9px" }}>{x.net_sar.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SAR صافي</div>
-                <button type="button" className="btn bsm bpl" onClick={() => { setYear(x.year); setMonth(x.month); window.scrollTo({ top: 0, behavior: "smooth" }); }}>مراجعة</button>
+                <div className="b bgr" style={{ padding: "5px 9px" }}>{money(x.total)} إجمالي</div>
+                <div className="b ba" style={{ padding: "5px 9px" }}>{money(x.net_sar)} SAR صافي</div>
+                <button type="button" className="btn bsm bpl" disabled={archiveBusy} onClick={() => openArchive(x.year, x.month)}>مراجعة</button>
               </div>
             ))
           )}
         </div>
+        <div id="ARIBA_PAYROLL_ARCHIVE_DETAIL">
+          {review && (
+            <div className="card" style={{ marginTop: 10, padding: 0, overflow: "auto" }}>
+              <div className="ch">
+                <div className="ct">📁 مسير معتمد — {MONTHS_AR[review.m]} {review.y}</div>
+                <button type="button" className="btn bsm" onClick={() => setReview(null)}>إغلاق</button>
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead><tr><th>#</th><th>الموظف</th><th>العملة</th><th>الإجمالي</th><th>الصافي المحلي</th><th>الصافي بالريال</th></tr></thead>
+                <tbody>
+                  {review.rows.map((r, i) => (
+                    <tr key={i}>
+                      <td>{r.empNo || i + 1}</td><td>{r.name || "—"}</td><td>{currencyLabel(r.currency) || "ريال سعودي"}</td>
+                      <td>{money(r.totalDue)}</td><td>{money(r.net)}</td><td style={{ fontWeight: 800, color: "var(--gr)" }}>{money(r.netSAR)} SAR</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
+
+      {dlg === "approve" && <PromptModal noInput title="اعتماد مسير الرواتب" message="اعتماد مسير الرواتب؟ لن يمكن التعديل بعد الاعتماد (فتحه بسبب مسجّل فقط)." confirmText="اعتماد" onClose={() => setDlg(null)} onConfirm={() => void approve()} />}
+      {dlg === "rebuild" && <PromptModal noInput danger title="إعادة بناء المسير" message="إعادة بناء المسير من بيانات الموظفين؟ ستُفقد التعديلات اليدوية غير المعتمدة." confirmText="إعادة بناء" onClose={() => setDlg(null)} onConfirm={() => void rebuild()} />}
+      {dlg === "reopen" && <PromptModal required danger title="فتح المسير بعد اعتماده" label="السبب (إلزامي — يُسجَّل في سجل التعديلات، 5 حروف على الأقل)" confirmText="فتح" onClose={() => setDlg(null)} onConfirm={(v) => void reopen(v)} />}
+      {dlg === "print" && <PrintCols onClose={() => setDlg(null)} onPrint={doPrint} />}
+      {dlg === "prepare" && <PromptModal title="تجهيز المسير للمالية" message="يُحفظ المسير كما هو ويُرسل إشعار للمالية لاعتماده." label="ملاحظة للمالية (اختياري)" confirmText="تجهيز وإرسال" onClose={() => setDlg(null)} onConfirm={(v) => void prepare(v)} />}
     </div>
+  );
+}
+
+/** The design's PrintColsDlg: choose the printed sheet's columns; the choice is remembered in this browser. */
+function PrintCols({ onClose, onPrint }: { onClose: () => void; onPrint: (keys: string[]) => void }) {
+  const [sel, setSel] = useState<string[]>(() => loadPrintCols());
+  const on = new Set(sel);
+  const toggle = (k: string) => setSel((a) => (a.includes(k) ? a.filter((x) => x !== k) : [...a, k]));
+  const ordered = PRINT_COLS.map((c) => c.k).filter((k) => on.has(k));
+  return (
+    <Modal
+      title="اختيار أعمدة الطباعة"
+      width={560}
+      onClose={onClose}
+      footer={
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap", width: "100%" }}>
+          <span style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="btn bsm" onClick={() => setSel(PRINT_COLS.map((c) => c.k))}>الكل</button>
+            <button type="button" className="btn bsm" onClick={() => setSel(defaultPrintCols())}>الافتراضي</button>
+            <button type="button" className="btn bsm" onClick={() => setSel(["idx", "name"])}>إلغاء الكل</button>
+          </span>
+          <span style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="btn bsm" onClick={onClose}>إلغاء</button>
+            <button type="button" className="btn bsm" style={{ background: "var(--rd)", color: "#fff" }} disabled={ordered.length < 2} onClick={() => onPrint(ordered)}><i className="ti ti-printer" /> طباعة ({ordered.length})</button>
+          </span>
+        </div>
+      }
+    >
+      <div style={{ fontSize: 12, color: "var(--mu)", marginBottom: 8 }}>علّم الأعمدة المطلوبة في الورقة المطبوعة فقط. يُحفظ اختيارك للمرات القادمة.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: 6 }}>
+        {PRINT_COLS.map((c) => (
+          <label key={c.k} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", border: "1px solid var(--bd)", borderRadius: 8, cursor: "pointer", background: on.has(c.k) ? "rgba(41,179,94,.12)" : "transparent", fontSize: 12 }}>
+            <input type="checkbox" checked={on.has(c.k)} onChange={() => toggle(c.k)} /> {c.ar}
+          </label>
+        ))}
+      </div>
+    </Modal>
   );
 }

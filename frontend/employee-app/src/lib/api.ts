@@ -99,6 +99,29 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * GET a protected picture (the employee's own photo) as a data: URI for <Image>, or null when there is none.
+ * Same token / refresh dance as api(); a missing photo is not an error.
+ */
+export async function apiImage(path: string): Promise<string | null> {
+  const init: RequestInit = { headers: { Accept: "image/*" } };
+  let token = await store.get(ACCESS);
+  let res = await send(path, init, token);
+  if (res.status === 401 && token) {
+    token = await refreshTokens();
+    if (token) res = await send(path, init, token);
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw new ApiError(res.status, "error", `HTTP ${res.status}`);
+  const blob = await res.blob();
+  return await new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
 export const auth = {
   login: (username: string, password: string) =>
     api<Session>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
@@ -163,6 +186,8 @@ export type Employee = {
   annual_leave_days: number;
   years_of_service: string;
   salary: Salary | null;
+  /** GET /employees/{id}/photo answers a file when true (see lib/photo.ts). */
+  has_photo: boolean;
 };
 
 export const me = {
@@ -242,6 +267,8 @@ export type MyRequest = {
   created_at: string;
   /** Their request payload (amount, IBAN, changes, on-behalf name, escalation, HR's return note). */
   payload?: Record<string, any>;
+  /** an approved leave that already has a «طلب إلغاء إجازة» waiting (the API refuses a second one) */
+  cancel_pending?: boolean;
   attachments?: { id: string; document_type: string; file_name: string }[];
 };
 
@@ -255,14 +282,29 @@ export type MyLeave = {
   year_end: number;
   annual: number;
   upcoming_holidays: { name: string; date: string; days: number }[];
+  /** Stage A2: the whole announced calendar, so the composer can count workdays like the server. Optional: a backend
+   *  that does not send it yet still answers, and then only the four upcoming rows are known. */
+  holidays?: { name: string; date: string; days: number; recurring?: boolean }[];
 };
 
 export type TeamMember = { id: string; emp_no: string; name_ar: string; job_title: string | null };
+
+export type LeavePolicy = {
+  emp_cancel_pending: boolean; emp_edit_pending: boolean; emp_request_cancel_approved: boolean; allow_advance_balance: boolean;
+};
 
 export const requests = {
   mine: () => api<MyRequest[]>("/me/requests"),
   submit: (body: NewRequest) => api<MyRequest>("/me/requests", { method: "POST", body: JSON.stringify(body) }),
   remove: (id: string) => api<void>(`/me/requests/${id}`, { method: "DELETE" }),
+  // Stage 14: the employee's own leave actions, each behind its switch in HR's leave policy
+  policy: () => api<LeavePolicy>("/me/leave-policy"),
+  cancel: (id: string, reason?: string) =>
+    api<{ cancelled: boolean }>(`/me/requests/${id}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }),
+  editDates: (id: string, from: string, to: string) =>
+    api<{ days: number }>(`/me/requests/${id}/dates`, { method: "PATCH", body: JSON.stringify({ from, to }) }),
+  cancelRequest: (id: string, reason?: string) =>
+    api<{ id: string }>(`/me/requests/${id}/cancel-request`, { method: "POST", body: JSON.stringify({ reason }) }),
   leave: () => api<MyLeave>("/me/leave"),
   team: () => api<TeamMember[]>("/me/team"),
   approvals: () => api<MyRequest[]>("/me/approvals"),

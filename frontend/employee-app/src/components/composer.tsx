@@ -13,7 +13,7 @@ import { LeaveIcon, hasLeaveIcon } from "@/components/leave-icon";
 import { HOURLY, TYPES } from "@/components/request-item";
 import { ApiError, requests, type RequestType } from "@/lib/api";
 import { pickFile, type Picked } from "@/lib/files";
-import { calendarDays, submitRequest } from "@/lib/port";
+import { calendarDays, submitRequest, workdays } from "@/lib/port";
 import { useData } from "@/lib/data";
 import { shadow } from "@/lib/shadow";
 import { useTileWidth } from "@/lib/grid";
@@ -88,6 +88,8 @@ function ComposerSheet({ visible, first, onClose, onForgot }: { visible: boolean
   const twoStage = type === "unpaid" || type === "salary_advance";
   const today = todayISO();
   const upcoming = (leave?.upcoming_holidays ?? []).filter((h) => h.date >= today).slice(0, 4);
+  // Stage A2: the whole announced calendar when the API sends it, the four upcoming rows otherwise.
+  const announced = leave?.holidays ?? leave?.upcoming_holidays ?? [];
 
   const slide = useCallback((to: number, done?: () => void) => {
     Animated.timing(y, { toValue: to, duration: to === 0 ? 420 : 260, easing: Easing.bezier(0.32, 0.72, 0, 1), useNativeDriver: true }).start(done);
@@ -158,7 +160,10 @@ function ComposerSheet({ visible, first, onClose, onForgot }: { visible: boolean
     }
   }
 
-  const days = from && to && to >= from ? calendarDays(from, to) : 0;
+  // Annual leave is counted in workdays (Sunday–Thursday, official holidays out) exactly like the API request_days,
+  // so «سيتبقى» can no longer promise a balance the server then refuses; every other type stays calendar days.
+  const span = from && to && to >= from ? calendarDays(from, to) : 0;
+  const days = type === "annual" ? (from && to && to >= from ? workdays(from, to, announced) : 0) : span;
   const after = type === "annual" && leave ? Math.round((leave.current - days) * 100) / 100 : null;
 
   if (!shown && !visible) return null;
@@ -225,6 +230,8 @@ function ComposerSheet({ visible, first, onClose, onForgot }: { visible: boolean
                   {type === "annual" && leave ? (
                     <View style={[styles.calc, { backgroundColor: "rgba(214,212,148,.35)" }]}>
                       <T size={12.5} weight={600} color={t.dark ? "#E4E4BC" : "#6F6410"}>{`المتاح لك ${leave.current}`}</T>
+                      {from && to && to >= from ? <T size={11.5} color={t.mu}>{`المدة المحتسبة ${days} يوم عمل`}</T> : null}
+                      {from && to && to >= from ? <T size={11} color={t.mu}>بدون الجمعة والسبت والإجازات الرسمية</T> : null}
                       {after != null && days > 0 ? <T size={12.5} weight={700} color={after < 0 ? t.rd : t.dark ? "#E4E4BC" : "#6F6410"}>{`سيتبقى ${after}`}</T> : null}
                     </View>
                   ) : null}
@@ -246,7 +253,7 @@ function ComposerSheet({ visible, first, onClose, onForgot }: { visible: boolean
             {step === 1 ? (
               <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
                 <T size={11.5} color={t.mu} style={{ marginBottom: 6 }}>
-                  {twoStage ? "المسار: المدير المباشر ← الموارد البشرية (اعتماد نهائي). يصلك إشعار وإيميل عند كل خطوة." : "المسار: المدير المباشر ← الموارد البشرية ← الرئيس التنفيذي."}
+                  {twoStage ? "المسار: المدير المباشر ← الموارد البشرية (اعتماد نهائي). يصلك إشعار وبريد إلكتروني عند كل خطوة." : "المسار: المدير المباشر ← الموارد البشرية ← الرئيس التنفيذي."}
                 </T>
                 <Btn kind="primary" title="أرسل الطلب" icon={<Icon name="send" size={16} color="#012A21" />} onPress={submit} busy={busy} style={{ marginTop: 0 }} />
               </View>

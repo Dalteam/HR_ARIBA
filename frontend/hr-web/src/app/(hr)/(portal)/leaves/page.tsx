@@ -1,15 +1,25 @@
 "use client";
 
-// الطلبات والإجازات — port of #pg-lv: بانتظار إجراء · كل الطلبات · طلب جديد · الأرصدة · الإجازات الرسمية · عمل إضافي.
-// Every request type the employee app sends (leaves, permissions, overtime, forgot punch, advance, mission) shows here.
-// (js/main/08-leaves-ui-pending-all.js, 09-leaves-ui-balances-holidays-requests.js, requests/014 secure workflow).
+// Leaves & requests (الإجازات والطلبات) in the updated design's form (its pages/leaves/*): pending · all requests ·
+// new request · balances · official holidays · overtime. Every request type the employee app sends shows here, from
+// OUR /requests, /holidays and /leave/balances routes. Decisions go through the design's note dialog (no browser
+// pop-ups). Waiting for the "more HR leave actions" stage (lib/features.ts): return to the manager, cancelling an
+// approved leave while keeping it, and undoing the last balance save. Kept from ours: the type filter on the pending
+// list (the attendance page links to it for forgotten punches), the labour-law note, the missing-Eid warning and
+// deleting a request (permanent here: the design's recycle bin is its own stage).
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Modal } from "@/components/hr/modal";
 import { PageState } from "@/components/hr/not-built";
+import { PromptModal } from "@/components/hr/prompt-modal";
 import { useToast } from "@/components/common/toast";
+import { useAuth } from "@/lib/auth-context";
 import { listAllEmployees, openDocument, uploadDocument } from "@/lib/employees";
+import { isReady } from "@/lib/features";
 import { ddmmyyyy, todayIso } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/locale";
+import { printHtml } from "@/lib/print";
+import { tableHtml } from "@/lib/exporter";
 import type { EmployeeListItem } from "@/lib/api";
 import {
   addHoliday,
@@ -26,8 +36,12 @@ import {
   LVL,
   OTHER_TYPES,
   overrideRequest,
+  cancelLeave,
   rejectRequest,
+  returnToManager,
   saveBalance,
+  balanceHistory,
+  undoBalance,
   typeLabel,
   type BalanceDetail,
   type BalanceRow,
@@ -37,48 +51,31 @@ import {
 import { DateField } from "@/components/common/date-time-field";
 
 type Tab = "lv1" | "lv2" | "lv3" | "lv4" | "lv5" | "lv6";
+type Tr = (ar: string, en: string) => string;
+const TABS: Tab[] = ["lv1", "lv2", "lv3", "lv4", "lv5", "lv6"];
 const fD = (d: string | null) => (d ? ddmmyyyy(d) : "—");
 const f2 = (n: number) => Number(n || 0).toFixed(2);
-const STAGE: Record<string, string> = { manager: "بانتظار المدير", ceo: "بانتظار الرئيس التنفيذي", hr: "بانتظار الموارد البشرية" };
-const STAGE_ORDER: Record<string, number> = { hr: 0, manager: 1, ceo: 2 };
-const PUNCH: Record<string, string> = { in: "دخول", out: "خروج", both: "دخول وخروج" };
-const STB: Record<string, React.ReactNode> = {
-  pending: <span className="b ba">معلق</span>,
-  approved: <span className="b bg">موافق</span>,
-  rejected: <span className="b br">مرفوض</span>,
-  cancelled: <span className="b bk">ملغي</span>,
-};
+const short = (s: string) => s.split(" ").slice(0, 3).join(" ");
 const PERM_LIKE = new Set(["permission", "maternity_permission", "early_leave", "advance"]);
+/** the leave types HR records on the «طلب جديد» tab (the design's HR_LEAVE_TYPES, those our API knows) */
+const HR_TYPES = Object.keys(LVL);
+/** consultants, Tamheer and trainees earn no annual leave (the design's leaveExempt) */
+const EXEMPT = new Set(["consultant", "tamheer", "training"]);
+const EN_TYPE: Record<string, string> = {
+  annual: "Annual", sick: "Sick", emergency: "Emergency", death: "Bereavement", marriage: "Marriage", paternity: "Paternity", maternity: "Maternity", umrah: "Umrah", hajj: "Hajj", remote: "Remote",
+  permission: "Permission", maternity_permission: "Maternity permission", early_leave: "Early leave", advance: "Salary advance", mission: "Mission", forgot_punch: "Forgot punch", overtime: "Overtime",
+};
+const STAGE: Record<string, [string, string]> = { manager: ["بانتظار المدير المباشر", "Pending Direct Manager"], hr: ["بانتظار الموارد البشرية", "Pending HR"], ceo: ["بانتظار الرئيس التنفيذي", "Pending CEO"] };
+const STAGE_ORDER: Record<string, number> = { hr: 0, manager: 1, ceo: 2 };
 
-function detailOf(r: HrRequest) {
-  if (r.type === "forgot_punch") {
-    const t1 = r.time_from ? r.time_from.slice(0, 5) : "";
-    const t2 = r.time_to ? r.time_to.slice(0, 5) : "";
-    const kind = PUNCH[r.punch_kind ?? ""] ?? "";
-    return `${fD(r.on_date)} — ${r.punch_kind === "both" ? `دخول ${t1} / خروج ${t2}` : `${kind} ${t1}`}`;
-  }
-  if (r.type === "advance") return `${Number(r.amount ?? 0).toLocaleString("en-US")} ر.س`;
-  if (PERM_LIKE.has(r.type) || r.type === "overtime")
-    return `${fD(r.on_date)}${r.time_from ? " " + r.time_from.slice(0, 5) : ""}${r.hours ? ` (${Number(r.hours)} ساعة)` : ""}${r.amount ? ` — ${Number(r.amount).toLocaleString("en-US")} ر.س` : ""}`;
-  return `${fD(r.from_date)} ← ${fD(r.to_date)} (${Number(r.days ?? 0)} أيام)`;
-}
+/** The note dialog's purpose (the design's `dlg.kind`). */
+type Dlg = { kind: "approve" | "final" | "reject" | "delete" | "return" | "cancel"; r: HrRequest } | null;
 
-/** Legacy optional request attachment: PDF / Word / JPG / PNG, max 12 MB (stored as an employee document). */
-async function attach(employeeId: string, file: File | null): Promise<string | null> {
-  if (!file) return null;
-  if (file.size > 12582912) throw new Error("حجم المرفق يتجاوز 12 MB");
-  const d = await uploadDocument(employeeId, "other", file);
-  return d.id;
-}
-
-function AttachField({ onFile }: { onFile: (f: File | null) => void }) {
-  return (
-    <div className="ff" style={{ gridColumn: "1/-1" }}>
-      <label><i className="ti ti-paperclip" aria-hidden /> مرفق الطلب <span style={{ color: "var(--mu)", fontWeight: 400 }}>(اختياري)</span></label>
-      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
-      <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 4 }}>المرفق اختياري — PDF / Word / JPG / PNG — حد أقصى 12 MB.</div>
-    </div>
-  );
+function useT() {
+  const { lang } = useLocale();
+  const en = lang === "en";
+  const T: Tr = (a, b) => (en ? b : a);
+  return { en, T, ty: (t: string) => (en ? EN_TYPE[t] ?? t : typeLabel(t)) };
 }
 
 export default function Page() {
@@ -89,11 +86,12 @@ export default function Page() {
   );
 }
 
-const TABS: Tab[] = ["lv1", "lv2", "lv3", "lv4", "lv5", "lv6"];
-
 function RequestsPage() {
   const toast = useToast();
-  // Deep link from the attendance page: /leaves?tab=lv1&type=forgot_punch
+  const { en, T } = useT();
+  const { can: may } = useAuth();
+  const can = may(["leaves", "requests"], "edit");
+  // deep link from the attendance page: /leaves?tab=lv1&type=forgot_punch
   const params = useSearchParams();
   const tq = params.get("tab") as Tab | null;
   const [tab, setTab] = useState<Tab>(tq && TABS.includes(tq) ? tq : "lv1");
@@ -104,6 +102,8 @@ function RequestsPage() {
   const [bal, setBal] = useState<BalanceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [busy, setBusy] = useState("");
+  const [dlg, setDlg] = useState<Dlg>(null);
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
@@ -123,106 +123,60 @@ function RequestsPage() {
     };
   }, [tick]);
 
-  // Every pending request of every type and date (past-dated ones — forgot punch, sick leave — included),
-  // HR's own stage first; the badge counts exactly what the list shows.
+  // every pending request of every type and date, HR's own stage first; the badge counts exactly what the list shows
   const pending = useMemo(
-    () => (reqs ?? []).filter((r) => r.status === "pending")
-      .sort((a, b) => (STAGE_ORDER[a.stage] ?? 9) - (STAGE_ORDER[b.stage] ?? 9) || a.created_at.localeCompare(b.created_at)),
+    () => (reqs ?? []).filter((r) => r.status === "pending").sort((a, b) => (STAGE_ORDER[a.stage] ?? 9) - (STAGE_ORDER[b.stage] ?? 9) || a.created_at.localeCompare(b.created_at)),
     [reqs],
   );
 
-  async function act(fn: () => Promise<unknown>, ok: string) {
+  async function act(fn: () => Promise<unknown>, ok: string, key: string) {
+    setBusy(key);
     try {
       await fn();
       toast(ok, "ok");
       reload();
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setBusy("");
     }
   }
-  const approve = (r: HrRequest) => act(() => approveRequest(r.id), "تمت الموافقة");
-  const reject = (r: HrRequest) => {
-    const reason = window.prompt("سبب الرفض:");
-    if (reason === null) return;
-    if (!reason.trim()) return toast("سبب الرفض مطلوب", "err");
-    act(() => rejectRequest(r.id, reason), "تم رفض الطلب");
-  };
-  const onBehalf = (r: HrRequest) => {
-    const reason = window.prompt("سبب الاعتماد نيابة عن المدير:");
-    if (reason === null) return;
-    if (!reason.trim()) return toast("السبب مطلوب", "err");
-    act(() => overrideRequest(r.id, reason), "تم الاعتماد نيابة");
-  };
-  const finalApprove = (r: HrRequest) => {
-    if (!window.confirm("اعتماد نهائي لكل المراحل المتبقية؟")) return;
-    act(() => finalApproveRequest(r.id), "تم الاعتماد النهائي");
-  };
-  const remove = (r: HrRequest) => {
-    if (!window.confirm(r.status === "approved" && r.type === "annual" ? "حذف الإجازة المعتمدة؟ سيرجع رصيدها للموظف." : "حذف الطلب؟")) return;
-    act(() => deleteRequest(r.id), "تم حذف الطلب");
-  };
-
+  function confirm(v: string) {
+    const d = dlg;
+    setDlg(null);
+    if (!d) return;
+    const r = d.r;
+    if (d.kind === "approve")
+      act(() => (r.stage === "hr" ? approveRequest(r.id, v || undefined) : overrideRequest(r.id, v || "تمت الموافقة من الموارد البشرية")), "✓ " + T("تمت الموافقة على الطلب", "Request approved"), r.id);
+    else if (d.kind === "final") act(() => finalApproveRequest(r.id, v || undefined), "✓ " + T("تم الاعتماد النهائي للطلب", "Request finally approved"), r.id);
+    else if (d.kind === "reject") act(() => rejectRequest(r.id, v), T("تم رفض الطلب — أُرسل إشعار للموظف", "Request rejected — the employee was notified"), r.id);
+    else if (d.kind === "return") act(() => returnToManager(r.id, v), "↩ " + T("أُعيد الطلب للمدير المباشر — أُرسل إشعار له وللموظف", "Returned to the direct manager — both were notified"), r.id);
+    else if (d.kind === "cancel") act(() => cancelLeave(r.id, v), "✓ " + T("أُلغيت الإجازة ورجع رصيدها — أُرسل إشعار للموظف", "Leave cancelled and its days returned — the employee was notified"), r.id);
+    else act(() => deleteRequest(r.id), T("تم الحذف", "Deleted"), r.id);
+  }
   const att = (r: HrRequest) =>
     r.attachment_id ? (
-      <button type="button" className="btn bsm" style={{ color: "var(--cy)" }} onClick={() => openDocument(r.attachment_id!).catch(() => toast("المرفق غير موجود", "err"))}>
-        <i className="ti ti-paperclip" /> مرفق
+      <button type="button" className="btn bsm" style={{ color: "var(--cy)", margin: 2 }} onClick={() => openDocument(r.attachment_id!).catch(() => toast(T("المرفق غير موجود", "Attachment not found"), "err"))}>
+        📎 {T("مرفق", "Attachment")}
       </button>
     ) : null;
-  const actions = (r: HrRequest, compact = false) => {
-    if (r.status !== "pending")
-      return (
-        <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => remove(r)} title="حذف">
-          <i className="ti ti-trash" />
-        </button>
-      );
-    return (
-      <>
-        {att(r)}{" "}
-        {r.stage === "hr" ? (
-          <>
-            <button type="button" className="btn bgl bsm" onClick={() => approve(r)}>
-              <i className="ti ti-check" aria-hidden />{compact ? "" : " موافقة"}
-            </button>{" "}
-            <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => reject(r)}>
-              <i className="ti ti-x" aria-hidden />{compact ? "" : " رفض"}
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="b ba">{STAGE[r.stage] ?? "معلق"}</span>{" "}
-            <button type="button" className="btn bsm" onClick={() => onBehalf(r)}>
-              اعتماد نيابة عن المدير
-            </button>{" "}
-            <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => reject(r)} aria-label="رفض">
-              <i className="ti ti-x" aria-hidden />
-            </button>
-          </>
-        )}{" "}
-        <button type="button" className="btn bsm" style={{ background: "var(--gr)", color: "#fff" }} onClick={() => finalApprove(r)}>
-          اعتماد نهائي
-        </button>{" "}
-        <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => remove(r)} title="حذف">
-          <i className="ti ti-trash" />
-        </button>
-      </>
-    );
-  };
 
-  const tabs: [Tab, React.ReactNode][] = [
-    ["lv1", <>بانتظار إجراء <span className="b ba" id="LVB">{pending.length}</span></>],
-    ["lv2", "كل الطلبات"],
-    ["lv3", "طلب جديد"],
-    ["lv4", "الأرصدة"],
-    ["lv5", "الإجازات الرسمية"],
-    ["lv6", <><i className="ti ti-clock-plus" aria-hidden /> عمل إضافي</>],
+  const tabs: [Tab, string, string][] = [
+    ["lv1", "معلقة", "Pending"],
+    ["lv2", "كل الطلبات", "All Requests"],
+    ["lv3", "طلب جديد", "New Request"],
+    ["lv4", "الأرصدة", "Balances"],
+    ["lv5", "الإجازات الرسمية", "Official Holidays"],
+    ["lv6", "⏱️ عمل إضافي", "⏱️ Overtime"],
   ];
 
   return (
     <div className="pg on" id="pg-lv">
       <div className="tbar">
-        {tabs.map(([k, label]) => (
+        {tabs.filter(([k]) => k !== "lv3" || can).map(([k, ar, enL]) => (
           <div key={k} className={"tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>
-            {label}
+            {en ? enL : ar}
+            {k === "lv1" && <> <span className="b ba" id="LVB">{pending.length}</span></>}
           </div>
         ))}
       </div>
@@ -230,156 +184,254 @@ function RequestsPage() {
         <PageState loading={!error} error={error} onRetry={reload} />
       ) : (
         <>
-          {tab === "lv1" && <Pending list={pending} actions={actions} type={typeFilter} onType={setTypeFilter} />}
-          {tab === "lv2" && <AllRequests reqs={reqs} emps={emps} actions={actions} initialType={typeFilter} />}
-          {tab === "lv3" && <NewRequest emps={emps} hols={hols} bal={bal} onDone={reload} />}
-          {tab === "lv4" && <Balances bal={bal} emps={emps} onSaved={reload} />}
-          {tab === "lv5" && <Holidays hols={hols} onChange={reload} />}
-          {tab === "lv6" && <Overtime emps={emps} reqs={reqs.filter((r) => r.type === "overtime")} actions={actions} onDone={reload} />}
+          {tab === "lv1" && <Pending list={pending} can={can} busy={busy} type={typeFilter} onType={setTypeFilter} setDlg={setDlg} att={att} />}
+          {tab === "lv2" && <AllRequests reqs={reqs} emps={emps} can={can} initialType={typeFilter} setDlg={setDlg} att={att} onRefresh={reload} />}
+          {tab === "lv3" && can && <NewRequest emps={emps} hols={hols} bal={bal} onDone={() => { reload(); setTab("lv1"); }} />}
+          {tab === "lv4" && <Balances bal={bal} emps={emps} can={can} onSaved={reload} />}
+          {tab === "lv5" && <Holidays hols={hols} can={can} onChange={reload} />}
+          {tab === "lv6" && <Overtime emps={emps} can={can} reqs={reqs.filter((r) => r.type === "overtime")} setDlg={setDlg} att={att} onDone={reload} />}
         </>
+      )}
+      {dlg && (
+        <PromptModal
+          title={{ approve: T("موافقة على الطلب", "Approve the request"), final: T("اعتماد نهائي بالنيابة", "Final approval on behalf"), reject: T("سبب الرفض", "Rejection reason"), delete: T("حذف الطلب", "Delete the request"), return: T("إرجاع للمدير المباشر", "Return to the direct manager"), cancel: T("إلغاء الإجازة وإرجاع الرصيد", "Cancel the leave and restore the balance") }[dlg.kind]}
+          label={dlg.kind === "reject" || dlg.kind === "cancel" ? T("السبب", "Reason") : dlg.kind === "return" ? T("ملاحظة للمدير المباشر", "Note for the direct manager") : T("ملاحظة (اختياري)", "Note (optional)")}
+          required={dlg.kind === "reject" || dlg.kind === "return"}
+          noInput={dlg.kind === "delete"}
+          message={
+            dlg.kind === "final"
+              ? T("سيتم اعتماد الطلب نهائياً بالنيابة عن كل المراحل المتبقية (المدير المباشر / الموارد البشرية / الرئيس التنفيذي) ويُسجَّل أنه اعتماد بالنيابة. هل أنت متأكد؟", "The request will be finally approved on behalf of every remaining stage (direct manager / HR / CEO), recorded as an approval on behalf. Sure?")
+              : dlg.kind === "delete"
+                ? dlg.r.status === "approved" && dlg.r.type === "annual"
+                  ? T("حذف الإجازة المعتمدة نهائيًا؟ يرجع رصيدها للموظف ويختفي الطلب من تطبيقه. (لا توجد سلة مهملات بعد.)", "Delete this approved leave for good? Its days return to the balance and it disappears from the employee app. (There is no recycle bin yet.)")
+                  : T("حذف هذا الطلب نهائيًا؟ يختفي من تطبيق الموظف. (لا توجد سلة مهملات بعد.)", "Delete this request for good? It disappears from the employee app. (There is no recycle bin yet.)")
+                : dlg.kind === "return"
+                  ? T("يرجع الطلب للمدير المباشر ليرد عليه (موافقة أو رفض) قبل قرار الموارد البشرية، ويصله ويصل الموظف إشعار.", "The request goes back to the direct manager to answer before HR decides; both are notified.")
+                  : dlg.kind === "cancel"
+                    ? T("تُلغى الإجازة وتبقى في السجل «ملغاة»، وترجع أيامها لرصيد الموظف ويصله إشعار.", "The leave is cancelled and kept as «cancelled»; its days return to the balance and the employee is notified.")
+                    : undefined
+          }
+          danger={dlg.kind === "reject" || dlg.kind === "delete" || dlg.kind === "cancel"}
+          confirmText={dlg.kind === "reject" ? T("رفض", "Reject") : dlg.kind === "delete" ? T("حذف", "Delete") : dlg.kind === "return" ? T("إرجاع", "Return") : dlg.kind === "cancel" ? T("إلغاء الإجازة", "Cancel the leave") : T("تأكيد", "Confirm")}
+          cancelText={T("إلغاء", "Cancel")}
+          onClose={() => setDlg(null)}
+          onConfirm={confirm}
+        />
       )}
     </div>
   );
 }
 
 function TypeSelect({ value, onChange, id }: { value: string; onChange: (v: string) => void; id?: string }) {
+  const { T, ty } = useT();
   return (
     <select id={id} value={value} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 170 }}>
-      <option value="">كل الأنواع</option>
-      <optgroup label="الإجازات">
-        {Object.entries(LVL).map(([k, v]) => <option key={k} value={k}>{v.ar}</option>)}
-      </optgroup>
-      <optgroup label="طلبات أخرى">
-        {Object.entries(OTHER_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-      </optgroup>
+      <option value="">{T("كل الأنواع", "All types")}</option>
+      <optgroup label={T("الإجازات", "Leaves")}>{Object.keys(LVL).map((k) => <option key={k} value={k}>{ty(k)}</option>)}</optgroup>
+      <optgroup label={T("طلبات أخرى", "Other requests")}>{Object.keys(OTHER_TYPES).map((k) => <option key={k} value={k}>{ty(k)}</option>)}</optgroup>
     </select>
   );
 }
 
-function Pending({ list: all, actions, type, onType }: { list: HrRequest[]; actions: (r: HrRequest) => React.ReactNode; type: string; onType: (v: string) => void }) {
+function detailOf(r: HrRequest, T: Tr) {
+  const t5 = (t: string | null | undefined) => (t ? t.slice(0, 5) : "");
+  if (r.type === "forgot_punch") return "";
+  if (r.type === "advance") return `${Number(r.amount ?? 0).toLocaleString("en-US")} SAR`;
+  if (PERM_LIKE.has(r.type) || r.type === "overtime" || r.type === "mission")
+    return `${fD(r.on_date)}${r.time_from ? " " + t5(r.time_from) : ""}${r.hours ? " | " + Number(r.hours) + T(" ساعة", " h") : ""}${r.amount ? " | " + Number(r.amount).toLocaleString("en-US") + " SAR" : ""}`;
+  return `${fD(r.from_date)} ← ${fD(r.to_date)} | ${Number(r.days ?? 0)} ${T("يوم", "days")}`;
+}
+
+type RowProps = { can: boolean; setDlg: (d: Dlg) => void; att: (r: HrRequest) => React.ReactNode };
+
+function Pending({ list: all, can, busy, type, onType, setDlg, att }: RowProps & { list: HrRequest[]; busy: string; type: string; onType: (v: string) => void }) {
+  const { en, T, ty } = useT();
   const list = type ? all.filter((r) => r.type === type) : all;
+  const KIND: Record<string, string> = { in: T("دخول", "Check-in"), out: T("خروج", "Check-out"), both: T("دخول وخروج", "Check-in & out") };
   return (
     <div id="lv1">
       <div className="card" style={{ marginBottom: 10 }}>
         <div className="ch">
-          <div className="ct">
-            <i className="ti ti-clock" /> <span>بانتظار إجراء</span>
-          </div>
+          <div className="ct"><i className="ti ti-clock" /> <span>{T("طلبات الموظفين المعلقة", "Pending Employee Requests")}</span></div>
           <TypeSelect value={type} onChange={onType} />
         </div>
         <div id="LVP">
-          {list.length === 0 ? (
-            <div style={{ color: "var(--mu)", textAlign: "center", padding: 24, fontSize: 13 }}><i className="ti ti-circle-check" aria-hidden /> لا توجد طلبات معلقة حالياً</div>
-          ) : (
-            list.map((r) => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: "1px solid rgba(36,48,68,.5)", flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.employee_name.split(" ").slice(0, 3).join(" ")}</div>
-                  <div style={{ fontSize: 11, color: "var(--mu)" }}>
-                    {typeLabel(r.type)} | {detailOf(r)}
+          {!list.length && <div style={{ color: "var(--mu)", textAlign: "center", padding: 24, fontSize: 13 }}>✓ {T("لا توجد طلبات موظفين معلقة", "No pending employee requests")}</div>}
+          {list.map((r) => {
+            const st = STAGE[r.stage] ?? ["مكتمل", "Completed"];
+            const t5 = (t: string | null | undefined) => (t ? t.slice(0, 5) : "");
+            return (
+              <div key={r.id} style={{ padding: "12px 14px", borderBottom: "1px solid rgba(36,48,68,.5)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 260 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>{short(r.employee_name)} <span className="b ba">{ty(r.type)}</span></div>
+                    <div style={{ fontSize: 11, color: "var(--mu)", marginTop: 4 }}>{detailOf(r, T)}</div>
+                    {r.type === "forgot_punch" ? (
+                      <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(14,165,233,.08)", borderRadius: 8, fontSize: 12, lineHeight: 1.8 }}>
+                        <b>{KIND[r.punch_kind ?? ""] ?? ""}</b> — {fD(r.on_date)} — <span dir="ltr">{r.punch_kind === "both" ? t5(r.time_from) + " → " + t5(r.time_to) : t5(r.time_from)}</span>
+                        {r.notes && <><br />{T("السبب", "Reason")}: {r.notes}</>}
+                        <br /><span style={{ color: "#0f766e" }}>{T("عند الموافقة يُسجَّل تلقائيًا في سجل حضور الموظف.", "On approval it is recorded automatically in the employee attendance.")}</span>
+                      </div>
+                    ) : (
+                      r.notes && <div style={{ fontSize: 11, color: "var(--dm)" }}>{r.notes}</div>
+                    )}
+                    {r.law_note && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 2 }}><i className="ti ti-scale" aria-hidden /> {r.law_note}</div>}
+                    <div style={{ fontSize: 10, color: "var(--dm)", marginTop: 3 }}>{en ? st[1] : st[0]}</div>
                   </div>
-                  {r.notes && <div style={{ fontSize: 11, color: "var(--dm)" }}>{r.notes}</div>}
-                  {r.law_note && (
-                    <div style={{ fontSize: 11, color: "var(--am)", marginTop: 2 }}>
-                      <i className="ti ti-scale" aria-hidden /> {r.law_note}
-                    </div>
+                  {att(r)}
+                  {can && (
+                    <>
+                      <button type="button" className="btn bgl bsm" disabled={busy === r.id} title={r.stage === "manager" || r.stage === "ceo" ? T("الموارد البشرية تعتمد الطلب بالنيابة عن صاحب المرحلة الحالية", "HR approves on behalf of the current stage") : undefined} onClick={() => setDlg({ kind: "approve", r })}>
+                        ✓ {en ? "Approve" : r.stage === "manager" ? "موافقة نيابة عن المدير المباشر" : r.stage === "ceo" ? "موافقة نيابة عن الرئيس التنفيذي" : "موافقة"}
+                      </button>
+                      {(r.stage === "manager" || r.stage === "hr") && (
+                        <button type="button" className="btn bsm" style={{ background: "#0a5c9e", color: "#fff" }} disabled={busy === r.id} title={T("اعتماد الطلب نهائياً بالنيابة عن كل المراحل المتبقية", "Approve finally on behalf of every remaining stage")} onClick={() => setDlg({ kind: "final", r })}>
+                          {T("اعتماد نهائي", "Final approval")}
+                        </button>
+                      )}
+                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} disabled={busy === r.id} onClick={() => setDlg({ kind: "reject", r })}>✗ {T("رفض", "Reject")}</button>
+                      {r.stage === "hr" && (
+                        <button type="button" className="btn bsm" style={{ color: "var(--am)", opacity: isReady("lvReturn") ? 1 : 0.6 }} title={T("إرجاع للمدير المباشر بملاحظة", "Return to the direct manager with a note")} onClick={() => setDlg({ kind: "return", r })}>
+                          ↩ {T("إرجاع للمدير", "Return to manager")}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
-                {r.stage === "hr" && <span className="b ba">{STAGE.hr}</span>}
-                {actions(r)}
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-function AllRequests({ reqs, emps, actions, initialType }: { reqs: HrRequest[]; emps: EmployeeListItem[]; actions: (r: HrRequest, compact?: boolean) => React.ReactNode; initialType: string }) {
+function AllRequests({ reqs, emps, can, initialType, setDlg, att, onRefresh }: RowProps & { reqs: HrRequest[]; emps: EmployeeListItem[]; initialType: string; onRefresh: () => void }) {
+  const { en, T, ty } = useT();
   const [fe, setFe] = useState("");
   const [ft, setFt] = useState(initialType);
   const [fs, setFs] = useState("");
-  const list = reqs.filter((r) => (!fe || r.employee_id === fe) && (!ft || r.type === ft) && (!fs || r.status === fs));
+  const list = reqs
+    .filter((r) => (!fe || r.employee_id === fe) && (!ft || r.type === ft) && (!fs || r.status === fs))
+    .sort((a, b) => String(b.from_date || b.on_date || b.created_at).localeCompare(String(a.from_date || a.on_date || a.created_at)));
+  const stB: Record<string, React.ReactNode> = {
+    pending: <span className="b ba">{T("معلق", "Pending")}</span>,
+    approved: <span className="b bg">{T("موافق", "Approved")}</span>,
+    rejected: <span className="b br">{T("مرفوض", "Rejected")}</span>,
+    cancelled: <span className="b" style={{ background: "rgba(120,120,120,.18)" }}>{T("ملغاة", "Cancelled")}</span>,
+  };
+  const stL = (v: string) => ({ pending: T("معلق", "Pending"), approved: T("موافق", "Approved"), rejected: T("مرفوض", "Rejected"), cancelled: T("ملغاة", "Cancelled") })[v] ?? v;
+  const toCell = (r: HrRequest) => (r.to_date ? fD(r.to_date) : r.type === "forgot_punch" ? (r.time_from ?? "").slice(0, 5) : detailOf(r, T).replace(fD(r.on_date), "").replace(/^ \| /, "").trim() || "—");
+  const archive = reqs.filter((r) => r.attachment_id).sort((a, b) => b.created_at.localeCompare(a.created_at));
   return (
     <div id="lv2">
       <div className="card">
         <div className="sbar">
           <select id="LFE" value={fe} onChange={(e) => setFe(e.target.value)} style={{ maxWidth: 160 }}>
-            <option value="">كل الموظفين</option>
-            {emps.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name_ar}
-              </option>
-            ))}
+            <option value="">{T("كل الموظفين", "All employees")}</option>
+            {emps.map((e) => <option key={e.id} value={e.id}>{en ? e.name_en || e.name_ar : e.name_ar}</option>)}
           </select>
           <TypeSelect id="LFT" value={ft} onChange={setFt} />
           <select id="LFS" value={fs} onChange={(e) => setFs(e.target.value)} style={{ maxWidth: 130 }}>
-            <option value="">كل الحالات</option>
-            <option value="pending">معلق</option>
-            <option value="approved">موافق</option>
-            <option value="rejected">مرفوض</option>
+            <option value="">{T("كل الحالات", "All statuses")}</option>
+            {["pending", "approved", "rejected", "cancelled"].map((s) => <option key={s} value={s}>{stL(s)}</option>)}
           </select>
+          <button type="button" className="btn bpl bsm" id="LV_SEARCH" title={T("تحديث / بحث", "Refresh")} onClick={onRefresh}><i className="ti ti-search" /></button>
         </div>
         <div className="tw">
           <table id="LAT">
-            <thead>
-              <tr>
-                <th>الموظف</th>
-                <th>النوع</th>
-                <th>التفاصيل</th>
-                <th>الحالة</th>
-                <th>إجراء</th>
-              </tr>
-            </thead>
             <tbody>
+              <tr>{[T("الموظف", "Employee"), T("النوع", "Type"), T("من", "From"), T("إلى", "To"), T("الأيام", "Days"), T("الحالة", "Status"), T("إجراء", "Action")].map((h) => <th key={h}>{h}</th>)}</tr>
               {list.map((r) => (
                 <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>{r.employee_name.split(" ").slice(0, 3).join(" ")}</td>
-                  <td>{typeLabel(r.type)}</td>
-                  <td style={{ fontSize: 12 }}>{detailOf(r)}</td>
+                  <td style={{ fontWeight: 600 }}>{short(r.employee_name)}</td>
+                  <td>{ty(r.type)}</td>
+                  <td>{fD(r.from_date || r.on_date)}</td>
+                  <td>{toCell(r)}</td>
+                  <td>{r.days != null ? Number(r.days) : r.hours != null ? Number(r.hours) + T(" ساعة", " h") : "—"}</td>
+                  <td>{stB[r.status]}{r.rejection_reason && <div style={{ fontSize: 10, color: "var(--rd)" }}>{r.rejection_reason}</div>}</td>
                   <td>
-                    {STB[r.status]}
-                    {r.rejection_reason && <div style={{ fontSize: 10, color: "var(--rd)" }}>{r.rejection_reason}</div>}
+                    {att(r)}{" "}
+                    {can && r.status === "approved" && (
+                      <><button type="button" className="btn bsm" style={{ color: "var(--am)", opacity: isReady("lvCancel") ? 1 : 0.6 }} title={T("إلغاء الإجازة وإرجاع الرصيد", "Cancel the leave and restore the balance")} onClick={() => setDlg({ kind: "cancel", r })}><i className="ti ti-arrow-back-up" /> {T("إلغاء/استرجاع", "Cancel")}</button>{" "}</>
+                    )}
+                    {can && <button type="button" className="btn bsm" style={{ color: "var(--rd)", opacity: 0.8 }} title={T("حذف", "Delete")} onClick={() => setDlg({ kind: "delete", r })}><i className="ti ti-trash" /></button>}
                   </td>
-                  <td>{actions(r, true)}</td>
                 </tr>
               ))}
+              {!list.length && <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--mu)", padding: 22 }}>{T("لا توجد طلبات", "No requests")}</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
+      {archive.length > 0 && (
+        <div className="card" id="ariba117Atts" style={{ marginTop: 12 }}>
+          <div className="ct" style={{ padding: "10px 12px" }}><i className="ti ti-paperclip" /> {T("أرشيف مرفقات الطلبات (كل الحالات)", "Request attachments archive (all statuses)")}</div>
+          <div className="tw">
+            <table>
+              <tbody>
+                <tr>{[T("الموظف", "Employee"), T("نوع الطلب", "Request"), T("حالة الطلب", "Status"), T("التاريخ", "Date"), ""].map((h, i) => <th key={i}>{h}</th>)}</tr>
+                {archive.map((r) => (
+                  <tr key={r.id}>
+                    <td>{short(r.employee_name)}</td><td>{ty(r.type)}</td><td>{stL(r.status)}</td><td>{r.created_at.slice(0, 10)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}><button type="button" className="btn bpl bsm" onClick={() => openDocument(r.attachment_id!).catch((e) => console.error(e))}>{T("عرض", "View")}</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+/** Optional request attachment: PDF / Word / JPG / PNG, max 12 MB (stored as an employee document). */
+async function attach(employeeId: string, file: File | null, T: Tr): Promise<string | null> {
+  if (!file) return null;
+  if (file.size > 12582912) throw new Error(T("حجم المرفق يتجاوز 12 MB", "The attachment is over 12 MB"));
+  const d = await uploadDocument(employeeId, "other", file);
+  return d.id;
+}
+
+/** The design's per-field «↺» undo button. */
+function Undo({ on, clear, title }: { on: unknown; clear: () => void; title: string }) {
+  return on ? <button type="button" className="undo-f" title={title} onClick={clear}>↺</button> : null;
+}
+
 function NewRequest({ emps, hols, bal, onDone }: { emps: EmployeeListItem[]; hols: Holiday[]; bal: BalanceRow[]; onDone: () => void }) {
   const toast = useToast();
+  const { en, T, ty } = useT();
   const [type, setType] = useState("annual");
   const [empId, setEmpId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fkey, setFkey] = useState(0);
   const [busy, setBusy] = useState(false);
+  const e = emps.find((x) => x.id === empId);
   const balance = bal.find((b) => b.employee_id === empId)?.current ?? 0;
   const days = from && to ? (type === "annual" ? countWorkdays(from, to, hols) : Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000) + 1) : 0;
+  const dirty = !!(empId || from || to || notes || file || type !== "annual");
+  const resetAll = () => { setType("annual"); setEmpId(""); setFrom(""); setTo(""); setNotes(""); setFile(null); setFkey((k) => k + 1); };
+  const ut = T("تراجع عن التعديل", "Undo");
 
   async function submit() {
-    if (!empId || !from || !to) return toast("يرجى تعبئة جميع الحقول", "err");
-    if (type === "annual" && days > balance) return toast("يتجاوز الرصيد المتاح", "err");
+    if (!empId || !from || !to) return toast(T("يرجى تعبئة جميع الحقول", "Fill required fields"), "err");
+    if (to < from) return toast(T("تاريخ النهاية قبل البداية", "The end date is before the start"), "err");
+    if (type === "annual" && e && EXEMPT.has(e.category)) return toast(T("الاستشاري/التمهير/التدريب لا يستحق إجازات سنوية", "Consultants, Tamheer and trainees have no annual leave"), "err");
+    if (type === "annual" && days > balance) return toast(T("يتجاوز الرصيد المتاح", "Exceeds available balance"), "err");
     setBusy(true);
     try {
-      const attachment_id = await attach(empId, file);
+      const attachment_id = await attach(empId, file, T);
       await createRequest({ employee_id: empId, type, from_date: from, to_date: to, notes: notes || null, attachment_id });
-      toast("تم إرسال الطلب" + (attachment_id ? " — تم إرفاق الملف" : ""), "ok");
-      setFile(null);
-      setFrom("");
-      setTo("");
-      setNotes("");
+      toast("✓ " + T("تم إرسال الطلب", "Request submitted") + (attachment_id ? T(" — تم إرفاق الملف", " — file attached") : ""), "ok");
+      resetAll();
       onDone();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), "err");
+    } catch (er) {
+      toast(er instanceof Error ? er.message : String(er), "err");
     } finally {
       setBusy(false);
     }
@@ -389,325 +441,223 @@ function NewRequest({ emps, hols, bal, onDone }: { emps: EmployeeListItem[]; hol
     <div id="lv3">
       <div className="card" style={{ maxWidth: 640 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8, marginBottom: 12 }} id="LTG">
-          {Object.entries(LVL).map(([k, v]) => (
-            <div
-              key={k}
-              onClick={() => setType(k)}
-              id={"lt_" + k}
-              style={{
-                background: type === k ? `${v.color}22` : "var(--c2)",
-                border: `1.5px solid ${type === k ? v.color : "var(--bd)"}`,
-                borderRadius: 9,
-                padding: "8px 6px",
-                textAlign: "center",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                color: type === k ? v.color : undefined,
-              }}
-            >
-              <i className={"ti " + v.icon} style={{ fontSize: 18, display: "block", marginBottom: 3, color: v.color }} />
-              {v.ar}
-            </div>
-          ))}
+          {HR_TYPES.map((k) => {
+            const v = LVL[k], on = type === k;
+            return (
+              <div key={k} id={"lt_" + k} onClick={() => setType(k)} style={{ padding: "10px 6px", textAlign: "center", borderRadius: 10, cursor: "pointer", fontSize: 12, border: `1.5px solid ${on ? v.color : "var(--bd)"}`, background: on ? v.color + "22" : "var(--c2)", color: on ? v.color : "var(--tx)" }}>
+                <i className={"ti " + v.icon} style={{ display: "block", fontSize: 18, marginBottom: 3 }} />{ty(k)}
+              </div>
+            );
+          })}
         </div>
         <div className="fg">
           <div>
-            <label>الموظف *</label>
-            <select id="NLE" value={empId} onChange={(e) => setEmpId(e.target.value)}>
-              <option value="">— اختر —</option>
-              {emps.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name_ar}
-                </option>
-              ))}
+            <label>{T("الموظف *", "Employee *")}<Undo on={empId} clear={() => setEmpId("")} title={ut} /></label>
+            <select id="NLE" value={empId} onChange={(ev) => setEmpId(ev.target.value)}>
+              <option value="">{T("اختر...", "Choose...")}</option>
+              {emps.map((x) => <option key={x.id} value={x.id}>{en ? x.name_en || x.name_ar : x.name_ar}</option>)}
             </select>
           </div>
-          <div id="LBI">
-            {empId && (
-              <div className="al alb" style={{ marginTop: 0, padding: "7px 10px" }}>
-                <i className="ti ti-info-circle" />
-                <span>
-                  المتاح اليوم: <strong>{balance.toFixed(1)} يوم</strong>
-                </span>
-              </div>
-            )}
-          </div>
-          <div>
-            <label>من تاريخ *</label>
-            <DateField id="NLF" value={from} onChange={(v) => setFrom(v)} />
-          </div>
-          <div>
-            <label>إلى تاريخ *</label>
-            <DateField id="NLT" value={to} onChange={(v) => setTo(v)} />
-          </div>
+          <div id="LBI">{e && <div className="al alb" style={{ marginTop: 0, padding: "7px 10px" }}><i className="ti ti-info-circle" /><span>{T("المتاح اليوم:", "Available today:")} <strong>{balance.toFixed(1)} {T("يوم", "days")}</strong></span></div>}</div>
+          <div><label>{T("من تاريخ *", "From *")}<Undo on={from} clear={() => setFrom("")} title={ut} /></label><DateField id="NLF" value={from} onChange={(v) => setFrom(v)} /></div>
+          <div><label>{T("إلى تاريخ *", "To *")}<Undo on={to} clear={() => setTo("")} title={ut} /></label><DateField id="NLT" value={to} onChange={(v) => setTo(v)} /></div>
           <div className="ff" id="LVI">
-            {from && to &&
-              (type === "annual" ? (
-                days > balance ? (
-                  <div className="al alr">
-                    <i className="ti ti-x" />
-                    يتجاوز الرصيد ({balance.toFixed(1)} يوم)
-                  </div>
-                ) : (
-                  <div className="al alg">
-                    <i className="ti ti-check" />
-                    أيام العمل: {days} | سيتبقى: {(balance - days).toFixed(1)} يوم
-                  </div>
-                )
-              ) : (
-                <div className="al alb">
-                  <i className="ti ti-info-circle" />
-                  الأيام: {days}
-                </div>
-              ))}
+            {from && to && (type === "annual"
+              ? days > balance
+                ? <div className="al alr"><i className="ti ti-x" />{T(`يتجاوز الرصيد (${balance.toFixed(1)} يوم)`, `Exceeds balance (${balance.toFixed(1)} days)`)}</div>
+                : <div className="al alg"><i className="ti ti-check" />{T(`أيام العمل: ${days} | سيتبقى: ${(balance - days).toFixed(1)} يوم`, `Working days: ${days} | Remaining: ${(balance - days).toFixed(1)}`)}</div>
+              : <div className="al alb"><i className="ti ti-info-circle" />{T(`الأيام: ${days}`, `Days: ${days}`)}</div>)}
           </div>
-          <div className="ff">
-            <label>ملاحظات</label>
-            <textarea id="NLN" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="ff"><label>{T("ملاحظات", "Notes")}<Undo on={notes} clear={() => setNotes("")} title={ut} /></label><textarea id="NLN" rows={2} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></div>
+          <div className="ff" style={{ gridColumn: "1/-1" }}>
+            <label><i className="ti ti-paperclip" /> {T("مرفق الطلب", "Request attachment")} <span style={{ color: "var(--mu)", fontWeight: 400 }}>{T("(اختياري)", "(optional)")}</span><Undo on={file} clear={() => { setFile(null); setFkey((k) => k + 1); }} title={ut} /></label>
+            <input key={fkey} id="HR_NLATT" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={(ev) => setFile(ev.target.files?.[0] ?? null)} />
+            <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 4 }}>{T("المرفق اختياري — PDF / Word / JPG / PNG — حد أقصى 12 MB.", "Optional — PDF / Word / JPG / PNG — max 12 MB.")}</div>
           </div>
-          <AttachField onFile={setFile} />
         </div>
-        <button type="button" className="btn bpl" style={{ marginTop: 10 }} onClick={submit} disabled={busy}>
-          <i className="ti ti-send" /> <span>إرسال الطلب</span>
-        </button>
+        <button type="button" className="btn bpl" style={{ marginTop: 10 }} disabled={busy} onClick={submit}><i className="ti ti-send" /> <span>{T("إرسال الطلب", "Submit")}</span></button>
+        <button type="button" className="btn bsm" style={{ marginInlineStart: 8 }} disabled={!dirty} onClick={resetAll}>↺ {T("تراجع عن الكل", "Undo all")}</button>
       </div>
     </div>
   );
 }
 
-function Balances({ bal, emps, onSaved }: { bal: BalanceRow[]; emps: EmployeeListItem[]; onSaved: () => void }) {
+function Balances({ bal, emps, can, onSaved }: { bal: BalanceRow[]; emps: EmployeeListItem[]; can: boolean; onSaved: () => void }) {
+  const toast = useToast();
+  const { en, T } = useT();
   const [sel, setSel] = useState("");
   const [detail, setDetail] = useState<BalanceDetail | null>(null);
-  const [editFor, setEditFor] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const yr = new Date().getFullYear();
+  const se = emps.find((x) => x.id === sel);
 
   useEffect(() => {
     let alive = true;
     if (sel) balanceDetail(sel).then((d) => alive && setDetail(d)).catch(() => alive && setDetail(null));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    else setDetail(null);
     return () => {
       alive = false;
     };
   }, [sel, bal]);
 
-  const sum = bal.reduce(
-    (s, b) => ({ current: s.current + b.current, yearEnd: s.yearEnd + b.year_end, accrued: s.accrued + b.accrued_since_join, used: s.used + b.used_since_join, eos: s.eos + b.eos }),
-    { current: 0, yearEnd: 0, accrued: 0, used: 0, eos: 0 },
-  );
-  const kpis: [string, string, string][] = [
-    ["عدد الموظفين", String(bal.length), "var(--bl)"],
-    ["الرصيد الحالي", f2(sum.current) + " يوم", "var(--gr)"],
-    ["رصيد 31/12", f2(sum.yearEnd) + " يوم", "var(--pu)"],
-    ["المستحق من بداية الخدمة", f2(sum.accrued) + " يوم", "var(--cy)"],
-    ["المستخدم من بداية الخدمة", f2(sum.used) + " يوم", "var(--rd)"],
-    ["نهاية الخدمة المتراكم/المتوقع", f2(sum.eos) + " يوم", "var(--am)"],
-  ];
-
-  function printTable() {
-    const w = window.open("", "_blank");
-    if (!w) return;
-    const rows = bal
-      .map((b, i) => `<tr><td>${i + 1}</td><td>${b.name_ar}</td><td>${f2(b.carry)}</td><td>${f2(b.current)}</td><td>${f2(b.year_end)}</td><td>${f2(b.accrued_since_join)}</td><td>${f2(b.used_since_join)}</td><td>${f2(b.remaining_since_join)}</td><td>${f2(b.eos)}</td></tr>`)
-      .join("");
-    w.document.write(`<html dir="rtl"><head><title>أرصدة الإجازات</title><style>body{font-family:Tahoma,Arial;font-size:12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 6px;text-align:right}th{background:#014D3D;color:#fff}</style></head><body><h3>أرصدة الإجازات — ${new Date().toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}</h3><table><tr><th>#</th><th>الموظف</th><th>المرحّل من السابق</th><th>الرصيد الحالي</th><th>الرصيد 31/12/${yr}</th><th>المستحق من بداية الخدمة</th><th>المستخدم من بداية الخدمة</th><th>المتبقي من بداية الخدمة</th><th>نهاية الخدمة</th></tr>${rows}</table></body></html>`);
-    w.document.close();
-    w.print();
+  // the design keeps the all-employees list for printing only; the screen shows one employee in detail
+  function printAll() {
+    const head = ["#", T("الموظف", "Employee"), T("المرحّل من السابق", "Carry in"), T("الرصيد الحالي", "Current"), T("رصيد نهاية العام", "Year end"), T("المستحق من بداية الخدمة", "Accrued since joining"), T("المستخدم من بداية الخدمة", "Used since joining"), T("المتبقي من بداية الخدمة", "Remaining since joining"), T("نهاية الخدمة", "End of service")];
+    const rows = bal.map((b, i) => [String(i + 1), b.name_ar, f2(b.carry), f2(b.current), f2(b.year_end), f2(b.accrued_since_join), f2(b.used_since_join), f2(b.remaining_since_join), f2(b.eos)]);
+    printHtml(T("أرصدة الإجازات", "Leave balances"), tableHtml({ title: T("أرصدة الإجازات", "Leave balances"), headers: head, rows, sub: new Date().toLocaleDateString("en-GB"), dir: en ? "ltr" : "rtl" }));
   }
 
-  const cards: [string, number, string][] = detail
+  const cur = detail?.years.find((y) => y.year === yr);
+  const cards: [string, string, number, string][] = detail
     ? [
-        ["الرصيد المرحل من العام السابق", detail.summary.carry, "var(--cy)"],
-        ["الرصيد المتاح حتى اليوم", detail.summary.current, "var(--gr)"],
-        ["الرصيد المتوقع 31/12/" + yr, detail.summary.year_end, "var(--pu)"],
-        ["إجمالي المستحق من بداية الخدمة", detail.summary.accrued_since_join, "var(--bl)"],
-        ["إجمالي المستخدم من بداية الخدمة", detail.summary.used_since_join, "var(--rd)"],
-        ["الرصيد المتبقي من بداية الخدمة", detail.summary.remaining_since_join, "var(--gr)"],
-        ["رصيد نهاية الخدمة المتراكم", detail.accumulated_eos, "var(--am)"],
+        ["الرصيد المرحل من العام السابق", "Previous Carry Forward", detail.summary.carry, "var(--cy)"],
+        ["الرصيد المتاح حتى اليوم", "Available Balance Today", detail.summary.current, "var(--gr)"],
+        ["رصيد نهاية العام", "Year End Balance", detail.summary.year_end, "var(--pu)"],
+        ["إجمالي المستحق من بداية الخدمة", "Total Accrued Since Joining", detail.summary.accrued_since_join, "var(--bl)"],
+        ["إجمالي المستخدم من بداية الخدمة", "Total Used Since Joining", detail.summary.used_since_join, "var(--rd)"],
+        ["الرصيد المتبقي من بداية الخدمة", "Cumulative Remaining", detail.summary.remaining_since_join, "var(--gr)"],
+        ["رصيد نهاية الخدمة المتراكم (فائض السنوات السابقة فوق حد الترحيل)", "EOS Leave Excess (previous years)", detail.accumulated_eos, "var(--am)"],
+        ["الفائض المتوقع هذا العام (يضاف نهاية الخدمة)", "Expected excess this year", cur?.eos ?? 0, "var(--rd)"],
       ]
     : [];
+  const eqRow = (k: string, v: string) => <tr key={k}><td style={{ textAlign: "start" }}>{k}</td><td style={{ fontWeight: 800 }}>{v}</td></tr>;
 
   return (
     <div id="lv4">
+      <div id="LB_SYNC" style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 12px", borderRadius: 10, background: "rgba(16,185,129,.12)", color: "#0a7a3f", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+        <i className="ti ti-device-mobile" /><span>{T("✓ تطبيق الموظف يقرأ نفس هذه الأرصدة من نفس الخادم مباشرة — لا تحتاج مزامنة.", "✓ The Employee App reads these same balances from the same server — no sync needed.")}</span>
+      </div>
       <div className="card" style={{ marginBottom: 10 }}>
         <div className="ch">
-          <div className="ct">
-            <i className="ti ti-user-search" />
-            <span>تفاصيل رصيد موظف</span>
-          </div>
+          <div className="ct"><i className="ti ti-user-search" /><span>{T("تفاصيل رصيد موظف", "Employee balance details")}</span></div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <select id="LBE" value={sel} onChange={(e) => setSel(e.target.value)} style={{ minWidth: 280 }}>
-              <option value="">اختر الموظف</option>
-              {emps.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name_ar}
-                </option>
-              ))}
+            <select id="LBE" value={sel} onChange={(ev) => setSel(ev.target.value)} style={{ minWidth: 280 }}>
+              <option value="">{T("اختر الموظف", "Select employee")}</option>
+              {emps.map((x) => <option key={x.id} value={x.id}>{en ? x.name_en || x.name_ar : x.name_ar}</option>)}
             </select>
-            <button type="button" className="btn bsm" onClick={() => (sel ? setEditFor(sel) : null)}>
-              <i className="ti ti-edit" /> تعديل الرصيد
-            </button>
-            <button type="button" className="btn bsm" onClick={printTable} title="طباعة">
-              <i className="ti ti-printer" />
-            </button>
+            {can && <button type="button" className="btn bsm" id="LB_EDIT" onClick={() => (se ? setEditing(true) : toast(T("اختر الموظف أولاً", "Select an employee first"), "err"))}><i className="ti ti-edit" /> {T("تعديل الرصيد", "Edit balance")}</button>}
+            <button type="button" className="btn bsm" id="LB_PRINT" title={T("طباعة أرصدة الإجازات", "Print all balances")} onClick={printAll}><i className="ti ti-printer" /></button>
           </div>
         </div>
         <div id="LBD">
-          {!detail ? (
-            <div className="al alb">
-              <i className="ti ti-user-search" />
-              اختر الموظف لعرض تفاصيل رصيده بالتفصيل.
-            </div>
+          {!detail || !se ? (
+            <div className="al alb"><i className="ti ti-user-search" />{T("اختر الموظف لعرض تفاصيل رصيده بالتفصيل.", "Select an employee to view detailed balances.")}</div>
           ) : (
             <>
+              {EXEMPT.has(se.category) && <div className="al alo" style={{ marginBottom: 8 }}><i className="ti ti-info-circle" />{T("استشاري / تمهير / تدريب: لا يستحق إجازات سنوية (الرصيد صفر).", "Consultant / Tamheer / Trainee: no annual leave entitlement.")}</div>}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 8, marginBottom: 12 }}>
                 {cards.map((c) => (
-                  <div key={c[0]} style={{ padding: 12, border: "1px solid var(--bd)", borderRadius: 10, background: "var(--c2)" }}>
-                    <div style={{ fontSize: 10, color: "var(--mu)" }}>{c[0]}</div>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: c[2] }}>
-                      {f2(c[1])} <span style={{ fontSize: 11, fontWeight: 500 }}>يوم</span>
-                    </div>
+                  <div key={c[1]} style={{ padding: 12, border: "1px solid var(--bd)", borderRadius: 10, background: "var(--c2)" }}>
+                    <div style={{ fontSize: 10, color: "var(--mu)" }}>{en ? c[1] : c[0]}</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: c[3] }}>{f2(c[2])} <span style={{ fontSize: 11, fontWeight: 500 }}>{T("يوم", "days")}</span></div>
                   </div>
                 ))}
               </div>
-              <div className="al alb" style={{ marginBottom: 8 }}>
-                <i className="ti ti-info-circle" />
-                الاستحقاق يُحسب على أيام العمل من الأحد إلى الخميس مع استبعاد الإجازات الرسمية. السنة الكاملة = 21 يومًا، والسنة الأولى تُحسب تناسبيًا من تاريخ المباشرة. يرحل بحد أقصى 10 أيام للسنة التالية، وما زاد يبقى ضمن رصيد نهاية الخدمة.
-              </div>
+              <div className="al alb" style={{ marginBottom: 8 }}><i className="ti ti-info-circle" />{T("الاستحقاق يُحسب على أيام العمل من الأحد إلى الخميس مع استبعاد الإجازات الرسمية. السنة الكاملة = 21 يومًا، والسنة الأولى تُحسب تناسبيًا من تاريخ المباشرة. يرحل بحد أقصى 10 أيام للسنة التالية، وما زاد يبقى ضمن رصيد نهاية الخدمة.", "Accrual counts working days Sunday to Thursday, official holidays excluded. A full year is 21 days; the first year is prorated from the joining date. At most 10 days carry to the next year; the excess stays as end-of-service leave balance.")}</div>
               <div className="tw">
                 <table>
-                  <thead>
-                    <tr>
-                      <th>السنة</th>
-                      <th>المرحل</th>
-                      <th>استحقاق السنة</th>
-                      <th>المستخدم</th>
-                      <th>التعديلات</th>
-                      <th>نهاية السنة</th>
-                      <th>مرحل للعام التالي</th>
-                      <th>فائض نهاية الخدمة</th>
-                    </tr>
-                  </thead>
                   <tbody>
+                    <tr>{[T("السنة", "Year"), T("المرحل", "Carry In"), T("استحقاق السنة", "Entitlement"), T("المستخدم", "Used"), T("التعديلات", "Adjustments"), T("نهاية السنة", "Year End"), T("مرحل للعام التالي", "Carry Next"), T("فائض نهاية الخدمة", "EOS Excess")].map((t) => <th key={t}>{t}</th>)}</tr>
                     {detail.years.map((l) => (
                       <tr key={l.year}>
-                        <td>{l.year}</td>
-                        <td>{f2(l.opening)}</td>
-                        <td>{f2(l.entitlement)}</td>
-                        <td>{f2(l.used)}</td>
-                        <td>{f2(l.adjustment)}</td>
-                        <td style={{ fontWeight: 900 }}>{f2(l.close)}</td>
-                        <td>{f2(l.carry)}</td>
-                        <td style={{ fontWeight: 800, color: l.eos > 0 ? "var(--rd)" : "var(--dm)" }}>{f2(l.eos)}</td>
+                        <td>{l.year}</td><td>{f2(l.opening)}</td><td>{f2(l.entitlement)}</td><td>{f2(l.used)}</td><td>{f2(l.adjustment)}</td>
+                        <td style={{ fontWeight: 900 }}>{f2(l.close)}</td><td>{f2(l.carry)}</td><td style={{ fontWeight: 800, color: l.eos > 0 ? "var(--rd)" : "var(--dm)" }}>{f2(l.eos)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {cur && (
+                <div className="card" style={{ marginTop: 12, padding: 12 }}>
+                  <div style={{ fontWeight: 900, marginBottom: 6 }}>{T("معادلة الرصيد (السنة الحالية حتى اليوم)", "Balance equation (current year, as of today)")}</div>
+                  <div style={{ fontSize: 12, lineHeight: 1.9, marginBottom: 8 }} dir="ltr">Balance = Carry-in + Accrued + Adjustments − Used<br />Carry-in(Y) = min(cap, Closing(Y-1)) | Closing(Y) = Carry-in + Entitlement + Adjustments − Used</div>
+                  <div className="tw">
+                    <table>
+                      <tbody>
+                        {eqRow(T("المرحل من السنة السابقة (بعد الحد الأقصى)", "Carry-in from previous year (capped)"), f2(cur.opening))}
+                        {eqRow(T("الاستحقاق السنوي بالعقد", "Annual entitlement (contract)"), f2(detail.summary.annual))}
+                        {eqRow(T("المستحق حتى اليوم", "Accrued to today"), f2(detail.summary.current - cur.opening - cur.adjustment + cur.used))}
+                        {eqRow(T("التعديلات اليدوية", "Manual adjustments"), f2(cur.adjustment))}
+                        {eqRow(T("المستخدم هذا العام", "Used this year"), f2(cur.used))}
+                        {eqRow(T("الرصيد اليوم", "Balance today"), f2(detail.summary.current))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
-      <div className="kpis" id="LBSUM" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 10 }}>
-        {kpis.map(([a, b, c]) => (
-          <div key={a} className="kpi" style={{ ["--ac" as string]: c }}>
-            <div className="kl">{a}</div>
-            <div className="kv" style={{ fontSize: 16 }}>
-              {b}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="card">
-        <div className="tw">
-          <table id="LBT">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>الموظف</th>
-                <th>المرحّل من السابق</th>
-                <th>الرصيد الحالي</th>
-                <th>الرصيد 31/12/{yr}</th>
-                <th>المستحق من بداية الخدمة</th>
-                <th>المستخدم من بداية الخدمة</th>
-                <th>المتبقي من بداية الخدمة</th>
-                <th>نهاية الخدمة</th>
-                <th>تعديل</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bal.map((b, i) => (
-                <tr key={b.employee_id}>
-                  <td>{i + 1}</td>
-                  <td style={{ fontWeight: 700 }}>{b.name_ar}</td>
-                  <td style={{ color: "var(--cy)", fontWeight: 800 }}>{f2(b.carry)}</td>
-                  <td style={{ color: "var(--gr)", fontWeight: 900 }}>{f2(b.current)}</td>
-                  <td style={{ color: "var(--pu)", fontWeight: 900 }}>{f2(b.year_end)}</td>
-                  <td>{f2(b.accrued_since_join)}</td>
-                  <td style={{ color: "var(--rd)" }}>{f2(b.used_since_join)}</td>
-                  <td style={{ fontWeight: 800 }}>{f2(b.remaining_since_join)}</td>
-                  <td style={{ color: "var(--am)", fontWeight: 900 }}>{f2(b.eos)}</td>
-                  <td>
-                    <button type="button" className="btn bsm" onClick={() => setEditFor(b.employee_id)}>
-                      <i className="ti ti-edit" /> تعديل
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      {editFor && <BalanceEditor employeeId={editFor} emps={emps} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); onSaved(); }} />}
+      {editing && se && <BalanceEditor emp={se} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onSaved(); }} />}
     </div>
   );
 }
 
-const EDIT_COLS: [string, string][] = [
-  ["carry", "المرحل للسنة"],
-  ["entitlement", "استحقاق السنة"],
-  ["used", "المستخدم"],
-  ["adjustment", "تعديل +/-"],
-  ["current", "الرصيد الحالي"],
-  ["yearEnd", "رصيد نهاية السنة"],
-  ["carryNext", "المرحل للعام التالي"],
-  ["eos", "فائض نهاية الخدمة"],
+const EDIT_COLS: [string, string, string][] = [
+  ["carry", "المرحل للسنة", "Carry In"],
+  ["entitlement", "استحقاق السنة", "Entitlement"],
+  ["used", "المستخدم", "Used"],
+  ["adjustment", "تعديل +/-", "Adjustment +/-"],
+  ["current", "الرصيد الحالي", "Current Balance"],
+  ["yearEnd", "رصيد نهاية السنة", "Year-End Balance"],
+  ["carryNext", "المرحل للعام التالي", "Carry Next"],
+  ["eos", "فائض نهاية الخدمة", "EOS Excess"],
 ];
 
-function BalanceEditor({ employeeId, emps, onClose, onSaved }: { employeeId: string; emps: EmployeeListItem[]; onClose: () => void; onSaved: () => void }) {
+function BalanceEditor({ emp, onClose, onSaved }: { emp: EmployeeListItem; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [emp, setEmp] = useState(employeeId);
+  const { en, T } = useT();
   const [date, setDate] = useState(todayIso());
   const [note, setNote] = useState("");
+  const [orig, setOrig] = useState<Record<string, string>[] | null>(null);
   const [rows, setRows] = useState<Record<string, string>[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  // the design's leaveBalanceHistory: how many earlier saves can still be undone (Stage 12, L3)
+  const [saves, setSaves] = useState(0);
   const yNow = new Date().getFullYear();
 
   useEffect(() => {
     let alive = true;
-    balanceDetail(emp).then((d) => {
+    balanceHistory(emp.id).then((h) => alive && setSaves(h.items.length)).catch(() => alive && setSaves(0));
+    balanceDetail(emp.id).then((d) => {
       if (!alive) return;
-      setRows(
-        d.years.map((l) => ({
-          year: String(l.year),
-          carry: f2(l.opening),
-          entitlement: f2(l.entitlement),
-          used: f2(l.used),
-          adjustment: f2(l.adjustment),
-          current: f2(l.year === yNow ? (l.current ?? l.close) : l.close),
-          yearEnd: f2(l.close),
-          carryNext: f2(l.carry),
-          eos: f2(l.eos),
-        })),
-      );
+      const r = d.years.map((l) => ({
+        year: String(l.year), carry: f2(l.opening), entitlement: f2(l.entitlement), used: f2(l.used), adjustment: f2(l.adjustment),
+        current: f2(l.year === yNow ? l.current ?? l.close : l.close), yearEnd: f2(l.close), carryNext: f2(l.carry), eos: f2(l.eos),
+      }));
+      setOrig(r);
+      setRows(r);
     });
     return () => {
       alive = false;
     };
-  }, [emp, yNow]);
+  }, [emp.id, yNow]);
+
+  const chg = (i: number, k: string) => !!rows && !!orig && Math.abs((parseFloat(rows[i][k]) || 0) - (parseFloat(orig[i][k]) || 0)) > 0.004;
+  const anyCh = !!rows && rows.some((_, i) => EDIT_COLS.some(([k]) => chg(i, k)));
+  const set = (i: number, k: string, v: string) => setRows((rs) => rs && rs.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+
+  async function undoLast() {
+    if (!saves || !window.confirm(T("استرجاع الأرصدة لما قبل آخر حفظ؟", "Restore the balances to before the last save?"))) return;
+    setBusy(true);
+    try {
+      await undoBalance(emp.id);
+      toast("↩ " + T("أُعيدت الأرصدة إلى ما قبل آخر حفظ", "Balances restored to before the last save"), "ok");
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save() {
     if (!rows) return;
+    setBusy(true);
     try {
-      await saveBalance(emp, {
+      await saveBalance(emp.id, {
         date,
         note,
         years: rows.map((r) => {
@@ -719,81 +669,38 @@ function BalanceEditor({ employeeId, emps, onClose, onSaved }: { employeeId: str
           return o;
         }),
       });
-      toast("تم حفظ واستبدال أرصدة كل السنوات ومزامنتها", "ok");
+      toast("✓ " + T("تم حفظ واستبدال أرصدة كل السنوات ومزامنتها", "Yearly leave balances saved"), "ok");
       onSaved();
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <Modal
-      title="تعديل أرصدة الإجازة — سنة بسنة"
-      width={1100}
-      onClose={onClose}
-      footer={
-        <>
-          <button type="button" className="btn" onClick={onClose}>
-            إلغاء
-          </button>
-          <button type="button" className="btn bpl" onClick={save}>
-            <i className="ti ti-device-floppy" /> حفظ التعديلات
-          </button>
-        </>
-      }
-    >
-      <div className="fg">
-        <div className="ff">
-          <label>الموظف</label>
-          <select id="LBME" value={emp} onChange={(e) => setEmp(e.target.value)}>
-            {emps.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name_ar}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label>تاريخ التعديل</label>
-          <DateField id="LBMDate" value={date} onChange={(v) => setDate(v)} />
-        </div>
-        <div className="ff">
-          <label>سبب / ملاحظة</label>
-          <input id="LBMN" placeholder="مثال: تصحيح رصيد 2025" value={note} onChange={(e) => setNote(e.target.value)} />
-        </div>
-      </div>
-      <div className="al alb" style={{ margin: "8px 0" }}>
-        يمكنك تعديل كل سنة بشكل مستقل. يبدأ الترحيل التلقائي من 2024→2025؛ رصيد ما قبل 2024 فوق حد 10 أيام يدخل كسجل افتتاحي لعام 2024، ومن 2024 فصاعدًا يرحل بحد أقصى 10 أيام، وما زاد يُحفظ كرصد نهاية خدمة.
+    <Modal title={T("تعديل أرصدة الإجازة — ", "Edit leave balances — ") + (en ? emp.name_en || emp.name_ar : emp.name_ar)} width={1000} onClose={onClose}>
+      <div className="fg" style={{ marginBottom: 10 }}>
+        <div><label>{T("تاريخ التعديل", "Date")}</label><DateField id="LBMDate" value={date} onChange={(v) => setDate(v)} /></div>
+        <div><label>{T("ملاحظة", "Note")}</label><input id="LBMN" value={note} onChange={(e) => setNote(e.target.value)} /></div>
       </div>
       <div id="LBMY" className="tw" style={{ maxHeight: "55vh", overflow: "auto" }}>
         {!rows ? (
-          <div style={{ padding: 12, color: "var(--mu)" }}>...</div>
+          <div style={{ padding: 12, color: "var(--mu)" }}>…</div>
         ) : (
           <table className="lb-edit-table">
-            <thead>
-              <tr>
-                <th>السنة</th>
-                {EDIT_COLS.map(([, l]) => (
-                  <th key={l}>{l}</th>
-                ))}
-              </tr>
-            </thead>
             <tbody>
+              <tr><th>{T("السنة", "Year")}</th>{EDIT_COLS.map((c) => <th key={c[0]}>{en ? c[2] : c[1]}</th>)}</tr>
               {rows.map((r, i) => (
                 <tr key={r.year} data-lby={r.year}>
                   <td className="lb-year">
                     <b>{r.year}</b>
+                    {EDIT_COLS.some(([k]) => chg(i, k)) && <button type="button" className="undo-f" title={T("استرجاع هذه السنة", "Restore this year")} onClick={() => setRows((rs) => rs && rs.map((x, j) => (j === i ? orig![i] : x)))}>↺</button>}
                   </td>
                   {EDIT_COLS.map(([k]) => (
                     <td key={k}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={r[k]}
-                        disabled={k === "current" && Number(r.year) !== yNow}
-                        onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, [k]: e.target.value } : x)))}
-                        style={{ width: 90 }}
-                      />
+                      <input type="number" step="0.01" value={r[k]} disabled={k === "current" && Number(r.year) !== yNow} onChange={(e) => set(i, k, e.target.value)} style={{ width: 90 }} />
+                      {chg(i, k) && <button type="button" className="undo-f" title={T("استرجاع: ", "Restore: ") + orig![i][k]} onClick={() => set(i, k, orig![i][k])}>↺</button>}
                     </td>
                   ))}
                 </tr>
@@ -802,34 +709,43 @@ function BalanceEditor({ employeeId, emps, onClose, onSaved }: { employeeId: str
           </table>
         )}
       </div>
+      <div style={{ padding: 8, color: "var(--mu)", fontSize: 11 }}>{T("عدّل كل سنة من سنوات الخدمة بشكل مستقل. رصيد نهاية السنة = المرحل + الاستحقاق + التعديل − المستخدم، ما لم تدخل قيمة يدوية له. يرحل بحد أقصى 10 أيام؛ وما زاد يُحفظ كرصيد نهاية خدمة.", "Edit each service year separately. Year-end = carry in + entitlement + adjustment − used unless you enter it yourself. At most 10 days carry; the excess is kept as end-of-service balance.")}</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button type="button" className="btn bpl" disabled={busy || !rows} onClick={save}><i className="ti ti-check" /> {busy ? "…" : T("حفظ", "Save")}</button>
+        <button type="button" className="btn" onClick={onClose}>{T("إلغاء", "Cancel")}</button>
+        <button type="button" className="btn bsm" disabled={!anyCh} onClick={() => { setRows(orig); setNote(""); }}>↺ {T("استرجاع الكل", "Restore all")}</button>
+        <button type="button" className="btn bsm" disabled={busy || !saves} title={saves ? T(`محفوظ ${saves} من آخر 10 حفظات`, `${saves} of the last 10 saves kept`) : T("لا يوجد حفظ سابق", "No earlier save")} onClick={undoLast}>↩ {T("تراجع عن آخر حفظ", "Undo last save")}</button>
+      </div>
     </Modal>
   );
 }
 
-function Holidays({ hols, onChange }: { hols: Holiday[]; onChange: () => void }) {
+function Holidays({ hols, can, onChange }: { hols: Holiday[]; can: boolean; onChange: () => void }) {
   const toast = useToast();
+  const { en, T } = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
   const [days, setDays] = useState("1");
   const [rec, setRec] = useState("0");
+  const [del, setDel] = useState<Holiday | null>(null);
 
   async function save() {
-    if (!name || !date) return toast("يرجى تعبئة الحقول", "err");
+    if (!name || !date) return toast(T("يرجى تعبئة الحقول", "Fill required fields"), "err");
     try {
       await addHoliday({ name_ar: name, start_date: date, days: parseInt(days) || 1, is_recurring: rec === "1" });
       setOpen(false);
       setName("");
       setDate("");
       setDays("1");
-      toast("", "ok");
+      toast("✓", "ok");
       onChange();
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
     }
   }
-  // The Eids follow the Hijri calendar, so each year's dates must be entered; a missing year counts its Eid days
-  // against the annual leave balance (docs/LOGIC_AUDIT.md section 4, I).
+  // the Eids follow the Hijri calendar, so each year's dates must be entered; a missing year counts its Eid days
+  // against the annual leave balance (docs/LOGIC_AUDIT.md section 4, I)
   const missingEids = useMemo(() => {
     const y = new Date().getFullYear();
     const norm = (x: string) => x.replace(/[أإآ]/g, "ا");
@@ -840,9 +756,10 @@ function Holidays({ hols, onChange }: { hols: Holiday[]; onChange: () => void })
     return out;
   }, [hols]);
 
-  async function del(h: Holiday) {
+  async function remove(h: Holiday) {
     try {
       await deleteHoliday(h.id);
+      toast(T("تم الحذف", "Deleted"), "ok");
       onChange();
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
@@ -853,200 +770,117 @@ function Holidays({ hols, onChange }: { hols: Holiday[]; onChange: () => void })
     <div id="lv5">
       <div className="card">
         <div className="ch">
-          <div className="ct">
-            <i className="ti ti-calendar-event" /> <span>الإجازات الرسمية السعودية</span>
-          </div>
-          <button type="button" className="btn bpl bsm" onClick={() => setOpen(true)}>
-            <i className="ti ti-plus" />
-          </button>
+          <div className="ct"><i className="ti ti-calendar-event" /> <span>{T("الإجازات الرسمية", "Official holidays")}</span></div>
+          {can && <button type="button" className="btn bpl bsm" onClick={() => setOpen(true)}><i className="ti ti-plus" /></button>}
         </div>
         {missingEids.length > 0 && (
           <div style={{ margin: "0 0 10px", padding: "8px 12px", borderRadius: 8, fontSize: 12, color: "var(--am)", border: "1px solid color-mix(in srgb, var(--am) 40%, transparent)" }}>
-            <i className="ti ti-alert-triangle" aria-hidden /> غير مسجّل: {missingEids.join("، ")}. أضف تواريخها حسب تقويم أم القرى، وإلا تنحسب أيام العيد من رصيد الإجازة السنوية.
+            <i className="ti ti-alert-triangle" aria-hidden /> {T("غير مسجّل: ", "Not entered: ")}{missingEids.join("، ")}. {T("أضف تواريخها حسب تقويم أم القرى، وإلا تنحسب أيام العيد من رصيد الإجازة السنوية.", "Add their dates (Umm al-Qura calendar), otherwise the Eid days count against the annual leave balance.")}
           </div>
         )}
         <div className="tw">
           <table id="HLT">
-            <thead>
-              <tr>
-                <th>الإجازة</th>
-                <th>التاريخ</th>
-                <th>الأيام</th>
-                <th>متكررة</th>
-                <th />
-              </tr>
-            </thead>
             <tbody>
+              <tr><th>{T("الإجازة", "Holiday")}</th><th>{T("التاريخ", "Date")}</th><th>{T("الأيام", "Days")}</th><th>{T("متكررة", "Recurring")}</th><th /></tr>
               {hols.map((h) => (
                 <tr key={h.id}>
-                  <td style={{ fontWeight: 600 }}>{h.name_ar}</td>
-                  <td>{fD(h.start_date)}</td>
-                  <td>{h.days}</td>
-                  <td>{h.is_recurring ? "نعم" : "لا"}</td>
-                  <td>
-                    <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => del(h)}>
-                      <i className="ti ti-trash" />
-                    </button>
-                  </td>
+                  <td style={{ fontWeight: 600 }}>{en ? h.name_en || h.name_ar : h.name_ar}</td><td>{fD(h.start_date)}</td><td>{h.days}</td><td>{h.is_recurring ? T("نعم", "Yes") : T("لا", "No")}</td>
+                  <td>{can && <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => setDel(h)}><i className="ti ti-trash" /></button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="al alb" style={{ marginTop: 10 }}>
-          <i className="ti ti-info-circle" />
-          <span>الإجازات الرسمية لا تُحسب من رصيد الإجازة السنوية</span>
-        </div>
+        <div className="al alb" style={{ marginTop: 10 }}><i className="ti ti-info-circle" /><span>{T("الإجازات الرسمية لا تُحسب من رصيد الإجازة السنوية", "Official holidays are not deducted from the annual leave balance")}</span></div>
       </div>
       {open && (
-        <Modal
-          title="إضافة إجازة رسمية"
-          onClose={() => setOpen(false)}
-          footer={
-            <>
-              <button type="button" className="btn" onClick={() => setOpen(false)}>
-                إلغاء
-              </button>
-              <button type="button" className="btn bpl" onClick={save}>
-                حفظ
-              </button>
-            </>
-          }
-        >
+        <Modal title={T("إضافة إجازة رسمية", "Add an official holiday")} width={420} onClose={() => setOpen(false)}
+          footer={<><button type="button" className="btn" onClick={() => setOpen(false)}>{T("إلغاء", "Cancel")}</button><button type="button" className="btn bpl" onClick={save}>{T("حفظ", "Save")}</button></>}>
           <div className="fg">
-            <div className="ff">
-              <label>الاسم *</label>
-              <input id="HN" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div>
-              <label>التاريخ *</label>
-              <DateField id="HD" value={date} onChange={(v) => setDate(v)} />
-            </div>
-            <div>
-              <label>عدد الأيام</label>
-              <input type="number" id="HDY" min={1} value={days} onChange={(e) => setDays(e.target.value)} />
-            </div>
-            <div>
-              <label>متكررة سنويًا</label>
-              <select id="HRC" value={rec} onChange={(e) => setRec(e.target.value)}>
-                <option value="0">لا</option>
-                <option value="1">نعم</option>
-              </select>
-            </div>
+            <div><label>{T("اسم الإجازة", "Holiday name")}</label><input id="HN" value={name} onChange={(e) => setName(e.target.value)} /></div>
+            <div><label>{T("التاريخ", "Date")}</label><DateField id="HD" value={date} onChange={(v) => setDate(v)} /></div>
+            <div><label>{T("الأيام", "Days")}</label><input type="number" id="HDY" min={1} value={days} onChange={(e) => setDays(e.target.value)} /></div>
+            <div><label>{T("متكررة سنوياً", "Recurring yearly")}</label><select id="HRC" value={rec} onChange={(e) => setRec(e.target.value)}><option value="0">{T("لا", "No")}</option><option value="1">{T("نعم", "Yes")}</option></select></div>
           </div>
         </Modal>
       )}
+      {del && <PromptModal noInput danger title={T("حذف إجازة رسمية", "Delete official holiday")} message={T("حذف هذه الإجازة الرسمية؟", "Delete this official holiday?")} confirmText={T("حذف", "Delete")} cancelText={T("إلغاء", "Cancel")} onClose={() => setDel(null)} onConfirm={() => { const h = del; setDel(null); void remove(h); }} />}
     </div>
   );
 }
 
-function Overtime({ emps, reqs, actions, onDone }: { emps: EmployeeListItem[]; reqs: HrRequest[]; actions: (r: HrRequest, compact?: boolean) => React.ReactNode; onDone: () => void }) {
+function Overtime({ emps, can, reqs, setDlg, att, onDone }: RowProps & { emps: EmployeeListItem[]; reqs: HrRequest[]; onDone: () => void }) {
   const toast = useToast();
+  const { en, T } = useT();
   const [emp, setEmp] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(todayIso());
   const [hours, setHours] = useState("1");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!emp || !date || !(parseFloat(hours) >= 0.5)) return toast("اختر الموظف والتاريخ وعدد الساعات (0.5 على الأقل)", "err");
+    const h = parseFloat(hours) || 0;
+    if (!emp || !date || h <= 0) return toast(T("حدد الموظف والتاريخ وعدد الساعات", "Choose the employee, date and hours"), "err");
+    setBusy(true);
     try {
-      const attachment_id = await attach(emp, file);
-      await createRequest({ employee_id: emp, type: "overtime", on_date: date, hours: parseFloat(hours), notes: notes || null, attachment_id });
+      const attachment_id = await attach(emp, file, T);
+      await createRequest({ employee_id: emp, type: "overtime", on_date: date, hours: h, notes: notes || null, attachment_id });
       setFile(null);
-      toast("تم إرسال طلب العمل الإضافي", "ok");
-      setDate("");
-      setHours("1");
       setNotes("");
+      toast("✓ " + T("تم إرسال طلب العمل الإضافي", "Overtime request submitted"), "ok");
       onDone();
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setBusy(false);
     }
   }
+  const stage = (r: HrRequest) => (r.status === "pending" ? (en ? STAGE[r.stage]?.[1] : STAGE[r.stage]?.[0]) ?? "" : ({ approved: T("موافق", "Approved"), rejected: T("مرفوض", "Rejected"), cancelled: T("ملغاة", "Cancelled") } as Record<string, string>)[r.status] ?? T("مكتمل", "Completed"));
 
   return (
     <div id="lv6">
-      <div className="card" style={{ marginBottom: 10 }}>
-        <div className="ch">
-          <div className="ct">
-            <i className="ti ti-clock-plus" />
-            <span>طلب عمل إضافي</span>
+      {can && (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div className="ch"><div className="ct"><i className="ti ti-clock-plus" /><span>{T("طلب عمل إضافي", "Overtime request")}</span></div></div>
+          <div className="fg">
+            <div><label>{T("الموظف *", "Employee *")}</label><select id="HR_OT_EMP" value={emp} onChange={(e) => setEmp(e.target.value)}><option value="">{T("اختر...", "Choose...")}</option>{emps.map((e) => <option key={e.id} value={e.id}>{en ? e.name_en || e.name_ar : e.name_ar}</option>)}</select></div>
+            <div><label>{T("التاريخ *", "Date *")}</label><DateField id="HR_OT_DATE" value={date} onChange={(v) => setDate(v)} /></div>
+            <div><label>{T("عدد الساعات *", "Hours *")}</label><input type="number" id="HR_OT_HOURS" min={0.5} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} /></div>
+            <div className="ff"><label>{T("السبب / المهمة", "Reason / task")}</label><textarea id="HR_OT_NOTES" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+            <div className="ff"><label>{T("مرفق اختياري", "Optional attachment")}</label><input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} /></div>
           </div>
+          <button type="button" className="btn bpl" style={{ marginTop: 10 }} disabled={busy} onClick={submit}><i className="ti ti-send" /> {T("إرسال الطلب", "Submit")}</button>
         </div>
-        <div className="fg">
-          <div>
-            <label>الموظف *</label>
-            <select id="HR_OT_EMP" value={emp} onChange={(e) => setEmp(e.target.value)}>
-              <option value="">— اختر —</option>
-              {emps.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name_ar}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>التاريخ *</label>
-            <DateField id="HR_OT_DATE" value={date} onChange={(v) => setDate(v)} />
-          </div>
-          <div>
-            <label>عدد الساعات *</label>
-            <input type="number" id="HR_OT_HOURS" min={0.5} step={0.5} value={hours} onChange={(e) => setHours(e.target.value)} />
-          </div>
-          <div className="ff">
-            <label>السبب / المهمة</label>
-            <textarea id="HR_OT_NOTES" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <div className="ff">
-            <label>مرفق اختياري</label>
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </div>
-        </div>
-        <button type="button" className="btn bpl" style={{ marginTop: 10 }} onClick={submit}>
-          <i className="ti ti-send" /> إرسال الطلب
-        </button>
-      </div>
+      )}
       <div className="card">
         <div className="ch">
-          <div className="ct">
-            <i className="ti ti-list-check" />
-            <span>طلبات العمل الإضافي</span>
-          </div>
-          <button type="button" className="btn bpl bsm" onClick={onDone}>
-            تحديث
-          </button>
+          <div className="ct"><i className="ti ti-list-check" /><span>{T("طلبات العمل الإضافي", "Overtime requests")}</span></div>
+          <button type="button" className="btn bpl bsm" onClick={onDone}>{T("تحديث", "Refresh")}</button>
         </div>
         <div id="HR_OT_LIST">
-          {reqs.length === 0 ? (
-            <div style={{ color: "var(--mu)", textAlign: "center", padding: 18 }}>لا توجد طلبات عمل إضافي</div>
-          ) : (
-            <div className="tw">
-              <table>
-                <thead>
-                  <tr>
-                    <th>الموظف</th>
-                    <th>التاريخ</th>
-                    <th>الساعات</th>
-                    <th>السبب</th>
-                    <th>الحالة</th>
-                    <th>إجراء</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reqs.map((r) => (
-                    <tr key={r.id}>
-                      <td style={{ fontWeight: 600 }}>{r.employee_name}</td>
-                      <td>{fD(r.on_date)}</td>
-                      <td>{Number(r.hours ?? 0)}</td>
-                      <td>{r.notes ?? ""}</td>
-                      <td>{STB[r.status]}</td>
-                      <td>{actions(r, true)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {!reqs.length && <div style={{ padding: 25, textAlign: "center", color: "var(--mu)" }}>✓ {T("لا توجد طلبات عمل إضافي", "No overtime requests")}</div>}
+          {reqs.map((r) => {
+            const pend = r.status === "pending" && r.stage === "hr";
+            return (
+              <div key={r.id} style={{ padding: "12px 14px", borderBottom: "1px solid rgba(36,48,68,.5)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 240 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>{r.employee_name}</div>
+                    <div style={{ fontSize: 11, color: "var(--mu)" }}>{fD(r.on_date)} | {Number(r.hours ?? 0)} {T("ساعة", "h")}{r.notes ? " | " + r.notes : ""}</div>
+                    <div style={{ fontSize: 10, color: "var(--dm)" }}>{stage(r)}</div>
+                  </div>
+                  {can && pend && (
+                    <>
+                      <button type="button" className="btn bgl bsm" onClick={() => setDlg({ kind: "approve", r })}>✓ {T("موافقة", "Approve")}</button>
+                      <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => setDlg({ kind: "reject", r })}>✗ {T("رفض", "Reject")}</button>
+                    </>
+                  )}
+                </div>
+                {att(r)}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

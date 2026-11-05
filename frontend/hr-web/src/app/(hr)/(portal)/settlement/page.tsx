@@ -9,6 +9,7 @@ import { settlementDocHtml } from "@/lib/calc/settlement-doc";
 import type { EmployeeListItem } from "@/lib/api";
 import { LAW_NAME, REASONS, runSettlement, sDt, sNum, type SettlementReason } from "@/lib/calc/settlement";
 import { DateField } from "@/components/common/date-time-field";
+import { FEATURES, isReady } from "@/lib/features";
 
 const inp: React.CSSProperties = {
   padding: 6,
@@ -206,7 +207,7 @@ export default function Page() {
             </div>
             {reason === "m77" && (
               <div>
-                <label style={lbl}>نهاية العقد المحدد (فاضي = غير محدد المدة)</label>
+                <label style={lbl}>نهاية العقد المحدد (فارغ = غير محدد المدة)</label>
                 <DateField id="sContractEnd" value={contractEnd} onChange={(v) => setContractEnd(v)} style={inp} />
               </div>
             )}
@@ -223,7 +224,7 @@ export default function Page() {
               <input type="number" id="sWD" placeholder="31" value={wd} onChange={(e) => setWd(e.target.value)} style={inp} />
             </div>
             <div>
-              <label style={lbl}>أيام الحضور</label>
+              <label style={lbl}>أيام الحضور (اختياري)</label>
               <input type="number" id="sAD" placeholder="31" value={ad} onChange={(e) => setAd(e.target.value)} style={inp} />
             </div>
           </div>
@@ -332,8 +333,19 @@ export default function Page() {
               <button type="button" className="btn bgr bsm" onClick={() => window.print()}>
                 <i className="ti ti-printer" /> طباعة
               </button>
-              <button type="button" className="btn bsm" style={{ background: "#014D3D", color: "#fff" }} onClick={printOfficial}>
+              <button type="button" className="btn bsm" id="v68SettleBtn" style={{ background: "var(--ariba-dark,#014D3D)", color: "#fff" }} onClick={printOfficial}>
                 <i className="ti ti-file-certificate" /> طباعة مخالصة رسمية
+              </button>
+              {/* the design's e-mail button; sending stays off until a sender is approved (lib/features.ts) */}
+              <button
+                type="button"
+                className="btn bsm"
+                id="v68MailBtn"
+                style={{ background: "var(--bl)", color: "#fff", opacity: isReady("exportEmail") ? 1 : 0.6 }}
+                title={"غير متاح بعد — يُفتح بعد " + (FEATURES.exportEmail.waits?.ar ?? "")}
+                onClick={() => window.alert("غير متاح بعد — يُفتح بعد " + (FEATURES.exportEmail.waits?.ar ?? ""))}
+              >
+                <i className="ti ti-mail" /> إرسال بريد إلكتروني للموظف
               </button>
               <button type="button" className="btn bsm" style={{ background: "var(--am)", color: "#fff" }} onClick={reset}>
                 <i className="ti ti-refresh" /> تصفير

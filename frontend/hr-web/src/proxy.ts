@@ -8,10 +8,10 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import type { Role } from "@/lib/api";
-import { EMP_LOGIN, HR_LOGIN, canAccess, homeFor, isEmployeeApp } from "@/lib/routes";
+import { HR_LOGIN, canAccess, homeFor, isPublicApply } from "@/lib/routes";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/session";
 
-const ROLES: Role[] = ["employee", "manager", "finance", "hr", "ceo", "admin"];
+const ROLES: Role[] = ["employee", "manager", "finance", "hr", "ceo", "admin", "admin_manager", "chairman"];
 
 function roleFromToken(token: string | undefined): Role | null {
   if (!token) return null;
@@ -31,12 +31,15 @@ export function proxy(request: NextRequest) {
   const hasSession = !!access || !!request.cookies.get(REFRESH_COOKIE)?.value;
   const role = roleFromToken(access);
 
-  if (pathname === HR_LOGIN || pathname === EMP_LOGIN) {
+  if (pathname === HR_LOGIN) {
     return role ? NextResponse.redirect(new URL(homeFor(role), request.url)) : NextResponse.next();
   }
 
+  // The public application form (the candidates' link) is the one page that must open signed out.
+  if (isPublicApply(pathname)) return NextResponse.next();
+
   if (!hasSession) {
-    const url = new URL(isEmployeeApp(pathname) ? EMP_LOGIN : HR_LOGIN, request.url);
+    const url = new URL(HR_LOGIN, request.url);
     if (pathname !== "/" && pathname !== "/me") url.searchParams.set("next", pathname + search);
     return NextResponse.redirect(url);
   }

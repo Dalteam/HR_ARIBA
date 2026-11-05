@@ -1,9 +1,11 @@
 // ملفي — their Prof.jsx: profile hero, personal data (+ «طلب تعديل»), job and contract, leave balances, salary,
 // bank (+ «طلب تغيير الآيبان»), «وثائقي» (+ «رفع مستند للمراجعة»), security, employer and work locations.
 import { useEffect, useState } from "react";
-import { Pressable, View } from "react-native";
+import { StatusIcon } from "@/components/status-icon";
+import { Image, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api";
+import { usePhoto } from "@/lib/photo";
 import { openDocument } from "@/lib/open-doc";
 import { PasswordSheet } from "@/components/password-sheet";
 import { dmy, LocationsCard, sar } from "@/components/shared";
@@ -20,6 +22,7 @@ export default function Profile() {
   const t = useTheme();
   const toast = useToast();
   const { employee: e, refresh } = useData();
+  const photo = usePhoto(e?.id, e?.has_photo);
   const [pw, setPw] = useState(false);
   const { signOut } = useAuth();
   const { choice, setChoice } = useThemeMode();
@@ -38,8 +41,9 @@ export default function Profile() {
       <View style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 14, marginBottom: 12, overflow: "hidden",
         backgroundColor: t.dark ? "#013D31" : "#014D3D",
         ...shadow(t.dark ? "#000" : "#014D3D", t.dark ? 0.2 : 0.16, 15, 0, 12, 3) }}>
-        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,.16)", alignItems: "center", justifyContent: "center" }}>
-          <T size={28} weight={800} color="#fff">{e?.name_ar?.charAt(0) ?? ""}</T>
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,.16)", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          {photo ? <Image source={{ uri: photo }} resizeMode="cover" style={{ width: 64, height: 64 }} />
+            : <T size={28} weight={800} color="#fff">{e?.name_ar?.charAt(0) ?? ""}</T>}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <T size={16} weight={800} color="#fff" numberOfLines={2} style={{ flexShrink: 1, lineHeight: 24 }}>{e?.name_ar ?? ""}</T>
@@ -94,7 +98,7 @@ export default function Profile() {
       <Card>
         <CardTitle icon="bank">بيانات البنك</CardTitle>
         <View style={{ flexDirection: "row" }}><InfoBox label="الإيبان" value={s?.iban} /></View>
-        <Btn kind="ghost" title={ibanPending ? "⏳ طلب تغيير الآيبان قيد المراجعة" : "✏️ طلب تغيير الآيبان"} onPress={() => router.push("/iban-change")} style={{ marginTop: 8 }} />
+        <Btn kind="ghost" title={ibanPending ? "طلب تغيير الآيبان قيد المراجعة" : "✏️ طلب تغيير الآيبان"} icon={ibanPending ? <StatusIcon name="wait" size={17} /> : undefined} onPress={() => router.push("/iban-change")} style={{ marginTop: 8 }} />
       </Card>
       <Card>
         <CardTitle icon="file">وثائقي</CardTitle>

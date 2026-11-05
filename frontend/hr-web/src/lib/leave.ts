@@ -88,6 +88,36 @@ export const balanceDetail = (employeeId: string) => request<BalanceDetail>(`/le
 export const saveBalance = (employeeId: string, body: { date: string; note: string; years: Record<string, number | null>[] }) =>
   request<BalanceDetail>(`/leave/employees/${employeeId}`, { method: "PUT", body });
 
+// Stage 12: more HR leave actions (backend routers/leave_actions.py)
+/** L1: back to the direct manager with a note (required). */
+export const returnToManager = (id: string, note: string) =>
+  request<{ id: string; status: string; current_stage: string }>(`/requests/${id}/return-to-manager`, { method: "POST", body: { note } });
+/** L2: cancel a leave — approved or pending — and give its days back. */
+export const cancelLeave = (id: string, reason: string) =>
+  request<{ id: string; status: string; cancelled: boolean; was: string }>(`/requests/${id}/cancel`, { method: "POST", body: { reason } });
+/** L3: the kept balance saves (last 10) and the undo of the latest. */
+export const balanceHistory = (employeeId: string) =>
+  request<{ items: { at: string; by: string | null; years: string[] }[]; can_undo: boolean }>(`/leave/employees/${employeeId}/history`);
+export const undoBalance = (employeeId: string) => request<BalanceDetail>(`/leave/employees/${employeeId}/undo`, { method: "POST" });
+
+export interface WorkflowSettings {
+  manager_wait_days: number;
+  ceo_wait_days: number;
+  advance_max_percent: number;
+  final_by_type: Record<string, "hr" | "ceo">;
+  extra_hr_emails: string[];
+  email_sending: boolean;
+  last_escalation?: { date: string; moved: number; at: string } | null;
+  types?: { code: string; name_ar: string }[];
+}
+export const getWorkflow = () => request<WorkflowSettings>("/settings/workflow");
+export const putWorkflow = (body: Partial<WorkflowSettings>) => request<WorkflowSettings>("/settings/workflow", { method: "PUT", body });
+export const runEscalation = () => request<{ escalated: number }>("/requests/escalate", { method: "POST" });
+
+export type LeavePolicy = Record<"emp_cancel_pending" | "emp_edit_pending" | "emp_request_cancel_approved" | "hr_cancel_approved" | "allow_advance_balance", boolean>;
+export const getLeavePolicy = () => request<LeavePolicy>("/settings/leave-policy");
+export const putLeavePolicy = (body: Partial<LeavePolicy>) => request<LeavePolicy>("/settings/leave-policy", { method: "PUT", body });
+
 /** Legacy LVL (js/main/04-charts-navigation.js): label, icon and colour per leave type. */
 export const LVL: Record<string, { ar: string; icon: string; color: string }> = {
   annual: { ar: "سنوية", icon: "ti-sun", color: "#E4E4BC" },

@@ -17,6 +17,8 @@ export const putSheet = (key: string, data: unknown) =>
 
 export const approveSheet = (key: string) => request<Sheet>(`/sheets/${key}/approve`, { method: "POST" });
 
-export const unapproveSheet = (key: string) => request<Sheet>(`/sheets/${key}/unapprove`, { method: "POST" });
+/** Reopens an approved month; the reason is written to the audit log. */
+export const unapproveSheet = (key: string, reason?: string) =>
+  request<Sheet>(`/sheets/${key}/unapprove`, { method: "POST", body: reason ? { reason } : undefined });
 
 export const listSheets = (prefix: string) => request<Sheet[]>(`/sheets`, { query: { prefix } });

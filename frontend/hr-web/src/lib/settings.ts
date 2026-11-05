@@ -33,6 +33,44 @@ export const setRole = (userId: string, role: string) => request<unknown>(`/auth
 export const setPayrollExclusion = (employee_id: string, exclude: boolean) =>
   request<void>("/settings/payroll-exclusion", { method: "POST", body: { employee_id, exclude } });
 
+// ---- Stage 20: the working-hours schedule and the leave rules (backend/app/services/{schedule,leave_rules}.py,
+// routes GET/PUT /settings/schedule and /settings/leave-rules in routers/settings_extra.py) ----
+export interface Shift { start: string; end: string; hours: number | string; grace: number | string }
+/** the shift the server measured today's punches against (`kind` is which of the two rows it took) */
+export interface AppliedShift extends Shift { kind: "official" | "ramadan" }
+export interface ScheduleSettings {
+  enabled: boolean;
+  official: Shift;
+  ramadan: Shift;
+  /** Ramadan found by the Hijri month; the two dates below win when both are set */
+  ramadan_auto: boolean;
+  ramadan_from: string;
+  ramadan_to: string;
+  today?: { date: string; shift: AppliedShift | null };
+}
+export type AccrualMethod = "calendar" | "workdays" | "monthly";
+export type SpecialKind = "tamheer" | "trainee" | "consultant";
+export interface LeaveRules {
+  /** `enabled: false` carries the whole balance: no cap and no end-of-service excess */
+  carry: { enabled: boolean; days: number | string };
+  accrual: { method: AccrualMethod };
+  /** an unticked type keeps no leave ledger (`leave`) and gets no leave excess at the end of service (`eos`) */
+  rights: Record<SpecialKind, { leave: boolean; eos: boolean }>;
+}
+export interface LeaveRulesPayload extends LeaveRules {
+  /** how many active employees each type holds — what the switches act on */
+  employees: Record<SpecialKind | "other", number>;
+  methods: AccrualMethod[];
+  max_carry_days: number;
+  kinds: SpecialKind[];
+}
+
+export const getSchedule = () => request<ScheduleSettings>("/settings/schedule");
+export const putSchedule = (b: Omit<ScheduleSettings, "today">) => request<ScheduleSettings>("/settings/schedule", { method: "PUT", body: b });
+export const getLeaveRules = () => request<LeaveRulesPayload>("/settings/leave-rules");
+// any of the three; what the body leaves out keeps its saved row
+export const putLeaveRules = (b: Partial<LeaveRules>) => request<LeaveRulesPayload>("/settings/leave-rules", { method: "PUT", body: b });
+
 export const getSheet = <T,>(key: string) => request<{ data: T | null }>(`/sheets/${key}`);
 export const putSheet = (key: string, data: unknown) => request<unknown>(`/sheets/${key}`, { method: "PUT", body: { data } });
 export const getAppLinks = () => request<AppLinks>("/settings/app-links");

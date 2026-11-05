@@ -2,6 +2,7 @@
 // balances and leaves, salary), targets and evaluation, on-behalf requests for members who delegated me, the team's
 // requests with their status, and the tasks / meetings / availability screen.
 import { useCallback, useEffect, useState } from "react";
+import { StatusLine } from "@/components/status-icon";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { Badge, Btn, Card, CardTitle, Empty, Page, T } from "@/components/ui";
@@ -77,7 +78,7 @@ export default function Team() {
             ) : null}
           </View>
         ))}
-        {approvals.length > 0 ? <T size={12} color={t.am} style={{ marginTop: 10 }}>{`⏳ لديك ${approvals.length} طلب بانتظار موافقتك — تبويب الموافقات`}</T> : null}
+        {approvals.length > 0 ? <StatusLine name="wait" size={14} style={{ marginTop: 10 }}><T size={12} color={t.am}>{`لديك ${approvals.length} طلب بانتظار موافقتك — تبويب الموافقات`}</T></StatusLine> : null}
       </Card>
 
       {P?.view_team_requests && reqs ? (
@@ -91,7 +92,7 @@ export default function Team() {
                 <Badge text={st[0]} tone={st[1]} />
               </View>
               <T size={11} color={t.mu}>{detail(r)}</T>
-              {r.status === "rejected" && r.reject_reason ? <T size={11} color={t.rd}>❌ {r.reject_reason}</T> : null}
+              {r.status === "rejected" && r.reject_reason ? <StatusLine name="rejected" size={13}><T size={11} color={t.rd}>{r.reject_reason}</T></StatusLine> : null}
             </View>); })}
         </Card>
       ) : null}

@@ -7,7 +7,7 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000
 
 // --------------------------------------------------------------------------- types
 
-export type Role = "employee" | "manager" | "finance" | "hr" | "ceo" | "admin";
+export type Role = "employee" | "manager" | "finance" | "hr" | "ceo" | "admin" | "admin_manager" | "chairman";
 export type EmployeeCategory = "active" | "tamheer" | "training" | "consultant" | "hourly";
 export type WpsType = "wps" | "trainee" | "tamheer" | "external" | "consultant" | "no_wps" | "remote";
 export type GosiSystem = "matching" | "non_matching" | "non_saudi";
@@ -142,6 +142,13 @@ export interface Salary {
 }
 
 export interface Employee {
+  // Stage 17
+  national_address_expiry?: string | null;
+  gosi_no?: string | null;
+  gosi_cert_expiry?: string | null;
+  probation_days?: string;
+  probation_end?: string | null;
+  allow_modes?: Record<string, { pct: number }>;
   id: Uuid;
   emp_no: string;
   name_ar: string;
@@ -194,6 +201,13 @@ export interface Employee {
 
 /** Body for create/update. Empty strings are sent as null. */
 export interface EmployeeInput {
+  // Stage 17
+  national_address_expiry?: string | null;
+  gosi_no?: string | null;
+  gosi_cert_expiry?: string | null;
+  probation_days?: string | null;
+  probation_end?: string | null;
+  allow_modes?: Record<string, { pct: number }>;
   emp_no?: string;
   name_ar?: string;
   name_en?: string | null;
@@ -299,9 +313,11 @@ export interface Dashboard {
   payroll_summary: { year: number; month: number } | null;
 }
 
+// The codes of the `document_types` lookup (the API refuses any other). Stage 17 moved the employee form from names
+// the lookup never had (iqama, graduation_certificate, experience_certificate, gosi_certificate) to these.
 export type DocumentType =
-  | "iqama" | "passport" | "insurance" | "contract" | "graduation_certificate" | "experience_certificate"
-  | "gosi_certificate" | "cv" | "national_address" | "photo" | "letter" | "other";
+  | "identity" | "passport" | "insurance" | "contract" | "degree" | "experience" | "professional" | "course"
+  | "social_insurance" | "cv" | "national_address" | "photo" | "letter" | "other";
 
 export interface DocumentFile {
   id: Uuid;
@@ -374,7 +390,8 @@ export class ApiError extends Error {
 
 // --------------------------------------------------------------------------- request
 
-type Query = Record<string, string | number | boolean | null | undefined>;
+/** An array value is sent as the key repeated (`modules=a&modules=b`). */
+type Query = Record<string, string | number | boolean | string[] | null | undefined>;
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -411,7 +428,8 @@ function buildUrl(path: string, query?: Query): string {
   const url = new URL(API_URL + path);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+      if (Array.isArray(v)) v.filter(Boolean).forEach((x) => url.searchParams.append(k, x));
+      else if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
     }
   }
   return url.toString();
@@ -487,9 +505,9 @@ export async function request<T>(path: string, opts: RequestOptions = {}, retrie
     clearSession();
     if (typeof window !== "undefined" && !/\/login$/.test(location.pathname)) {
       // Full reload on purpose: the session is gone, so drop all in-memory app state too.
-      const login = location.pathname.startsWith("/me") ? "/me/login" : "/login";
+      // One sign-in screen since the employee web copy was retired: /me only says where the employee app is.
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      location.assign(`${login}?next=${encodeURIComponent(location.pathname)}`);
+      location.assign(`/login?next=${encodeURIComponent(location.pathname)}`);
     }
   }
   if (!res.ok) throw await parseError(res);

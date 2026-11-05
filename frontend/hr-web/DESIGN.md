@@ -7,8 +7,10 @@ The UI reproduces the V114 prototypes **exactly**: same CSS, class names, ids, w
   `frontend/legacy/*/css`, copied verbatim in the order the browser applied them (plus the few rules the prototypes injected at runtime). Do not tidy them:
   the components emit the prototype's markup (`.sb`, `.ni`, `.topbar`, `.card`, `.tbar/.tab`, `.mw/.modal`,
   `.hdr`, `.bnav/.bni`, `#KR`, `#ET` …) so the original cascade renders unchanged.
-- Two root layouts keep the two stylesheets apart: `app/(hr)` (HR portal) and `app/(employee)` (employee app).
-  Moving between them is a full page load.
+- Two root layouts keep two stylesheets apart: `app/(hr)` (HR portal) and `app/(apply)` (the public application
+  form, no session). A third one, `app/(employee)` (the web copy of the employee app), was retired on 5 Nov 2026:
+  its pages are text-only under `src/legacy/employee-web`, `/me` is one card that points at the Expo app, and there
+  is a single sign-in screen (`/login`).
 - Font: ARIBA Two (Light/Medium/Bold), extracted from the HR prototype into `public/fonts`, also mapped to the
   face names the prototype used (`ARIBA Two Medium` …) so it renders without a local install.
 - Icons: Tabler icons webfont 3.19.0 (as the prototype). Charts: Chart.js 4.4.0 with the prototype's colours.

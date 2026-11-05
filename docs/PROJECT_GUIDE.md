@@ -203,7 +203,9 @@
 
 **باقي المجلد:**
 - `src/app/(hr)/login`: دخول HR.
-- `src/app/(employee)/me/...`: نسخة ويب قديمة لبوابة الموظف. **التطبيق الفعلي هو `employee-app`**.
+- `src/app/(hr)/me`: بطاقة واحدة تقول إن شاشات الموظف في التطبيق، وزر خروج. نسخة الويب القديمة لبوابة الموظف صارت
+  نصًّا في `src/legacy/employee-web` (خارج التوجيه، README هناك يشرح كيف تُعاد). **التطبيق الفعلي هو `employee-app`**،
+  والدخول واحد للجميع: `/login`.
 - **`src/components/`:**
   - `hr/hr-shell.tsx`: الإطار، والقائمة، والشريط العلوي، وزر «تحديث البيانات» اللي يعيد تحميل الصفحة عبر `key={tick}`.
   - `hr/employee-form.tsx` و `employee-details.tsx` و `dependents-tab.tsx` و `terminate-modal.tsx`.

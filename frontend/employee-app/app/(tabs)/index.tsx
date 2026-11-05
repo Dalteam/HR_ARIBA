@@ -7,12 +7,13 @@ import { router } from "expo-router";
 import Svg, { Circle, Defs, LinearGradient, Polygon, Rect, Stop } from "react-native-svg";
 import { Icon, type IconName } from "@/components/icons";
 import { useComposer } from "@/components/composer";
-import { ForgotPunchSheet, LocationsCard, sar } from "@/components/shared";
+import { ForgotPunchSheet, LocationsCard, dmy, sar, todayISO } from "@/components/shared";
 import { Card, Page, T } from "@/components/ui";
 import { RequestItem } from "@/components/request-item";
 import { AnnouncementsCard } from "@/components/announcements";
 import { LeaveIcon } from "@/components/leave-icon";
 import { useData } from "@/lib/data";
+import { usePhoto } from "@/lib/photo";
 import { useAuth } from "@/lib/auth";
 import { useTileWidth } from "@/lib/grid";
 import { useLayout } from "@/lib/responsive";
@@ -164,6 +165,7 @@ function Hero({ onForgot }: { onForgot: () => void }) {
   const pad = (n: number) => String(n).padStart(2, "0");
   const date = now.toLocaleDateString(dateLocale(), { timeZone: "Asia/Riyadh", weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const name = employee?.name_ar ?? "";
+  const photo = usePhoto(employee?.id, employee?.has_photo);
   const locChip = (() => {
     switch (loc.kind) {
       case "loading": return { text: "جاري تحديد موقعك…" };
@@ -187,7 +189,8 @@ function Hero({ onForgot }: { onForgot: () => void }) {
       ) : box.w > 0 ? <HeroArt w={box.w} h={box.h} c={ab.hero} /> : null}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
         <View style={styles.avatar}>
-          <T size={19} weight={800} color="#E4E4BC">{name.charAt(0)}</T>
+          {photo ? <Image source={{ uri: photo }} resizeMode="cover" style={styles.avatarImg} />
+            : <T size={19} weight={800} color="#E4E4BC">{name.charAt(0)}</T>}
         </View>
         <View style={{ flex: 1 }}>
           <T size={12.5} color={fg} style={{ opacity: 0.78 }}>{r.h < 12 ? "صباح الخير" : "مساء الخير"}</T>
@@ -238,6 +241,36 @@ function Ledger({ items }: { items: [string, string, string][] }) {
           <T size={12} color={t.mu} center>{l}</T>
         </View>
       ))}
+    </View>
+  );
+}
+
+// Stage A1: the two lines the web /me home had under its leave tiles — «مرحّل» and the nearest public holiday. On a
+// phone a fourth cell would squeeze the three ledger numbers, so they sit under it as slim pills (and hide when both
+// are empty: no carry from last year, no holidays ahead).
+function CarryNotes() {
+  const t = useTheme();
+  const { leave } = useData();
+  const carry = Math.round(Number(leave?.carry ?? 0) * 100) / 100;
+  const today = todayISO();
+  const holiday = (leave?.upcoming_holidays ?? []).find((h) => h.date >= today);
+  if (!(carry > 0) && !holiday) return null;
+  const ink = t.dark ? "#29B35E" : "#014D3D";
+  const pill = { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, borderWidth: 1, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 11, maxWidth: "100%" as const, backgroundColor: t.c, borderColor: t.bd };
+  return (
+    <View style={styles.notes}>
+      {carry > 0 ? (
+        <View style={pill}>
+          <Icon name="history" size={13} color={ink} stroke={2} />
+          <T size={11.5} weight={700}>{`مرحّل: ${carry} يوم`}</T>
+        </View>
+      ) : null}
+      {holiday ? (
+        <View style={pill}>
+          <Icon name="calendar" size={13} color={ink} stroke={2} />
+          <T size={11.5} weight={700} numberOfLines={1} style={{ flexShrink: 1 }}>{`أقرب إجازة رسمية: ${holiday.name} — ${dmy(holiday.date)}`}</T>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -295,6 +328,7 @@ export default function Home() {
     <Page onRefresh={refresh}>
       <Hero onForgot={() => setForgot(true)} />
       <Ledger items={[[fmt(leave?.current), "رصيد الإجازة (يوم)", "annual"], [fmt(leave?.year_end), "رصيد نهاية العام", "year_end"], [att ? String(Math.max(0, att.remote_limit - att.remote_used)) : "—", "عن بعد المتبقي", "remote"]]} />
+      <CarryNotes />
 
       <AnnouncementsCard />
 
@@ -336,11 +370,14 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   hero: { borderRadius: 30, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 18, overflow: "hidden", marginBottom: 14, ...shadow("#014D3D", 0.3, 16, 0, 14, 6) },
-  avatar: { width: 46, height: 46, backgroundColor: "rgba(255,255,255,.14)", borderRadius: 16, alignItems: "center", justifyContent: "center", transform: [{ skewX: "-8deg" }] },
+  avatar: { width: 46, height: 46, backgroundColor: "rgba(255,255,255,.14)", borderRadius: 16, alignItems: "center", justifyContent: "center", overflow: "hidden", transform: [{ skewX: "-8deg" }] },
+  // the photo is skewed back, so the tile keeps its slant and the face stays straight (52 > 46 leaves no gap in the corners)
+  avatarImg: { width: 52, height: 52, transform: [{ skewX: "8deg" }] },
   chips: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 7, marginTop: 6 },
   back: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "center", marginTop: 10, borderWidth: 1.5, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14, borderColor: "#fff" },
   ledger: { flexDirection: "row", borderRadius: 22, overflow: "hidden", marginBottom: 6, ...shadow("#014D3D", 0.08, 8, 0, 4, 2) },
   ledgerCell: { flex: 1, alignItems: "center", paddingVertical: 14, paddingHorizontal: 6, gap: 2 },
+  notes: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 8, marginBottom: 2 },
   sec: { marginTop: 18, marginBottom: 10, marginHorizontal: 2, letterSpacing: -0.3 },
   svcGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   svc: { width: "31.6%", alignItems: "center", gap: 8, paddingTop: 12, paddingBottom: 10, paddingHorizontal: 3, borderRadius: 18, minHeight: 92, ...shadow("#014D3D", 0.08, 8, 0, 4, 2) },

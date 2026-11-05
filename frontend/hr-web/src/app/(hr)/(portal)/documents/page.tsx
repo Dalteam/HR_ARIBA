@@ -10,12 +10,15 @@ import { printHtml } from "@/lib/print";
 import { listDocRegistry, type DocRow } from "@/lib/registry";
 import { printIcon } from "@/lib/print-icons";
 
-type Tab = "dc1" | "dc2" | "dc3" | "dc4";
+type Tab = "dc1" | "dc2" | "dc3" | "dc4" | "dc5" | "dc6";
 const TABS: [Tab, string, string][] = [
-  ["dc1", "الإقامات", "ti-id"],
+  ["dc1", "🪪 الإقامات", "ti-id"],
   ["dc2", "الجوازات", "ti-world"],
   ["dc3", "التأمين الطبي", "ti-heart-plus"],
   ["dc4", "العقود", "ti-file-certificate"],
+  // the updated design's two extra tabs (Stage 17: the register returns their fields)
+  ["dc5", "العنوان الوطني", "ti-map-pin"],
+  ["dc6", "شهادة التأمينات", "ti-shield-check"],
 ];
 const fD = (d: string | null) => (d ? ddmmyyyy(d) : "—");
 
@@ -41,7 +44,7 @@ export default function Page() {
   const [rows, setRows] = useState<DocRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const tables = useRef<Record<Tab, HTMLTableElement | null>>({ dc1: null, dc2: null, dc3: null, dc4: null });
+  const tables = useRef<Record<Tab, HTMLTableElement | null>>({ dc1: null, dc2: null, dc3: null, dc4: null, dc5: null, dc6: null });
 
   useEffect(() => {
     let alive = true;
@@ -77,17 +80,17 @@ export default function Page() {
 
   return (
     <div className="pg on" id="pg-docs">
-      <div className="tbar">
-        <button type="button" id="docsRefreshBtn62" className="btn bsm" style={{ marginRight: 6, background: "var(--bl)", color: "#fff" }} onClick={refresh}>
-          <i className="ti ti-refresh" /> تحديث البيانات
-        </button>
-        {TABS.map(([k, l, ic]) => (
-          <div key={k} className={"tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>
-            <i className={`ti ${ic}`} aria-hidden /> {l}
+      <div className="tbar" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+        {TABS.map(([k, l]) => (
+          <div key={k} id={"t_" + k} className={"tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>
+            {l}
           </div>
         ))}
-        <button type="button" className="btn bsm" onClick={printTab} style={{ marginRight: "auto", background: "var(--gr)", color: "#fff" }}>
+        <button type="button" className="btn bsm" onClick={printTab} style={{ marginInlineStart: "auto", background: "var(--gr)", color: "#fff" }}>
           <i className="ti ti-printer" /> طباعة هذا التاب
+        </button>
+        <button type="button" className="btn bsm" id="DOC_REFRESH" onClick={refresh}>
+          <i className="ti ti-refresh" /> تحديث البيانات
         </button>
         <button type="button" className="btn bsm" onClick={printAll}>
           <i className="ti ti-printer" /> طباعة الكل
@@ -176,6 +179,48 @@ export default function Page() {
                         <td>{fD(e.contract_end_date)}</td>
                         <td><DBadge d={e.contract_days} /></td>
                         <td>{!e.contract_end_date ? <span className="b bk">مفتوح</span> : state(true, e.contract_days, "", "منتهي", "ساري")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="dc5" style={{ display: tab === "dc5" ? undefined : "none" }}>
+            <div className="card" style={{ padding: 0 }}>
+              <div className="tw">
+                <table id="NAT" ref={(el) => { tables.current.dc5 = el; }}>
+                  <tbody>
+                    <tr><th>#</th><th>الموظف</th><th>العنوان الوطني</th><th>جهة العمل</th><th>الانتهاء</th><th>المتبقي</th><th>الحالة</th></tr>
+                    {a.map((e) => (
+                      <tr key={e.id}>
+                        {row(e)}
+                        <td>{e.national_address || "—"}</td>
+                        <td>{e.workplace || "—"}</td>
+                        <td>{fD(e.national_address_expiry ?? null)}</td>
+                        <td><DBadge d={e.national_address_days ?? null} /></td>
+                        <td>{state(!!(e.national_address || e.national_address_expiry), e.national_address_days ?? null, "غير مكتمل", "منتهي", "ساري")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div id="dc6" style={{ display: tab === "dc6" ? undefined : "none" }}>
+            <div className="card" style={{ padding: 0 }}>
+              <div className="tw">
+                <table id="GOS" ref={(el) => { tables.current.dc6 = el; }}>
+                  <tbody>
+                    <tr><th>#</th><th>الموظف</th><th>رقم التأمينات</th><th>جهة العمل</th><th>الانتهاء</th><th>المتبقي</th><th>الحالة</th></tr>
+                    {a.map((e) => (
+                      <tr key={e.id}>
+                        {row(e)}
+                        <td>{e.gosi_no || "—"}</td>
+                        <td>{e.workplace || "—"}</td>
+                        <td>{fD(e.gosi_cert_expiry ?? null)}</td>
+                        <td><DBadge d={e.gosi_cert_days ?? null} /></td>
+                        <td>{state(!!(e.gosi_no || e.gosi_cert_expiry), e.gosi_cert_days ?? null, "غير مكتمل", "منتهي", "ساري")}</td>
                       </tr>
                     ))}
                   </tbody>

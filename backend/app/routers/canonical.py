@@ -636,6 +636,8 @@ def create_employee(body: dict[str, Any], request: Request, actor: dict[str, Any
     _perm(actor, "employees", "edit")
     if not str(body.get("name_ar") or "").strip() or not body.get("workplace_id") or not body.get("join_date"):
         raise ApiError(422, "validation_error", "Name, workplace and join date are required")
+    if (problem := emap.check_extras(body)):
+        raise ApiError(422, "validation_error", problem)
     nums = [int(x["v"]) for x in _rows(db, "SELECT data->>'empNo' AS v FROM public.employee_directory") if str(x["v"] or "").isdigit()]
     emp_no = str(body.get("emp_no") or "").strip() or str(max(nums or [0]) + 1)
     if _row(db, "SELECT 1 AS x FROM public.employee_directory WHERE employee_id=:e OR data->>'empNo'=:e", e=emp_no):
@@ -665,6 +667,8 @@ def update_employee(employee_id: str, body: dict[str, Any], request: Request, ac
     """Only the fields sent are changed; every other legacy key in data is kept."""
     _perm(actor, "employees", "edit")
     old = _employee_scope(db, actor, employee_id)
+    if (problem := emap.check_extras(body)):
+        raise ApiError(422, "validation_error", problem)
     data, top = emap.apply_input(dict(old.get("data") or {}), body)
     _validate_manager(db, employee_id, top.get("manager_id", old.get("manager_id")))
     _contract_end(data)
@@ -2436,7 +2440,9 @@ def approve_letter(request_id: uuid.UUID, request: Request, actor: dict[str, Any
 @router.get("/employees/{employee_id}/documents")
 def list_documents(employee_id: str, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     _employee_scope(db, actor, employee_id)
-    return _rows(db, "SELECT id,employee_id,request_id,document_type AS type,file_name,mime_type,file_size AS size_bytes,uploaded_by,created_at FROM public.ariba_documents WHERE employee_id=:eid ORDER BY created_at DESC", eid=employee_id)
+    from app.routers import documents_meta  # imported late: it imports this module
+    meta = ",title,issuer,issue_date,expiry_date" if documents_meta.meta_ready(db) else ""  # Stage 17, migration 007
+    return _rows(db, f"SELECT id,employee_id,request_id,document_type AS type,file_name,mime_type,file_size AS size_bytes,uploaded_by,created_at{meta} FROM public.ariba_documents WHERE employee_id=:eid ORDER BY created_at DESC", eid=employee_id)
 
 
 @router.post("/employees/{employee_id}/documents")
@@ -2836,7 +2842,11 @@ def document_registry(actor: dict[str, Any] = Depends(current_actor), db: Sessio
                 return (date.fromisoformat(str(raw)[:10])-today).days if raw else None
             except ValueError:
                 return None
-        out.append({"id": e["employee_id"], "emp_no": e["emp_no"], "name_ar": e["name_ar"], "workplace": e["employer"], "nationality": e["nationality"], "national_id": d.get("iqamaNo"), "national_id_expiry": d.get("iqamaExpiry"), "national_id_days": days("iqamaExpiry"), "passport_no": d.get("passportNo"), "passport_expiry": d.get("passportExpiry"), "passport_days": days("passportExpiry"), "insurance_company": d.get("insuranceCo"), "insurance_class": d.get("insuranceClass"), "insurance_card_no": d.get("insuranceCard"), "insurance_expiry": d.get("insuranceExpiry"), "insurance_days": days("insuranceExpiry"), "contract_type": d.get("contractNature"), "join_date": d.get("contractJoin"), "contract_end_date": d.get("contractEnd"), "contract_days": days("contractEnd")})
+        out.append({"id": e["employee_id"], "emp_no": e["emp_no"], "name_ar": e["name_ar"], "workplace": e["employer"], "nationality": e["nationality"], "national_id": d.get("iqamaNo"), "national_id_expiry": d.get("iqamaExpiry"), "national_id_days": days("iqamaExpiry"), "passport_no": d.get("passportNo"), "passport_expiry": d.get("passportExpiry"), "passport_days": days("passportExpiry"), "insurance_company": d.get("insuranceCo"), "insurance_class": d.get("insuranceClass"), "insurance_card_no": d.get("insuranceCard"), "insurance_expiry": d.get("insuranceExpiry"), "insurance_days": days("insuranceExpiry"), "contract_type": d.get("contractNature"), "join_date": d.get("contractJoin"), "contract_end_date": d.get("contractEnd"), "contract_days": days("contractEnd"),
+                    # Stage 17: the design's national-address and GOSI-certificate tabs
+                    "national_address": d.get("nationalAddress"), "national_address_expiry": d.get("nationalAddressExpiry"),
+                    "national_address_days": days("nationalAddressExpiry"), "gosi_no": d.get("gosiNo"),
+                    "gosi_cert_expiry": d.get("gosiCertExpiry"), "gosi_cert_days": days("gosiCertExpiry")})
     return out
 
 

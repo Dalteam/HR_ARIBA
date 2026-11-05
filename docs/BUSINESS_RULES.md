@@ -1202,6 +1202,27 @@ details saved only, **never a password**, sending stays off.
 - **Not built (needs a decision):** the employee app's *own* colours (`emp_brand_colors`). The app is painted from
   `/public/brand`, which by § Public brand reads five named keys and must not widen; the app follows the program colours.
 
+## Employee record extras — Stage 17, 5 Nov 2026 (`services/employee_map.py`, `routers/documents_meta.py`, migration `007_document_meta.sql`)
+
+The design's employee-form and document fields we did not carry (`reference/hr-v1` `employees/EmpForm.jsx`,
+`EmpCerts.jsx`, `EmpDocsBox.jsx`, `docs/index.jsx`, `reports/CertReport.jsx`, SQL `37_certificates_meta.sql`).
+
+- **R1** New employee fields, stored under the design's keys in the employee's data: `national_address_expiry`
+  (`nationalAddressExpiry`), `gosi_no` (`gosiNo`), `gosi_cert_expiry` (`gosiCertExpiry`), `probation_days`
+  (`probationDays`: 30 / 60 / 90 / 180 / `custom`, empty = the default length of Settings ▸ التنبيهات) and
+  `probation_end` (`probationEnd`, required with `custom`). Saved by the existing `POST`/`PATCH /employees` (`employees: edit`);
+  a bad value is 422 before anything is stored. The expiry alerts of Stage 13 read these same keys.
+- **R2** `allow_modes`: an allowance (housing, transport, project, other, extra) may be kept as a % of basic (0–1000 %).
+  It is stored as the design's `allowModes` **and** as its amount, so payroll and every report read one number; when the
+  basic changes the amount follows. Shown only to roles that may see salaries (`payroll: view`).
+- **R3** The document register adds the national address (and its expiry) and the GOSI number and certificate expiry.
+- **R4** Certificate details on a document: title, issuer, issue and expiry dates (migration 007 adds the four columns and
+  the `professional` / `course` types). Set with `PUT /documents/{id}/meta` (`attachments: edit`); the employee's
+  document list returns them.
+- **R5** The certificates report (`GET /registry/attachments`, `documents` or `attachments: view`) lists every employee's
+  file documents with name, type, size, dates and details, **never the file**; request attachments (sick-leave reports and
+  the like) stay with their requests and are not listed.
+
 ## Open questions from the prototypes (to settle in their phases)
 
 

@@ -15,7 +15,7 @@ from app.database import engine
 from app.models import configure_models
 from app.routers import alerts, announcements, apply, assets, audit_log, bizcards, candidates, canonical, goals
 from app.routers import health, leave_actions, manager, me_leave, permissions, public, push, recycle_bin
-from app.routers import settings_extra, tasks
+from app.routers import documents_meta, settings_extra, tasks
 from app.services import escalation, notify_email
 
 API_PREFIX = "/api/v1"
@@ -133,6 +133,8 @@ def create_app() -> FastAPI:
     app.include_router(me_leave.router, prefix=API_PREFIX)
     # Small settings saves (Stage 16): brand colours, punch logo, letterhead, greeting texts, mailboxes (no password).
     app.include_router(settings_extra.router, prefix=API_PREFIX)
+    # Employee record extras (Stage 17): certificate details and the certificates report (migration 007).
+    app.include_router(documents_meta.router, prefix=API_PREFIX)
     return app
 
 

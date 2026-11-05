@@ -172,6 +172,12 @@ def employee_out(row: dict, *, may_salary: bool, may_ids: bool, manager: dict | 
         "expiry_days": {"national_id": left(d(data.get("iqamaExpiry"))), "passport": left(d(data.get("passportExpiry"))),
                         "insurance": left(d(data.get("insuranceExpiry"))), "contract": left(d(data.get("contractEnd")))},
         "has_account": has_account, "created_at": row.get("created_at"), "updated_at": row.get("updated_at"),
+        # Stage 17
+        "national_address_expiry": d(data.get("nationalAddressExpiry")), "gosi_no": data.get("gosiNo"),
+        "gosi_cert_expiry": d(data.get("gosiCertExpiry")),
+        "probation_days": str(data.get("probationDays") or "") if str(data.get("probationDays") or "") in PROBATION_DAYS else "",
+        "probation_end": d(data.get("probationEnd")),
+        "allow_modes": _kept_pct(data) if may_salary else {},
     }
 
 
@@ -197,7 +203,58 @@ _IN: dict[str, tuple[str, Any]] = {
     "currency": ("currency", lambda v, f: _CURRENCY_AR.get(v, v)), "exchange_rate": ("exchRate", lambda v, f: float(num(v))),
     "gosi_system": ("insSystem", lambda v, f: _INS_LEGACY.get(v, v)), "payment_method": ("payMethod", lambda v, f: _PAY_AR.get(v, v)),
     "exclude_from_payroll": ("excludeFromPayroll", None), "exclude_from_eos": ("excludeFromEos", None), "notes": ("notes", None),
+    # Stage 17: the design's keys for the national address, GOSI certificate, probation and allowance-% fields
+    "national_address_expiry": ("nationalAddressExpiry", None), "gosi_no": ("gosiNo", None),
+    "gosi_cert_expiry": ("gosiCertExpiry", None), "probation_days": ("probationDays", None),
+    "probation_end": ("probationEnd", None), "allow_modes": ("allowModes", None),
 }
+
+#: Stage 17: probation lengths the form offers (plus `custom` = a date of its own); allowances that may be a % of basic.
+PROBATION_DAYS = ("", "30", "60", "90", "180", "custom")
+PCT_ALLOWANCES = ("housing_allowance", "transport_allowance", "project_allowance", "other_allowances", "extra_allowance")
+_PCT_LEGACY = {"housing_allowance": "housingAllowance", "transport_allowance": "transportAllowance",
+               "project_allowance": "projectAllowance", "other_allowances": "otherAllowance", "extra_allowance": "extraAllowance"}
+_PCT_SITE = {legacy: site for site, legacy in _PCT_LEGACY.items()}
+
+
+def _kept_pct(data: dict) -> dict:
+    """The stored allowModes (`{housingAllowance: {m: 'pct', p: 25}}`) as the site's `{housing_allowance: {pct: 25}}`."""
+    modes = data.get("allowModes") if isinstance(data.get("allowModes"), dict) else {}
+    return {_PCT_SITE[k]: {"pct": float(num(v.get("p")))} for k, v in modes.items()
+            if k in _PCT_SITE and isinstance(v, dict) and v.get("m") == "pct"}
+
+
+def check_extras(body: dict) -> str | None:
+    """The Stage 17 fields, checked before they are stored; the message to refuse with, or None."""
+    for key in ("national_address_expiry", "gosi_cert_expiry", "probation_end"):
+        if body.get(key) not in (None, "") and d(body.get(key)) is None:
+            return f"{key}: تاريخ غير صحيح"
+    if "probation_days" in body and str(body.get("probation_days") or "") not in PROBATION_DAYS:
+        return "مدة التجربة 30 أو 60 أو 90 أو 180 يومًا أو تاريخ يدوي"
+    if body.get("probation_days") == "custom" and not d(body.get("probation_end")):
+        return "اكتب تاريخ نهاية التجربة"
+    if str(body.get("gosi_no") or "") and len(str(body.get("gosi_no"))) > 30:
+        return "رقم التأمينات أطول من المسموح"
+    modes = body.get("allow_modes")
+    if modes is not None:
+        if not isinstance(modes, dict) or any(k not in PCT_ALLOWANCES for k in modes):
+            return "allow_modes: بدلات غير معروفة"
+        for value in modes.values():
+            pct = value.get("pct") if isinstance(value, dict) else None
+            if not isinstance(pct, (int, float)) or isinstance(pct, bool) or not 0 <= pct <= 1000:
+                return "نسبة البدل بين 0 و1000%"
+    return None
+
+
+def _apply_pct(data: dict, modes: dict) -> None:
+    """An allowance kept as a % of basic is stored as its amount too, so every report reads one number (the design)."""
+    basic = float(num(data.get("salary")))
+    stored = {}
+    for key, value in modes.items():
+        pct = float(value["pct"])
+        data[_PCT_LEGACY[key]] = round(basic * pct / 100, 2)
+        stored[_PCT_LEGACY[key]] = {"m": "pct", "p": pct}  # the design's allowModes shape
+    data["allowModes"] = stored
 
 # Top-level employee_directory columns kept in step with data.
 TOP = {"name_ar": "name_ar", "name_en": "name_en", "workplace_id": "employer", "department_id": "department",
@@ -215,6 +272,8 @@ def apply_input(data: dict, body: dict) -> tuple[dict, dict]:
         if key not in _IN:
             continue
         legacy, conv = _IN[key]
+        if key == "allow_modes":
+            continue  # applied below, once the basic salary of this body is known
         if hasattr(value, "isoformat"):
             value = value.isoformat()
         stored = conv(value, female) if conv and value is not None else value
@@ -231,6 +290,10 @@ def apply_input(data: dict, body: dict) -> tuple[dict, dict]:
             top[TOP[key]] = value
     if "gender" in body:
         data["gen"] = data.get("gender")
+    if isinstance(body.get("allow_modes"), dict):
+        _apply_pct(data, body["allow_modes"])
+    elif "basic_salary" in body and _kept_pct(data):
+        _apply_pct(data, _kept_pct(data))  # the basic changed: allowances kept as a % follow it
     for k in ("salary", "housingAllowance", "transportAllowance", "projectAllowance", "otherAllowance", "extraAllowance"):
         data.setdefault(k, 0)
     data["salaryTotal"] = float(sum(num(data.get(k)) for k in ("salary", "housingAllowance", "transportAllowance",

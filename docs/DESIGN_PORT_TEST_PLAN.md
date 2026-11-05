@@ -350,7 +350,10 @@ Known and accepted (not bugs):
 5. E-mailing an export, custom greeting texts, HR-written evaluations, leave cancel/edit, the recycle
    bin, custody, **candidates + the public application page**, business cards, the audit viewer and
    WebAuthn are backend stages, each named on screen (A6a–A6e).
-6. `/me/leave` returns no upcoming holidays, so the composer's working-day preview counts plain days.
+6. `/me/leave` still returns no **upcoming** holidays today (every 2026 holiday is already past), but the composer
+   no longer counts plain days: since Stage A2 (5 Nov 2026) annual leave is counted Sunday→Thursday with the
+   official holidays out, from the whole announced calendar the same route publishes in `holidays` — the
+   walkthrough is [ACCEPTANCE_CHECKS.md](ACCEPTANCE_CHECKS.md) §5.
 7. Expo is running in **CI mode** (no hot reload); ask me to restart it in watch mode if you want it.
 8. The **manager's own letter-signing screen** (`/me/sign/pending`) exists in the Expo app only, not in
    the new web `/me/documents`; tell me whether it belongs in the web area (J-7).

@@ -55,8 +55,9 @@ export const FEATURES = {
   reportLeaves: { status: "ready" } as Feature,
   /** templates: the design's job-offer letter for a candidate (a printed document, no backend) */
   templatesOffer: { status: "ready" } as Feature,
-  /** attendance: the design's shift schedule (official / Ramadan hours) behind lateness, required hours and the shift column */
-  attSchedule: backend("مرحلة الساعات المرنة ودوام رمضان", "the flexible-hours / Ramadan stage"),
+  /** attendance: the design's shift schedule (official / Ramadan hours) behind lateness, required hours and the shift
+   *  column — Stage 20 (`backend/app/services/schedule.py`, GET/PUT /settings/schedule, components/hr/schedule-settings.tsx) */
+  attSchedule: { status: "ready" } as Feature,
   /** leaves: HR returns a request to the direct manager with a note (the design's hr_return_to_manager) */
   lvReturn: { status: "ready" } as Feature,
   /** leaves: HR cancels an approved leave, keeps it as «ملغاة» and returns its days (hr_leave_cancel) */
@@ -78,8 +79,9 @@ export const FEATURES = {
   brandColors: { status: "ready" } as Feature,
   /** uploading the letterhead header / footer images */
   letterhead: { status: "ready" } as Feature,
-  /** the carry cap, accrual method and special-type entitlements */
-  leaveRules: backend("إعدادات قواعد الإجازات على الخادم", "leave-rule settings on the server"),
+  /** the carry cap, accrual method and special-type entitlements — Stage 20 (`services/leave_rules.py`,
+   *  GET/PUT /settings/leave-rules, the LeaveRulesCard in components/hr/leave-settings.tsx) */
+  leaveRules: { status: "ready" } as Feature,
   /** the image behind the employee app's punch button */
   punchLogo: { status: "ready" } as Feature,
   /** per-type approvers, escalation deadlines and approval circles */

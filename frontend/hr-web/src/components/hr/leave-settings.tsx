@@ -4,12 +4,15 @@
 // (Stage 12). Editing needs `settings: edit`; «تشغيل الآن» for escalation needs `requests: edit`. The API checks
 // both itself. Approval circles are a later stage (owner, 4 Nov 2026); e-mail stays off, so the extra HR e-mail
 // list is kept but nothing is sent.
+// LeaveRulesCard (Stage 20, S7) is the design's CarryCard + accrual method + RightsCard on OUR
+// /settings/leave-rules, over `backend/app/services/leave_rules.py`.
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/common/toast";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/i18n/locale";
 import { getLeavePolicy, getWorkflow, putLeavePolicy, putWorkflow, runEscalation, type LeavePolicy, type WorkflowSettings } from "@/lib/leave";
+import { getLeaveRules, putLeaveRules, type AccrualMethod, type LeaveRulesPayload, type SpecialKind } from "@/lib/settings";
 
 const card: React.CSSProperties = { marginTop: 12, maxWidth: 900 };
 const err = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
@@ -174,3 +177,151 @@ export function WorkflowCard() {
     </div>
   );
 }
+
+// ---- Stage 20 (S7): the carry cap, the accrual method and the three special types' rights ----
+// The order and wording follow the design's CarryCard / RightsCard; the figures and the counts come from the server,
+// which is also what the ledger and the reports read (`services/leave_rules.py` → `services/leave.py`).
+const ACCRUAL: Record<AccrualMethod, { ar: string; en: string; noteAr: string; noteEn: string }> = {
+  workdays: {
+    ar: "أيام العمل", en: "Working days",
+    noteAr: "يُستحق بنسبة أيام العمل المنقضية من السنة (بدون الجمعة والسبت والعطل) — وهو ما عليه كل الأرصدة الحالية.",
+    noteEn: "Pro-rated over the working days elapsed (Fri/Sat and holidays out) — what every current balance uses.",
+  },
+  calendar: {
+    ar: "تقويمي", en: "Calendar",
+    noteAr: "يُستحق بنسبة أيام السنة الميلادية المنقضية (365، و366 في السنة الكبيسة) بما فيها العطل.",
+    noteEn: "Pro-rated over the calendar days elapsed (365, or 366 in a leap year), weekends and holidays included.",
+  },
+  monthly: {
+    ar: "شهري", en: "Monthly",
+    noteAr: "يُستحق 1/12 من الرصيد السنوي عن كل شهر، والشهر الجاري بنسبة أيامه المنقضية.",
+    noteEn: "1/12 of the annual entitlement for every month, the current one by its elapsed days.",
+  },
+};
+const KINDS: [SpecialKind, string, string][] = [
+  ["consultant", "استشاري (مهمة محددة)", "Consultant"],
+  ["tamheer", "التمهير", "Tamheer"],
+  ["trainee", "متدرب", "Trainee"],
+];
+
+
+export function LeaveRulesCard() {
+  const { lang } = useLocale();
+  const en = lang === "en";
+  const T = (ar: string, e: string) => (en ? e : ar);
+  const toast = useToast();
+  const { can } = useAuth();
+  const edit = can("settings", "edit");
+  const [v, setV] = useState<LeaveRulesPayload | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setV(await getLeaveRules());
+    } catch (e) {
+      toast(err(e), "err");
+    }
+  }, [toast]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the card's first read
+    void load();
+  }, [load]);
+
+  async function save() {
+    if (!v) return;
+    setBusy(true);
+    try {
+      setV(await putLeaveRules({
+        carry: { enabled: v.carry.enabled, days: Number(v.carry.days) || 0 },
+        accrual: { method: v.accrual.method },
+        rights: v.rights,
+      }));
+      toast("✓ " + T("اتحفظت قواعد الإجازات", "Leave rules saved"), "ok");
+    } catch (e) {
+      toast(err(e), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const right = (k: SpecialKind, f: "leave" | "eos") =>
+    setV((o) => (o ? { ...o, rights: { ...o.rights, [k]: { ...o.rights[k], [f]: !o.rights[k][f] } } } : o));
+  const method = v ? (ACCRUAL[v.accrual.method] ?? ACCRUAL.workdays) : null;
+
+  return (
+    <div className="card" style={card} id="LEAVE_RULES">
+      <div className="ct" style={{ marginBottom: 8 }}>
+        <i className="ti ti-calendar-repeat" /> {T("ترحيل الرصيد وطريقة الاستحقاق والاستحقاقات الخاصة", "Carry-over, accrual method and special entitlements")}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--mu)", lineHeight: 1.7, marginBottom: 8 }}>
+        {T("هذه القواعد يطبّقها الخادم على كل رصيد وتقرير فور الحفظ: الترحيل للسنة التالية، وطريقة احتساب الاستحقاق، ومن يستحق إجازة ومن يُحتسب له فائض نهاية الخدمة.",
+          "The server applies these rules to every balance and report as soon as they are saved: what carries into next year, how the entitlement accrues, and who keeps a leave balance and an end-of-service excess.")}
+      </div>
+      {!v ? <div style={{ color: "var(--mu)" }}>…</div> : (
+        <>
+          <div style={{ fontWeight: 700, fontSize: 12.5, margin: "6px 0" }}>{T("ترحيل الرصيد", "Carry-over")}</div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5 }}>
+            <input type="checkbox" checked={v.carry.enabled} disabled={!edit || busy} onChange={(e) => setV({ ...v, carry: { ...v.carry, enabled: e.target.checked } })} />
+            {T("ترحيل ما تبقّى من الرصيد إلى السنة التالية", "Carry the remaining balance into the next year")}
+          </label>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, marginTop: 6, flexWrap: "wrap" }}>
+            <span>{T("حد الترحيل", "Carry cap")}</span>
+            <input type="number" min={0} max={v.max_carry_days} value={v.carry.days} disabled={!edit || busy || !v.carry.enabled}
+              style={{ width: 90 }} onChange={(e) => setV({ ...v, carry: { ...v.carry, days: Number(e.target.value) || 0 } })} />
+            <span>{T("يوم في السنة", "days per year")}</span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--mu)", marginTop: 4 }}>
+            {v.carry.enabled
+              ? T(`ما زاد على ${Number(v.carry.days)} يومًا لا يُرحَّل، ويُدفع مع نهاية الخدمة كفائض إجازات.`,
+                `Anything above ${Number(v.carry.days)} days is not carried and is paid out at the end of service as a leave excess.`)
+              : T("الحد موقوف: يُرحَّل كامل الرصيد، ولا يوجد فائض نهاية خدمة.",
+                "No cap: the whole balance carries and there is no end-of-service excess.")}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 12.5, margin: "12px 0 6px" }}>{T("طريقة احتساب الاستحقاق", "Accrual method")}</div>
+          <select value={v.accrual.method} disabled={!edit || busy} style={{ minWidth: 220 }}
+            onChange={(e) => setV({ ...v, accrual: { method: e.target.value as AccrualMethod } })}>
+            {v.methods.map((m) => <option key={m} value={m}>{en ? ACCRUAL[m].en : ACCRUAL[m].ar}</option>)}
+          </select>
+          {method && <div style={{ fontSize: 11, color: "var(--mu)", marginTop: 4 }}>{en ? method.noteEn : method.noteAr}</div>}
+          <div style={{ fontWeight: 700, fontSize: 12.5, margin: "12px 0 6px" }}>{T("الاستحقاقات الخاصة", "Special entitlements")}</div>
+          <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 6 }}>
+            {T("إلغاء «إجازات» يعني عدم وجود رصيد إجازات لهذا النوع أصلًا، وإلغاء «نهاية الخدمة» يعني عدم احتساب فائض إجازاته عند نهاية الخدمة. الحفظ يسري على كل الأرصدة والتقارير.",
+              "Clearing «leave» means the type keeps no leave ledger at all; clearing «end of service» means its leave excess is not counted at the end of service. Saving applies to every balance and report.")}
+          </div>
+          <table className="tbl" style={{ width: "100%", fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th>{T("نوع الموظف", "Employee type")}</th>
+                <th>{T("إجازات", "Leave")}</th>
+                <th>{T("نهاية الخدمة", "End of service")}</th>
+                <th>{T("عدد الموظفين", "Employees")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {KINDS.map(([k, ar, e]) => (
+                <tr key={k}>
+                  <td>{en ? e : ar}</td>
+                  <td><input type="checkbox" checked={!!v.rights[k]?.leave} disabled={!edit || busy} onChange={() => right(k, "leave")} /></td>
+                  <td><input type="checkbox" checked={!!v.rights[k]?.eos} disabled={!edit || busy} onChange={() => right(k, "eos")} /></td>
+                  <td dir="ltr">{v.employees[k] ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10.5, color: "var(--mu)", marginTop: 6 }}>
+            {T(`ومن ليس من هذه الأنواع (${v.employees.other ?? 0} موظفًا) تبقى له إجازاته وفائض نهاية الخدمة دائمًا.`,
+              `Everyone outside these types (${v.employees.other ?? 0}) always keeps a leave balance and an end-of-service excess.`)}
+          </div>
+          {edit && (
+            <div style={{ marginTop: 12 }}>
+              <button type="button" className="btn bpl bsm" disabled={busy} onClick={() => void save()}>
+                <i className="ti ti-device-floppy" /> {T("حفظ", "Save")}
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+

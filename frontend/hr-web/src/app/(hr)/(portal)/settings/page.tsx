@@ -13,7 +13,8 @@ import { PasswordReveal } from "@/components/hr/password-reveal";
 import { PermsCard } from "@/components/hr/perms-card";
 import { AlertsCard } from "@/components/hr/alerts-card";
 import { AppColoursCard, BrandColoursCard, LetterheadCard, MailCard, PunchLogoCard } from "@/components/hr/settings-extra";
-import { LeavePolicyCard, WorkflowCard } from "@/components/hr/leave-settings";
+import { LeavePolicyCard, LeaveRulesCard, WorkflowCard } from "@/components/hr/leave-settings";
+import { ScheduleCard } from "@/components/hr/schedule-settings";
 import { useToast } from "@/components/common/toast";
 import { request } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -170,13 +171,13 @@ export default function Page() {
       <SignerCard key={"hs" + JSON.stringify(signer).length + signer.name_ar} signer={signer} emps={emps} run={run} />,
     ],
     att: [
-      W("ti-calendar-time", "جدول الدوام (رسمي + رمضان)", "Working schedule (official + Ramadan)", ["الحضور يتحسب على الجدول المُطبَّق: الدوام الرسمي في الأيام العادية، ودوام رمضان تلقائياً مع دخول رمضان.", "Attendance is calculated on the applied schedule: official hours normally, Ramadan hours automatically during Ramadan."], "attSchedule", "sc"),
+      <ScheduleCard key="sc" />,
       <FlexCard key={"fx" + JSON.stringify(att)} att={att} run={run} />,
     ],
     leave: [
       <LeavePolicyCard key="lpol" />,
       <WorkflowCard key="wf" />,
-      W("ti-calendar-repeat", "ترحيل الرصيد وطريقة الاستحقاق والاستحقاقات الخاصة", "Carry-over, accrual method and special entitlements", ["حد الترحيل للسنة التالية، طريقة احتساب الاستحقاق (تقويمي / أيام عمل / شهري)، واستحقاق الاستشاري والتمهير والتدريب. الحالي: 21 يومًا، أيام العمل، ترحيل 10 أيام.", "The carry cap, the accrual method (calendar / working days / monthly) and the entitlement of consultants, Tamheer and trainees. Today: 21 days, working days, 10 days carried."], "leaveRules", "lc"),
+      <LeaveRulesCard key="lc" />,
     ],
     app: [
       <AppColoursCard key="brapp" />,

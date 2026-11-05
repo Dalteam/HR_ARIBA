@@ -8,26 +8,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageState } from "@/components/hr/not-built";
 import { useToast } from "@/components/common/toast";
+import { AuditTable, auditExcel, auditPrint } from "@/components/hr/audit-table";
 import {
-  auditModules, decidePurge, fieldValue, listAudit, moduleName, purgeInfo, requestPurge, riyadhTime,
+  auditModules, decidePurge, listAudit, moduleName, purgeInfo, requestPurge,
   type AuditFilters, type AuditModule, type AuditRow, type PurgeInfo,
 } from "@/lib/audit";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { printHtml } from "@/lib/print";
-import { buildXlsx } from "@/lib/xlsx";
 
 const INP: React.CSSProperties = {
   background: "var(--c2)", border: "1px solid var(--bd)", borderRadius: 8, color: "var(--tx)",
   padding: "6px 9px", fontSize: 12,
-};
-const TD: React.CSSProperties = {
-  padding: "6px 8px", borderBottom: "1px solid rgba(36,48,68,.25)", textAlign: "right", fontSize: 11.5,
-  verticalAlign: "top",
-};
-const TH: React.CSSProperties = {
-  background: "var(--c2)", padding: "7px 8px", textAlign: "right", fontSize: 10.5, fontWeight: 700,
-  borderBottom: "2px solid var(--bl)", whiteSpace: "nowrap",
 };
 const LBL: React.CSSProperties = {
   fontSize: 10.5, color: "var(--mu)", display: "block", marginBottom: 3, fontWeight: 600,
@@ -127,35 +118,8 @@ export default function Page() {
     }
   }
 
-  function exportExcel() {
-    const header = ["الوقت", "المستخدم", "الحساب", "الصلاحية", "القسم", "الإجراء", "الموظف/العنصر", "التفاصيل", "التغييرات"];
-    const body = rows.map((r) => [
-      riyadhTime(r.at), r.actor_name || "", r.actor_username || "", r.actor_role || "", moduleName(r.module),
-      r.action, r.entity_name || "", r.summary || "",
-      (r.details?.changes || []).map((c) => `${c.label || c.field}: ${fieldValue(c.old)} ← ${fieldValue(c.new)}`).join(" | "),
-    ]);
-    const blob = buildXlsx([
-      { name: "سجل التعديلات", widths: [20, 22, 14, 10, 18, 28, 22, 70, 60], rows: [["سجل التعديلات"], [], header, ...body] },
-    ]);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "audit_log.xlsx";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 3000);
-  }
-
-  function print() {
-    const head = ["الوقت", "المستخدم", "القسم", "الإجراء", "التفاصيل"].map((h) => `<th>${h}</th>`).join("");
-    const body = rows
-      .map(
-        (r) =>
-          `<tr><td dir="ltr">${riyadhTime(r.at)}</td><td>${r.actor_name || r.actor_username || "—"}</td>` +
-          `<td>${moduleName(r.module)}</td><td>${r.action}</td><td>${r.summary || ""}</td></tr>`,
-      )
-      .join("");
-    printHtml(`سجل التعديلات — ${total}`, `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);
-  }
+  const exportExcel = () => auditExcel(rows);
+  const print = () => auditPrint(rows, `سجل التعديلات — ${total}`);
 
 
   return (
@@ -267,56 +231,7 @@ export default function Page() {
       <div className="card" style={{ padding: 0, overflow: "auto", marginTop: 12 }}>
         <PageState loading={loading} error={error} onRetry={() => void load(f)} />
         {!loading && !error && (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["الوقت", "المستخدم", "القسم", "الإجراء", "التفاصيل"].map((h) => (
-                  <th key={h} style={TH}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ ...TD, whiteSpace: "nowrap", direction: "ltr" }}>{riyadhTime(r.at)}</td>
-                  <td style={{ ...TD, whiteSpace: "nowrap" }}>
-                    <b>{r.actor_name || r.actor_username || "—"}</b>
-                    <div style={{ fontSize: 10, color: "var(--mu)" }}>
-                      {r.actor_username} · {r.actor_role}
-                    </div>
-                  </td>
-                  <td style={{ ...TD, whiteSpace: "nowrap" }}>
-                    <span className="b bb" style={{ fontSize: 10 }}>
-                      {moduleName(r.module)}
-                    </span>
-                  </td>
-                  <td style={{ ...TD, fontWeight: 700 }}>{r.action}</td>
-                  <td style={TD}>
-                    {r.summary}
-                    {r.details?.changes?.length ? (
-                      <div style={{ marginTop: 4, fontSize: 10.5, color: "var(--mu)" }}>
-                        {r.details.changes.map((c, i) => (
-                          <div key={i}>
-                            {c.label || c.field}: <span style={{ color: "var(--rd)" }}>{fieldValue(c.old)}</span> ←{" "}
-                            <span style={{ color: "var(--gr)" }}>{fieldValue(c.new)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-              {!rows.length && (
-                <tr>
-                  <td colSpan={5} style={{ ...TD, textAlign: "center", color: "var(--mu)", padding: 28 }}>
-                    لا توجد تعديلات
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <AuditTable rows={rows} />
         )}
       </div>
     </div>

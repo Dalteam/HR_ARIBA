@@ -9,6 +9,7 @@ import { HrBell } from "@/components/hr/hr-bell";
 import { IdleGuard } from "@/components/hr/idle-guard";
 import { OccasionsAuto } from "@/components/hr/occasions-auto";
 import { PageExport } from "@/components/hr/page-export";
+import { SectionAudit } from "@/components/hr/section-audit";
 import { request } from "@/lib/api";
 import { loadLetterhead } from "@/lib/letterhead";
 import { useAuth } from "@/lib/auth-context";
@@ -259,7 +260,10 @@ export function HrShell({ children }: { children: React.ReactNode }) {
                 <div>{T("لا تملك صلاحية لهذه الصفحة. يمكن لمدير النظام تعديل الصلاحيات من الإعدادات.", "You have no access to this page. The administrator can change permissions in Settings.")}</div>
               </div>
             ) : (
-              children
+              <>
+                <SectionAudit />
+                {children}
+              </>
             )}
           </div>
         </div>

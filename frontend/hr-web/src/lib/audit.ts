@@ -55,6 +55,8 @@ export interface PurgeInfo {
 
 export interface AuditFilters {
   module?: string;
+  /** several modules at once (the section button); wins over `module` on the server */
+  modules?: string[];
   actor?: string;
   q?: string;
   /** ISO date (YYYY-MM-DD) or date-time; `to` is exclusive */
@@ -115,6 +117,7 @@ export const listAudit = (filters: AuditFilters) =>
   request<AuditPage>("/audit-log", {
     query: {
       module: filters.module || undefined,
+      modules: filters.modules?.length ? filters.modules : undefined,
       actor_username: filters.actor || undefined,
       q: filters.q || undefined,
       date_from: filters.from || undefined,

@@ -390,7 +390,8 @@ export class ApiError extends Error {
 
 // --------------------------------------------------------------------------- request
 
-type Query = Record<string, string | number | boolean | null | undefined>;
+/** An array value is sent as the key repeated (`modules=a&modules=b`). */
+type Query = Record<string, string | number | boolean | string[] | null | undefined>;
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -427,7 +428,8 @@ function buildUrl(path: string, query?: Query): string {
   const url = new URL(API_URL + path);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+      if (Array.isArray(v)) v.filter(Boolean).forEach((x) => url.searchParams.append(k, x));
+      else if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
     }
   }
   return url.toString();

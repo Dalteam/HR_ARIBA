@@ -14,6 +14,9 @@
     GET    /candidates/medical-form          the file candidates download, and who is told of a new one
     PUT    /candidates/medical-form          upload or remove it
     PUT    /candidates/notify-list           which employees hear about every new candidate
+    GET    /candidates/auto                  the automatic-registration switch and its defaults
+    PUT    /candidates/auto                  HR sets it (off by default)
+    POST   /candidates/auto/run              register every new candidate now, while the switch is on
 
 The rules are the design's own functions (`ariba_hr_candidates*`, `ariba_hr_invite*`, `ariba_hr_apply_*`,
 `ariba_hr_medical_form_*`), ported to Python because the installed copies need the Supabase `auth` schema
@@ -29,6 +32,13 @@ The rules are the design's own functions (`ariba_hr_candidates*`, `ariba_hr_invi
 
 Every write is audited (`ariba_audit_log`, module `employees`) and a new candidate rings the bell of the people
 named in `candidate_notify` — or of every active `hr`/`admin` account when that list is empty.
+
+**Automatic registration** (Stage 22, owner, 5 Nov 2026; the design's CandAuto + `candidate_auto`): while HR has
+switched it on, every new candidate becomes an employee with the chosen employer, department and contract nature,
+the job they applied for, today's date as the start date and their own expected salary — the same accept as the
+screen's «قبول». The design runs it in the HR browser every minute; here the browser only calls `/auto/run` and the
+server does the work, one run at a time (an advisory lock), and ties the candidate to its new employee before the
+files move, so a run that fails half-way is skipped next time instead of creating the employee twice.
 """
 
 from __future__ import annotations
@@ -45,6 +55,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.core.scheduling import today_riyadh
 from app.database import get_db
 from app.routers import canonical
 
@@ -388,6 +399,14 @@ def accept_candidate(candidate_id: str, body: dict[str, Any], request: Request,
             raise ApiError(422, "validation_error", "Send the employee body (or an existing employee_id)")
         created = canonical.create_employee(body=employee, request=request, actor=actor, db=db)
         employee_id = created["id"]
+    moved = _finish_accept(db, request, actor, candidate_id, employee_id, body.get("note") or None)
+    db.commit()
+    return {"candidate_id": candidate_id, "employee_id": employee_id, "moved": moved, "status": "accepted"}
+
+
+def _finish_accept(db: Session, request: Request, actor: dict[str, Any], candidate_id: str, employee_id: str,
+                   note: str | None, summary: str = "قبول مرشح وإضافته كموظف") -> int:
+    """Move the candidate's files to the employee's documents, mark it accepted and audit it (no commit)."""
     moved = 0
     column = _file_column(db)
     for row in canonical._rows(db, f"""SELECT {column} AS type, file_name, mime_type, file_data
@@ -400,12 +419,120 @@ def accept_candidate(candidate_id: str, body: dict[str, Any], request: Request,
         moved += 1
     db.execute(text("""UPDATE public.ariba_candidates SET status='accepted', reviewed_by=:by, reviewed_at=now(),
         review_note=:note, employee_id=:e WHERE id=CAST(:id AS uuid)"""),
-        {"by": actor.get("employee_id"), "note": body.get("note") or None, "e": employee_id, "id": candidate_id})
+        {"by": actor.get("employee_id"), "note": note, "e": employee_id, "id": candidate_id})
     canonical._write_audit(db, actor, request, "employees", "candidate_accept", "ariba_candidates", candidate_id,
-                           summary="قبول مرشح وإضافته كموظف",
-                           details={"employee": employee_id, "files": moved})
+                           summary=summary, details={"employee": employee_id, "files": moved})
+    return moved
+
+
+# --------------------------------------------------------------------------- automatic registration (Stage 22)
+AUTO_KEY = "candidate_auto"
+AUTO_LOCK = 72022  # pg advisory lock: one automatic run at a time, whoever's browser asks
+AUTO_BATCH = 20
+NATURES = ("indefinite", "fixed")
+
+
+def _auto_cfg(db: Session) -> dict[str, Any]:
+    raw = canonical._app_setting(db, AUTO_KEY)
+    raw = raw if isinstance(raw, dict) else {}
+    nature = raw.get("nature") if raw.get("nature") in NATURES else "indefinite"
+    return {"on": raw.get("on") is True, "employer": str(raw.get("employer") or ""),
+            "department": str(raw.get("department") or ""), "nature": nature}
+
+
+def _named(db: Session, table: str, name: str) -> bool:
+    return bool(canonical._row(db, f"SELECT 1 AS x FROM public.{table} WHERE name=:n", n=name))
+
+
+def auto_employee(data: dict[str, Any], cfg: dict[str, Any], join: str) -> dict[str, Any]:
+    """The employee body «قبول» builds from a candidate (candidates/page.tsx AcceptModal), with the auto defaults."""
+    def text_or_none(key: str) -> str | None:
+        value = str(data.get(key) or "").strip()
+        return value or None
+    try:
+        salary = max(0.0, float(str(data.get("expectedSalary") or "0").replace(",", "")))
+    except ValueError:
+        salary = 0.0
+    return {
+        "name_ar": str(data.get("nameAr") or "").strip(), "name_en": text_or_none("nameEn"),
+        "nationality_id": text_or_none("nationality"), "workplace_id": cfg["employer"],
+        "department_id": cfg["department"] or None, "job_title": text_or_none("position"), "join_date": join,
+        "contract_nature": cfg["nature"], "contract_duration_months": 12 if cfg["nature"] == "fixed" else None,
+        "basic_salary": salary, "birth_date": text_or_none("dob"), "mobile": text_or_none("mobile"),
+        "email": text_or_none("email"), "bank_name": text_or_none("bank"), "iban": text_or_none("iban"),
+        "national_id": text_or_none("idNo"), "national_id_expiry": text_or_none("idExpiry"),
+        "passport_no": text_or_none("passportNo"), "passport_expiry": text_or_none("passportExpiry"),
+        "notes": text_or_none("notes"),
+    }
+
+
+@router.get("/candidates/auto")
+def get_auto(actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
+    _reader(actor)
+    return _auto_cfg(db)
+
+
+@router.put("/candidates/auto")
+def set_auto(body: dict[str, Any], request: Request,
+             actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
+    _writer(actor)
+    cfg = {"on": body.get("on") is True, "employer": str(body.get("employer") or "").strip(),
+           "department": str(body.get("department") or "").strip(), "nature": body.get("nature") or "indefinite"}
+    if cfg["nature"] not in NATURES:
+        raise ApiError(422, "validation_error", "طبيعة العقد غير معروفة")
+    if cfg["on"] and not cfg["employer"]:
+        raise ApiError(422, "validation_error", "اختر جهة العمل قبل تشغيل التسجيل التلقائي")
+    if cfg["employer"] and not _named(db, "employers", cfg["employer"]):
+        raise ApiError(422, "validation_error", "جهة العمل غير موجودة في القوائم")
+    if cfg["department"] and not _named(db, "departments", cfg["department"]):
+        raise ApiError(422, "validation_error", "القسم غير موجود في القوائم")
+    canonical._set_app_setting(db, AUTO_KEY, cfg, actor)
+    canonical._write_audit(db, actor, request, "employees", "candidate_auto", "ariba_app_settings", AUTO_KEY,
+                           summary="تشغيل التسجيل التلقائي للمرشحين" if cfg["on"] else "إيقاف التسجيل التلقائي للمرشحين",
+                           details=cfg)
     db.commit()
-    return {"candidate_id": candidate_id, "employee_id": employee_id, "moved": moved, "status": "accepted"}
+    return cfg
+
+
+@router.post("/candidates/auto/run")
+def run_auto(request: Request, actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
+    """Register every new candidate (oldest first, 20 a run) while the switch is on. A candidate the employee
+    form refuses (a missing name, a taken ID…) stays «new» for HR and is listed under `failed`."""
+    _writer(actor)
+    cfg = _auto_cfg(db)
+    if not cfg["on"] or not cfg["employer"]:
+        return {"on": False, "registered": 0, "failed": []}
+    if not db.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": AUTO_LOCK}):
+        return {"on": True, "registered": 0, "failed": [], "busy": True}
+    registered: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    try:
+        join = today_riyadh().isoformat()
+        rows = canonical._rows(db, """SELECT id::text AS id, data FROM public.ariba_candidates
+            WHERE status='new' AND employee_id IS NULL ORDER BY submitted_at LIMIT :n""", n=AUTO_BATCH)
+        for row in rows:
+            data = row["data"] if isinstance(row["data"], dict) else {}
+            name = str(data.get("nameAr") or data.get("nameEn") or "")
+            try:
+                created = canonical.create_employee(body=auto_employee(data, cfg, join), request=request, actor=actor, db=db)
+            except ApiError as e:
+                db.rollback()
+                failed.append({"candidate_id": row["id"], "name": name, "reason": e.message})
+                continue
+            employee_id = str(created["id"])
+            # tie the candidate to its employee first: a run that stops before «accepted» never creates them again
+            db.execute(text("UPDATE public.ariba_candidates SET employee_id=:e WHERE id=CAST(:id AS uuid)"),
+                       {"e": employee_id, "id": row["id"]})
+            db.commit()
+            _finish_accept(db, request, actor, row["id"], employee_id, "تسجيل تلقائي",
+                           summary="تسجيل تلقائي لمرشح كموظف")
+            db.commit()
+            registered.append({"candidate_id": row["id"], "employee_id": employee_id, "name": name})
+    finally:
+        db.rollback()  # everything kept is committed; this only clears a transaction an error broke
+        db.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": AUTO_LOCK})
+        db.commit()
+    return {"on": True, "registered": len(registered), "employees": registered, "failed": failed}
 
 
 @router.post("/candidates/{candidate_id}/reject")

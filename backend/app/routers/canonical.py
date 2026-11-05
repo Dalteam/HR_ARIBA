@@ -1746,9 +1746,14 @@ def my_leave(actor: dict[str, Any] = Depends(current_actor), db: Session = Depen
     today = today_riyadh()
     book = cdata.leave_book(db, today, emps)
     s = book.summary(emps[0])
-    hols = _rows(db, "SELECT DISTINCT name,holiday_date,days FROM public.public_holidays WHERE holiday_date>=:d ORDER BY holiday_date LIMIT 4", d=today)
+    # Stage A2: the app's «سيتبقى» has to count like the server (annual leave = workdays, official holidays out) and
+    # an employee cannot read /holidays, so the whole announced calendar goes out here as well. Additive only: the first
+    # four rows keep their name, shape and order, so the nearest-holiday pill and the leaves card are untouched.
+    announced = _rows(db, "SELECT DISTINCT name,holiday_date,days,recurring FROM public.public_holidays ORDER BY holiday_date")
+    hols = [h for h in announced if h["holiday_date"] >= today][:4]
     return {"current": round(book.app_current(emps[0]), 2), "carry": s["carry"], "year_end": round(book.app_year_end(emps[0]), 2), "annual": book.annual(emps[0]),
-            "upcoming_holidays": [{"name": h["name"], "date": h["holiday_date"].isoformat(), "days": h["days"]} for h in hols]}
+            "upcoming_holidays": [{"name": h["name"], "date": h["holiday_date"].isoformat(), "days": h["days"]} for h in hols],
+            "holidays": [{"name": h["name"], "date": h["holiday_date"].isoformat(), "days": h["days"], "recurring": bool(h["recurring"])} for h in announced]}
 
 
 @router.get("/me/requests")

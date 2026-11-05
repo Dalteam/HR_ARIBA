@@ -7,6 +7,7 @@
 // and reopening (with a reason) for finance, HR and admin, as our API allows. The design's «تجهيز للمالية» step
 // (HR prepares, finance approves) waits for its backend stage (lib/features.ts `payPrepare`).
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
 import { Modal } from "@/components/hr/modal";
 import { PageState } from "@/components/hr/not-built";
@@ -674,7 +675,7 @@ export default function Page() {
           {approved ? (
             <span style={{ background: "rgba(16,185,129,.15)", color: "var(--gr)", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>✓ معتمد {approvedAt ? "— " + approvedAt.slice(0, 10) : ""}</span>
           ) : (
-            <span style={{ background: "rgba(245,158,11,.1)", color: "var(--am)", padding: "3px 10px", borderRadius: 6, fontSize: 11 }}>⏳ غير معتمد</span>
+            <span style={{ background: "rgba(245,158,11,.1)", color: "var(--am)", padding: "3px 10px", borderRadius: 6, fontSize: 11 }}><StatusIcon name="wait" size={12} />غير معتمد</span>
           )}
         </div>
         <span style={{ fontSize: 11, color: "var(--mu)" }}>{saveState}</span>

@@ -5,6 +5,7 @@
 // leave, calendar days for the rest — me_requests.py request_days), so the form shows the balance, never a figure
 // of its own. Sending and deleting go through /me/requests, the same routes the employee app uses.
 import { useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
 import { MeState } from "@/components/me/me-shell";
 import { ApiError } from "@/lib/api";
@@ -123,10 +124,10 @@ export default function MeLeaves() {
               </div>
               <div style={{ fontSize: 11, color: "var(--mu)", marginTop: 2 }}>{detail(r)}</div>
               {r.notes && <div style={{ fontSize: 11, marginTop: 2 }}>{r.notes}</div>}
-              {r.status === "rejected" && r.rejection_reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 2 }}>❌ {r.rejection_reason}</div>}
+              {r.status === "rejected" && r.rejection_reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 2 }}><StatusIcon name="rejected" />{r.rejection_reason}</div>}
               <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 3 }}>{ddmmyyyy(r.created_at)}</div>
-              {r.cancel_pending && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 3 }}>⏳ طلب إلغاء هذه الإجازة قيد الاعتماد</div>}
-              {r.payload?.cancelled && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 3 }}>🚫 {T("أُلغيت هذه الإجازة", "This leave was cancelled")}{r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : ""}</div>}
+              {r.cancel_pending && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 3 }}><StatusIcon name="wait" />طلب إلغاء هذه الإجازة قيد الاعتماد</div>}
+              {r.payload?.cancelled && <div style={{ fontSize: 11, color: "var(--am)", marginTop: 3 }}><StatusIcon name="cancelled" />{T("أُلغيت هذه الإجازة", "This leave was cancelled")}{r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : ""}</div>}
               {leaveRow(r) && policy.data && (
                 <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                   {r.status === "pending" && policy.data.emp_edit_pending && (

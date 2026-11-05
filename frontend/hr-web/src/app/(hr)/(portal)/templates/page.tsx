@@ -5,6 +5,7 @@
 // (pages/forms/index.jsx TF_OFFER_CARD, lib/calc/offer.ts — printed only, it has no employee to send to). One shared
 // employee selector; each card prints on the company letterhead and can be sent to the employee to approve or object.
 import { useCallback, useEffect, useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
 import { getEmployee, listAllEmployees } from "@/lib/employees";
 import type { Employee, EmployeeListItem } from "@/lib/api";
@@ -51,7 +52,7 @@ const TYPE_AR: Record<string, string> = {
   salary_cert: "تعريف بالراتب",
 };
 const STATUS: Record<string, React.ReactNode> = {
-  pending: <span className="b ba">⏳ بانتظار الموظف</span>,
+  pending: <span className="b ba"><StatusIcon name="wait" size={12} />بانتظار الموظف</span>,
   approved: <span className="b bg"><i className="ti ti-circle-check" aria-hidden /> تمت الموافقة</span>,
   rejected: <span className="b br"><i className="ti ti-alert-triangle" aria-hidden /> معترَض عليه</span>,
 };

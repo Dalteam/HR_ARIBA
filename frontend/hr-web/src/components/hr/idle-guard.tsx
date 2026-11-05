@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { fetchMe } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/i18n/locale";
@@ -66,7 +67,7 @@ export function IdleGuard() {
   return (
     <div id="ariba-idle-prompt" role="alertdialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "rgba(0,0,0,.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={card}>
-        <div style={{ fontSize: 34 }}>⏳</div>
+        <div style={{ fontSize: 34 }}><StatusIcon name="wait" size={34} /></div>
         <div style={{ fontWeight: 800, fontSize: 16, margin: "8px 0" }}>{T("هل ما زلت هنا؟", "Are you still there?")}</div>
         <div style={{ fontSize: 13, color: "#555", marginBottom: 6 }}>
           {T("لم نرصد أي نشاط منذ 5 دقائق. ستُغلق الجلسة تلقائيًا بعد:", "No activity for 5 minutes. The session will close automatically in:")}

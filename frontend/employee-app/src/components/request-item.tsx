@@ -1,5 +1,6 @@
 // One request line (legacy renderLv item: type, status badge, 🗑, detail, notes) + the legacy type list.
 import { Pressable, View } from "react-native";
+import { StatusLine } from "@/components/status-icon";
 import { Badge, T } from "./ui";
 import { Icon } from "./icons";
 import { LeaveIcon, hasLeaveIcon } from "./leave-icon";
@@ -52,9 +53,9 @@ export function RequestItem({ r, onDelete, policy, onCancel, onEdit, onCancelReq
       <T size={11} color={t.mu} style={{ marginTop: 4 }}>{requestDetail(r)}</T>
       {r.notes ? <T size={10} color={t.dm} style={{ marginTop: 3 }}>{r.notes}</T> : null}
       {r.payload?.cancelled ? (
-        <T size={10} color={t.am} style={{ marginTop: 3 }}>{"🚫 أُلغيت هذه الإجازة" + (r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : "")}</T>
+        <StatusLine name="cancelled" size={12} style={{ marginTop: 3 }}><T size={10} color={t.am}>{"أُلغيت هذه الإجازة" + (r.payload.cancelled.reason ? ": " + r.payload.cancelled.reason : "")}</T></StatusLine>
       ) : null}
-      {r.cancel_pending ? <T size={10} color={t.am} style={{ marginTop: 3 }}>⏳ طلب إلغاء هذه الإجازة قيد الاعتماد</T> : null}
+      {r.cancel_pending ? <StatusLine name="wait" size={12} style={{ marginTop: 3 }}><T size={10} color={t.am}>طلب إلغاء هذه الإجازة قيد الاعتماد</T></StatusLine> : null}
       {actions.some(([, fn]) => fn) ? (
         <View style={{ flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
           {actions.map(([label, fn, color]) => (fn ? (

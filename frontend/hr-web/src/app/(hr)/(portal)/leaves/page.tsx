@@ -149,7 +149,7 @@ function RequestsPage() {
     if (d.kind === "approve")
       act(() => (r.stage === "hr" ? approveRequest(r.id, v || undefined) : overrideRequest(r.id, v || "تمت الموافقة من الموارد البشرية")), "✓ " + T("تمت الموافقة على الطلب", "Request approved"), r.id);
     else if (d.kind === "final") act(() => finalApproveRequest(r.id, v || undefined), "✓ " + T("تم الاعتماد النهائي للطلب", "Request finally approved"), r.id);
-    else if (d.kind === "reject") act(() => rejectRequest(r.id, v), "❌ " + T("تم رفض الطلب — أُرسل إشعار للموظف", "Request rejected — the employee was notified"), r.id);
+    else if (d.kind === "reject") act(() => rejectRequest(r.id, v), T("تم رفض الطلب — أُرسل إشعار للموظف", "Request rejected — the employee was notified"), r.id);
     else if (d.kind === "return") act(() => returnToManager(r.id, v), "↩ " + T("أُعيد الطلب للمدير المباشر — أُرسل إشعار له وللموظف", "Returned to the direct manager — both were notified"), r.id);
     else if (d.kind === "cancel") act(() => cancelLeave(r.id, v), "✓ " + T("أُلغيت الإجازة ورجع رصيدها — أُرسل إشعار للموظف", "Leave cancelled and its days returned — the employee was notified"), r.id);
     else act(() => deleteRequest(r.id), T("تم الحذف", "Deleted"), r.id);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { StatusIcon } from "@/components/common/status-icon";
 import { Suspense, useEffect, useState } from "react";
 import { LOGOUT_REASON_KEY } from "@/components/hr/idle-guard";
 import { ApiError, request } from "@/lib/api";
@@ -97,7 +98,7 @@ function HrLogin() {
       const next = params.get("next");
       router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : homeFor(user.role));
     } catch (x) {
-      setErr("❌ " + (x instanceof ApiError ? x.message : T("تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول تاني.", "Could not reach the server. Check your connection.")));
+      setErr((x instanceof ApiError ? x.message : T("تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول تاني.", "Could not reach the server. Check your connection.")));
     } finally {
       setBusy(false);
     }
@@ -190,7 +191,7 @@ function HrLogin() {
         </div>
         {err && (
           <div id="LE" role="alert" style={{ display: "block", color: "#9f2d2d", fontSize: 12, marginTop: 10, padding: 9, background: "rgba(248,113,113,.08)", borderRadius: 8 }}>
-            {err}
+            <StatusIcon name="rejected" />{err}
           </div>
         )}
       </form>

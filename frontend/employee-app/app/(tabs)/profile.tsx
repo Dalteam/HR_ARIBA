@@ -1,6 +1,7 @@
 // ملفي — their Prof.jsx: profile hero, personal data (+ «طلب تعديل»), job and contract, leave balances, salary,
 // bank (+ «طلب تغيير الآيبان»), «وثائقي» (+ «رفع مستند للمراجعة»), security, employer and work locations.
 import { useEffect, useState } from "react";
+import { StatusIcon } from "@/components/status-icon";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api";
@@ -94,7 +95,7 @@ export default function Profile() {
       <Card>
         <CardTitle icon="bank">بيانات البنك</CardTitle>
         <View style={{ flexDirection: "row" }}><InfoBox label="الإيبان" value={s?.iban} /></View>
-        <Btn kind="ghost" title={ibanPending ? "⏳ طلب تغيير الآيبان قيد المراجعة" : "✏️ طلب تغيير الآيبان"} onPress={() => router.push("/iban-change")} style={{ marginTop: 8 }} />
+        <Btn kind="ghost" title={ibanPending ? "طلب تغيير الآيبان قيد المراجعة" : "✏️ طلب تغيير الآيبان"} icon={ibanPending ? <StatusIcon name="wait" size={17} /> : undefined} onPress={() => router.push("/iban-change")} style={{ marginTop: 8 }} />
       </Card>
       <Card>
         <CardTitle icon="file">وثائقي</CardTitle>

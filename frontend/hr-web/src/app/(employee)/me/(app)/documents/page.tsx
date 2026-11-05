@@ -7,6 +7,7 @@
 // /me/letters/{id}/sign). The design's own document store (`ariba_get_document`) does not exist on our
 // server, so «وثائقي» on the profile tab stays the way it is.
 import { useEffect, useRef, useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
 import { MeState } from "@/components/me/me-shell";
 import { ApiError } from "@/lib/api";
@@ -214,7 +215,7 @@ export default function MeDocuments() {
                 ) : (
                   <span className="b ba">{l.status}</span>
                 )}
-                {l.status === "rejected" && reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 4 }}>❌ {reason}</div>}
+                {l.status === "rejected" && reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 4 }}><StatusIcon name="rejected" />{reason}</div>}
                 {st?.mgr_signed_at && (
                   <div style={{ fontSize: 10.5, color: "var(--mu)", marginTop: 4 }}>{T("توقيع المدير: ", "Manager signed: ")}{ddmmyyyy(st.mgr_signed_at)}</div>
                 )}

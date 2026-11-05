@@ -4,6 +4,7 @@
 // The design's task/meeting board (its `ariba_my_tasks` RPC) and the team availability screen have no route
 // in our API, so that card says so instead of showing an empty board (docs/DESIGN_PORT.md, Phase 3).
 import { MeState } from "@/components/me/me-shell";
+import { StatusIcon } from "@/components/common/status-icon";
 import { initials } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/locale";
 import { myApprovals, myTeam } from "@/lib/me";
@@ -40,7 +41,7 @@ export default function MeTeam() {
         ))}
         {!!queue.data?.length && (
           <div style={{ marginTop: 10, fontSize: 12, color: "var(--am)" }}>
-            ⏳ {T("لديك " + queue.data.length + " طلب بانتظار موافقتك — تبويب الموافقات", "You have " + queue.data.length + " request(s) awaiting approval — see Approvals")}
+            <StatusIcon name="wait" />{T("لديك " + queue.data.length + " طلب بانتظار موافقتك — تبويب الموافقات", "You have " + queue.data.length + " request(s) awaiting approval — see Approvals")}
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@
 // hour at least — and the reason) and my overtime requests with their stage. POST /me/requests handles the
 // `overtime` type (canonical.py); the design's optional attachment is left out, so the reason goes in the notes.
 import { useState } from "react";
+import { StatusIcon } from "@/components/common/status-icon";
 import { useToast } from "@/components/common/toast";
 import { MeState } from "@/components/me/me-shell";
 import { ApiError } from "@/lib/api";
@@ -97,7 +98,7 @@ export default function MeOvertime() {
                 <span style={{ fontSize: 11, color: "var(--mu)" }}>{Number(r.hours ?? 0)} {T("ساعة", "hours")}</span>
               </div>
               {r.notes && <div style={{ fontSize: 11, marginTop: 2 }}>{r.notes}</div>}
-              {r.status === "rejected" && r.rejection_reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 2 }}>❌ {r.rejection_reason}</div>}
+              {r.status === "rejected" && r.rejection_reason && <div style={{ fontSize: 11, color: "var(--rd)", marginTop: 2 }}><StatusIcon name="rejected" />{r.rejection_reason}</div>}
               <div style={{ fontSize: 10, color: "var(--mu)", marginTop: 3 }}>{ddmmyyyy(r.created_at)}</div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>

@@ -2,6 +2,7 @@
 // goes on the document; if HR asked for it the direct manager signs next), approve without signature, reject with a
 // reason (≥ 3 chars); and their MgrSignDocs: documents my team signed that wait for my signature as their manager.
 import { useCallback, useEffect, useState } from "react";
+import { StatusLine } from "@/components/status-icon";
 import { Alert, View } from "react-native";
 import { SigManager } from "@/components/sig-manager";
 import { docs, type ManagerPending, type SignState } from "@/lib/port";
@@ -68,9 +69,9 @@ function Doc({ x, onDone, state, owner, name, needSig }: { x: Letter; onDone: ()
       </View>
       <Btn kind="ghost" title="عرض المستند" icon={<Icon name="eye" size={16} color={t.tx} />}
         onPress={() => router.push({ pathname: "/letter/[id]", params: { id: x.id, title: x.title } })} />
-      {state?.stage === "manager" ? <T size={12} style={{ padding: 8, borderRadius: 8, backgroundColor: "rgba(245,158,11,.15)", marginTop: 6 }}>⏳ وقّعت — بانتظار توقيع مديرك المباشر قبل أن يذهب للموارد البشرية</T> : null}
+      {state?.stage === "manager" ? <StatusLine name="wait" size={15} style={{ padding: 8, borderRadius: 8, backgroundColor: "rgba(245,158,11,.15)", marginTop: 6 }}><T size={12}>وقّعت — بانتظار توقيع مديرك المباشر قبل أن يذهب للموارد البشرية</T></StatusLine> : null}
       {x.status === "pending" && x.stage === "hr" ? <T size={12} style={{ padding: 8, borderRadius: 8, backgroundColor: "rgba(1,77,61,.10)", marginTop: 6 }}>🕓 وافقت — بانتظار اعتماد الموارد البشرية</T> : null}
-      {state?.stage === "rejected" ? <T size={12} style={{ padding: 8, borderRadius: 8, backgroundColor: "rgba(229,72,77,.12)", marginTop: 6 }}>❌ رفض المدير التوقيع: {state.reject_reason ?? ""}</T> : null}
+      {state?.stage === "rejected" ? <StatusLine name="rejected" size={15} style={{ padding: 8, borderRadius: 8, backgroundColor: "rgba(229,72,77,.12)", marginTop: 6 }}><T size={12}>رفض المدير التوقيع: {state.reject_reason ?? ""}</T></StatusLine> : null}
       {x.status === "pending" && (x.stage ?? "employee") === "employee" && !state ? (
         <>
           <Btn title="✍️ موافق مع التوقيع" onPress={signApprove} busy={busy} style={{ backgroundColor: "#014D3D" }} />

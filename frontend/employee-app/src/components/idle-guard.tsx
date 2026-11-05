@@ -4,6 +4,7 @@
 // wrapper), so it works in Expo Go and on the web. The design also renews its token on activity; ours keeps the
 // refresh the API client already does on every call.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { StatusIcon } from "@/components/status-icon";
 import { AppState, Modal, Pressable, View } from "react-native";
 import { useAuth } from "@/lib/auth";
 import { useLang } from "@/i18n";
@@ -47,7 +48,7 @@ export function IdleGuard({ children }: { children: ReactNode }) {
         <Modal transparent animationType="fade" visible onRequestClose={() => { last.current = Date.now(); setLeft(null); }}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,.65)", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <View accessibilityRole="alert" style={{ backgroundColor: t.c, borderRadius: 16, maxWidth: 380, width: "100%", padding: 22, alignItems: "center", gap: 8 }}>
-              <T size={34}>⏳</T>
+              <StatusIcon name="wait" size={34} />
               <T size={16} weight={800} center>{L("هل ما زلت هنا؟", "Are you still there?")}</T>
               <T size={13} color={t.mu} center>{L("لم نرصد أي نشاط منذ 5 دقائق. ستُغلق الجلسة تلقائيًا بعد:", "No activity for 5 minutes. The session will close automatically in:")}</T>
               <T size={30} weight={900} color={t.rd} center style={{ writingDirection: "ltr" }}>{fmt(left)}</T>

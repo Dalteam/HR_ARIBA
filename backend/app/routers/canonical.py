@@ -754,17 +754,91 @@ def locations(actor: dict[str, Any] = Depends(current_actor), db: Session = Depe
     return [{**r, "workplace": r.get("employer"), "is_active": r.get("active")} for r in rows]
 
 
+# FOLLOW_UPS #50: the holiday, work-location and attendance-settings writes check their input here and answer 422
+# in Arabic, instead of reaching the database with a null date, a missing coordinate or an unreadable time (500).
+def _input_error(message: str) -> ApiError:
+    return ApiError(422, "validation_error", message)
+
+
+def _bounded(value: Any, message: str, lo: float, hi: float, *, whole: bool = False) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        raise _input_error(message) from None
+    if not math.isfinite(n) or n < lo or n > hi or (whole and n != int(n)):
+        raise _input_error(message)
+    return int(n) if whole else n
+
+
+def _hhmm(value: Any, message: str) -> str:
+    s = value.strftime("%H:%M") if isinstance(value, time) else str(value or "").strip()
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", s)
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        raise _input_error(message)
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+def _holiday_input(body: dict[str, Any]) -> dict[str, Any]:
+    name = str(body.get("name_ar") or body.get("name") or "").strip()
+    if not name:
+        raise _input_error("اكتب اسم الإجازة الرسمية")
+    try:
+        day = date.fromisoformat(str(body.get("start_date") or "")[:10])
+    except ValueError:
+        raise _input_error("تاريخ الإجازة الرسمية غير صحيح") from None
+    days = _bounded(body.get("days") if body.get("days") not in (None, "") else 1, "عدد أيام الإجازة الرسمية بين 1 و60", 1, 60, whole=True)
+    return {"name": name, "day": day, "days": days}
+
+
+def _location_input(body: dict[str, Any], current: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The location's fields after this write: the body's value, else the stored one (PATCH), else the default."""
+    cur = current or {}
+    pick = lambda key, default=None: body[key] if body.get(key) is not None else cur.get(key, default)  # noqa: E731
+    name = str(body.get("name") or body.get("name_ar") or cur.get("name") or "").strip()
+    if not name:
+        raise _input_error("اكتب اسم موقع البصمة")
+    polygon = body.get("polygon")
+    if polygon is not None and not isinstance(polygon, list):
+        raise _input_error("حدود الموقع غير صحيحة")
+    return {"name": name, "lat": _bounded(pick("latitude"), "خط العرض بين -90 و90", -90, 90),
+            "lng": _bounded(pick("longitude"), "خط الطول بين -180 و180", -180, 180),
+            "radius": _bounded(pick("radius_m", 200), "نطاق الموقع بين 10 و5000 متر", 10, 5000, whole=True),
+            "type": str(pick("type", "project") or "project")}
+
+
+def _attendance_input(body: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """A missing field keeps its stored value; a present one must be valid."""
+    pick = lambda key, stored: body[key] if body.get(key) is not None else stored  # noqa: E731
+    if body.get("shift_duration_minutes") is not None:
+        duration = _bounded(body["shift_duration_minutes"], "مدة الدوام بين 60 و960 دقيقة", 60, 960, whole=True)
+    elif body.get("shift_hours") is not None:
+        duration = round(_bounded(body["shift_hours"], "عدد ساعات الدوام بين 1 و16", 1, 16) * 60)
+    else:
+        duration = int(current.get("shift_duration_minutes") or 480)
+    out = {"work_start": _hhmm(pick("work_start", current.get("work_start") or "08:00"), "وقت بدء العمل غير صحيح"),
+           "tolerance": _bounded(pick("tolerance_minutes", current.get("tolerance_minutes", 15)), "هامش التأخير بين 0 و120 دقيقة", 0, 120, whole=True),
+           "remote": _bounded(pick("remote_days_per_year", current.get("remote_days_per_year", 10)), "حد العمل عن بعد بين 0 و366 يومًا", 0, 366, whole=True),
+           "enabled": bool(pick("flexible_enabled", current.get("flexible_enabled", False))),
+           "window_start": _hhmm(pick("window_start", current.get("flex_window_start") or "08:00"), "بداية نطاق الدوام المرن غير صحيحة"),
+           "window_end": _hhmm(pick("window_end", current.get("flex_window_end") or "17:00"), "نهاية نطاق الدوام المرن غير صحيحة"),
+           "duration": duration}
+    if out["window_end"] <= out["window_start"]:
+        raise _input_error("يجب أن تكون نهاية نطاق الدوام المرن بعد بدايته")
+    return out
+
+
 @router.post("/locations", status_code=201)
 def create_location(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     _perm(actor, "locations", "edit")
+    v = _location_input(body)
     loc_id = str(body.get("id") or uuid.uuid4())
     employer = str(body.get("employer") or "all").strip()
     employer_id = None if employer.lower() == "all" else _lookup_id(db, "employers", employer)
     row = _row(db, """INSERT INTO public.work_locations(id,name,name_en,employer_id,type,latitude,longitude,radius_m,active,polygon)
         VALUES(:id,:name,:name_en,:employer_id,:type,:lat,:lng,:radius,true,CAST(:polygon AS jsonb)) RETURNING id""",
-        id=loc_id, name=body.get("name") or body.get("name_ar") or "", name_en=body.get("name_en"),
-        employer_id=employer_id, type=body.get("type") or "project", lat=body.get("latitude"),
-        lng=body.get("longitude"), radius=body.get("radius_m") or 200,
+        id=loc_id, name=v["name"], name_en=body.get("name_en"),
+        employer_id=employer_id, type=v["type"], lat=v["lat"],
+        lng=v["lng"], radius=v["radius"],
         polygon=json.dumps(body["polygon"]) if body.get("polygon") is not None else None)
     row = _row(db, """SELECT w.*,coalesce(e.name,'all') AS employer FROM public.work_locations w
         LEFT JOIN public.employers e ON e.id=w.employer_id WHERE w.id=:id""", id=loc_id)
@@ -780,12 +854,13 @@ def update_location(location_id: str, body: dict[str, Any], request: Request, ac
         LEFT JOIN public.employers e ON e.id=w.employer_id WHERE w.id=:id""", id=location_id)
     if not row:
         raise ApiError(404, "not_found", "Work location not found")
+    v = _location_input(body, row)
     employer = str(body.get("employer", row["employer"]) or "all").strip()
     employer_id = None if employer.lower() == "all" else _lookup_id(db, "employers", employer)
-    fields = {"name": body.get("name", row["name"]), "name_en": body.get("name_en", row.get("name_en")),
-              "employer_id": employer_id, "type": body.get("type", row["type"]),
-              "latitude": body.get("latitude", row["latitude"]), "longitude": body.get("longitude", row["longitude"]),
-              "radius": body.get("radius_m", row["radius_m"]), "active": body.get("active", row["active"]),
+    fields = {"name": v["name"], "name_en": body.get("name_en", row.get("name_en")),
+              "employer_id": employer_id, "type": v["type"],
+              "latitude": v["lat"], "longitude": v["lng"],
+              "radius": v["radius"], "active": body.get("active", row["active"]),
               "polygon": json.dumps(body["polygon"]) if body.get("polygon") is not None else None, "id": location_id}
     _row(db, """UPDATE public.work_locations SET name=:name,name_en=:name_en,employer_id=:employer_id,type=:type,
         latitude=:latitude,longitude=:longitude,radius_m=:radius,active=:active,
@@ -875,15 +950,14 @@ def attendance_settings(actor: dict[str, Any] = Depends(current_actor), db: Sess
 @router.put("/settings/attendance")
 def update_attendance_settings(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     _perm(actor, "settings", "edit")
-    shift_duration = body.get("shift_duration_minutes")
-    if shift_duration is None:
-        shift_duration = round(float(body.get("shift_hours", 8)) * 60)
-    row = _row(db, """UPDATE public.company_settings SET work_start=:work_start,tolerance_minutes=:tolerance,
-        remote_days_per_year=:remote,flexible_enabled=:enabled,flex_window_start=:window_start,
-        flex_window_end=:window_end,shift_duration_minutes=:duration,updated_at=now()
-        WHERE id='default' RETURNING *""", work_start=body.get("work_start"), tolerance=body.get("tolerance_minutes", 15),
-        remote=body.get("remote_days_per_year", 10), enabled=body.get("flexible_enabled", False),
-        window_start=body.get("window_start", "08:00"), window_end=body.get("window_end", "17:00"), duration=shift_duration)
+    current = _row(db, "SELECT * FROM public.company_settings WHERE id='default'")
+    if not current:
+        raise ApiError(404, "not_found", "Canonical company_settings row is missing")
+    v = _attendance_input(body, current)
+    row = _row(db, """UPDATE public.company_settings SET work_start=CAST(:work_start AS time),tolerance_minutes=:tolerance,
+        remote_days_per_year=:remote,flexible_enabled=:enabled,flex_window_start=CAST(:window_start AS time),
+        flex_window_end=CAST(:window_end AS time),shift_duration_minutes=:duration,updated_at=now()
+        WHERE id='default' RETURNING *""", **v)
     if not row:
         raise ApiError(404, "not_found", "Canonical company_settings row is missing")
     _write_audit(db, actor, request, "settings", "update", "company_settings", "default")
@@ -3122,9 +3196,10 @@ def list_holidays(actor: dict[str, Any] = Depends(current_actor), db: Session = 
 @router.post("/holidays", status_code=201)
 def create_holiday(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     _perm(actor, "settings", "edit")
+    v = _holiday_input(body)
     row = _row(db, "INSERT INTO public.public_holidays(id,name,name_en,holiday_date,days,recurring) VALUES(:id,:name,:name_en,:day,:days,:recurring) RETURNING id,name AS name_ar,name_en,holiday_date AS start_date,days,recurring AS is_recurring,updated_at",
-               id=str(body.get("id") or uuid.uuid4()), name=body.get("name_ar") or body.get("name") or "", name_en=body.get("name_en"),
-               day=body.get("start_date"), days=body.get("days") or 1, recurring=bool(body.get("is_recurring")))
+               id=str(body.get("id") or uuid.uuid4()), name=v["name"], name_en=body.get("name_en"),
+               day=v["day"], days=v["days"], recurring=bool(body.get("is_recurring")))
     _write_audit(db, actor, request, "settings", "holiday_create", "public_holiday", row["id"])
     db.commit()
     return row

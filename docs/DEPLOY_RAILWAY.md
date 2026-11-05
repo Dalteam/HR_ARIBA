@@ -1,35 +1,42 @@
 # Deploy on Railway
 
-One Railway project with three services: **Postgres**, **backend** (FastAPI) and **frontend** (Next.js),
-all from the GitHub repo `Faisal-Alrashed1/HR_ARIBA`. No Supabase, no Docker.
+One Railway project with **four services**: **Postgres**, **backend** (FastAPI), **hr-web** (the Next.js HR
+portal) and **employee-app** (the Expo app exported as a web page that employees add to their phone's home
+screen). All three code services come from the GitHub repo **`Dalteam/HR_ARIBA`**, branch `main`. No Supabase, no
+Docker. Each service deploys only its own folder (its **Root Directory**), so `frontend/legacy`, `tools/` and
+`docs/` never reach Railway.
+
+Order of a first deploy: Postgres → load the database (section 6) → backend → hr-web → employee-app → put the two
+web addresses into the backend's `CORS_ORIGINS` → prove it (section 7).
 
 ## 1. Create the project
-1. railway.com → sign in with GitHub → **New Project** → **Deploy from GitHub repo** → `HR_ARIBA`.
-2. In the project: **+ Create → Database → PostgreSQL**.
+1. railway.com → **New Project** → **Deploy from GitHub repo** → `Dalteam/HR_ARIBA` (grant Railway access to the
+   repo first).
+2. In the project: **+ Create → Database → PostgreSQL**. Enable its backups.
 
 ## 2. Backend service
 Service **Settings**:
-- **Root Directory**: `backend` (Railway then reads `backend/railway.json`: migrations run before each deploy,
-  health check `/health`).
-- **Networking → Generate Domain** (note the URL, e.g. `https://backend-xxx.up.railway.app`).
+- **Root Directory**: `backend` (Railway then reads `backend/railway.json`: start command, health check `/health`).
+- **Networking → Generate Domain** (note it, e.g. `https://backend-xxx.up.railway.app`).
 - **Volumes → Add Volume**, mount path **`/data`** (uploaded photos and documents).
 
-Service **Variables**:
+Service **Variables** (the full list with explanations is `backend/.env.example`):
 
 | Variable | Value |
 |---|---|
-| `ENV` | `production` |
+| `ENV` | `production` (the server then refuses a short `JWT_SECRET` or a non-Postgres database) |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
-| `JWT_SECRET` | a random string, 48+ chars (`python3 -c "import secrets; print(secrets.token_urlsafe(48))"`) |
-| `RUN_MIGRATIONS_ON_STARTUP` | `false` |
+| `JWT_SECRET` | a random string, 48+ chars (`python -c "import secrets; print(secrets.token_urlsafe(48))"`) — never reuse a local one |
+| `RUN_MIGRATIONS_ON_STARTUP` | `false` (the schema is loaded once, section 6) |
 | `STORAGE_DIR` | `/data` |
-| `CORS_ORIGINS` | the frontend URL from step 3 (no trailing slash) |
-| `BOOTSTRAP_ADMIN_USERNAME` | `emp084` (first deploy only) |
-| `BOOTSTRAP_ADMIN_PASSWORD` | a temporary password, 8+ chars with letters and digits (first deploy only) |
+| `CORS_ORIGINS` | `https://<hr-web domain>,https://<employee-app domain>` (both, comma-separated, no trailing slash) |
+| `PUBLIC_APP_URL` | `https://<hr-web domain>` |
+| `NOTIFY_EMAIL_ENABLED` | `false` — e-mail stays off until a sender is approved (FOLLOW_UPS #7); leave every `SMTP_*` empty |
+| `WORKFLOW_ESCALATION_CHECK_SECONDS` | `3600` (default; the daily escalation and expiry-alert pass) |
+| `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` | **not needed** with the migrated data (it only acts on an empty users table) |
 
-Optional — notification e-mails (the bell entry is also mailed, with the PDF of a sent letter attached).
-Two switches, on purpose: nothing is mailed until `NOTIFY_EMAIL_ENABLED=true` **and** SMTP is
-configured, so a stray `SMTP_HOST` in a copied environment cannot start mailing 106 employees.
+Notification e-mail, for later (the bell works without it). Two switches, on purpose: nothing is mailed until
+`NOTIFY_EMAIL_ENABLED=true` **and** SMTP is configured, so a stray `SMTP_HOST` cannot start mailing employees.
 
 | Variable | Value |
 |---|---|
@@ -40,79 +47,80 @@ configured, so a stray `SMTP_HOST` in a copied environment cannot start mailing 
 | `SMTP_FROM_EMAIL` / `SMTP_FROM_NAME` | the sender, e.g. `hr@ariba.com.sa` / `Ariba HR` |
 | `SMTP_ENCRYPTION` | `starttls` (587) · `ssl` (465) · `none` (private relay) |
 | `NOTIFY_EMAIL_INTERVAL_SECONDS` | seconds between passes, default `60`; `0` turns the loop off |
-| `NOTIFY_EMAIL_SINCE` | optional ISO cut-off; empty = the stamp migration 002 wrote, so the notifications restored from Supabase are never mailed |
+| `NOTIFY_EMAIL_SINCE` | optional ISO cut-off; empty = the stamp migration 002 wrote, so restored notifications are never mailed |
 | `NOTIFY_EMAIL_REDIRECT_TO` | optional sink address(es): every message goes there instead of to the employee |
 | `NOTIFY_EMAIL_ALLOW_REAL_RECIPIENTS` | `false` (default); outside production, mail to a real employee address is refused unless this is `true` or `NOTIFY_EMAIL_REDIRECT_TO` is set |
-| `PUBLIC_APP_URL` | fallback link inside the e-mails until **Settings → روابط الإشعارات** saves `app_links` |
 
-The mailbox half of **Settings → Mail** (`ariba_mail_accounts`: host, port, secure, username,
-`from_email`, `from_name`) is read as a fallback for the `SMTP_*` routing variables; the password is
-only ever read from the environment. See "Known gaps" in `docs/NOTIFY_EMAIL.md`.
+The mailbox half of **Settings → Mail** (`ariba_mail_accounts`: host, port, username, sender) is read as a fallback
+for the `SMTP_*` routing variables; the password is only ever read from the environment. Password recovery by
+e-mail (Stage 8) is parked on the branch `stage-8-on-hold` until e-mail is switched on.
 
-## 3. Frontend service
-Add the same repo again (**+ Create → GitHub Repo → HR_ARIBA**), then **Settings**:
-- **Root Directory**: `frontend/hr-web`
-- **Networking → Generate Domain**
+## 3. hr-web service (the HR portal and the public job-application page)
+Add the same repo again (**+ Create → GitHub Repo → Dalteam/HR_ARIBA**), then **Settings**:
+- **Root Directory**: `frontend/hr-web` (reads `frontend/hr-web/railway.json`: `npm run build`, `npm run start`,
+  health check `/login`).
+- **Networking → Generate Domain**.
 
-**Variables**: `NEXT_PUBLIC_API_URL` = `https://<backend domain>/api/v1`
-(it is baked in at build time: redeploy the frontend after changing it).
+**Variables** (see `frontend/hr-web/.env.example`). Both are baked in at **build** time: redeploy after a change.
 
-Then put the frontend URL into the backend's `CORS_ORIGINS` and redeploy the backend.
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | `https://<backend domain>/api/v1` (**with** `/api/v1`) |
+| `NEXT_PUBLIC_EMPLOYEE_APP_URL` | `https://<employee-app domain>` (an employee who signs in here is sent to the app) |
+| `NEXT_PUBLIC_BUILD_STAMP` | optional label at the bottom of the side menu |
 
-## 4. The employee app (`frontend/employee-app`) — nothing to deploy yet
+The public job-application form is a page of this service (`/apply`): the links HR copies from «المرشحون» use
+this domain, so nothing else needs deploying for it.
 
-It is an Expo **SDK 57** React Native app (`app.json`: `sa.ariba.employee`, scheme `ariba`) and it is
-**not built or published today**: there is no `eas.json`, no `expo-updates`, no `ios/`/`android/` folder,
-so nothing exists in a store. The only documented channel is Expo Go against a dev machine
-(`docs/USAGE.md`, `docs/LOCAL_TESTING.md` §4). In production employees reach the system through the
-browser: `hr-web` → `/me` (same frontend service, same API). The static portal in
-`frontend/legacy/employee-portal` talks to Supabase RPCs (`p_token`), not to this API — it is reference
-material, not part of the Railway path.
+## 4. employee-app service (the home-screen web page)
+Employees use the app in the phone's browser and add it to the home screen («إضافة إلى الشاشة الرئيسية» on
+iPhone Safari, «تثبيت التطبيق» on Android Chrome); it then opens full screen with its own icon, like an installed
+app. Nothing goes through an app store (owner, 5 Nov 2026).
 
-When the API moves to Railway the app needs, in this order:
+Add the repo a third time, then **Settings**:
+- **Root Directory**: `frontend/employee-app` (reads `frontend/employee-app/railway.json`: `npm run build:web`,
+  then `npm run serve:web`, health check `/manifest.webmanifest`).
+- **Networking → Generate Domain**.
 
-1. **`EXPO_PUBLIC_API_URL`** = `https://<backend domain>` (no `/api/v1` — `api.ts` appends it). Expo
-   inlines it at **bundle time**: put it in the EAS build profile (`eas.json` → `build.<profile>.env`)
-   or in `frontend\employee-app\.env` before `eas build`; changing it later needs a new build. The
-   default in `src/lib/api.ts` still points at `hrariba-production.up.railway.app`, so either change that
-   default or always pass the variable.
-2. **A real build**: `npx eas-cli@latest init` (adds `projectId` to `app.json`), then
-   `npx eas-cli@latest build --platform android --profile production` — and iOS, which needs an Apple
-   Developer account. Then store listings; the identifiers (`sa.ariba.employee`) and the location
-   permission texts already exist in `app.json`.
-3. **HTTPS only**: an Android release build refuses clear-text `http://`, which Railway satisfies.
-   (This is also why a build must never carry a local `http://192.168…` URL.)
-4. **CORS**: a native build sends no `Origin`, so `CORS_ORIGINS` matters only for the browser preview or
-   a web export of the app (`npx expo export --platform web`).
-5. **The links inside the notification e-mails**: keep `app_links.emp` a **web** URL (the `hr-web` `/me`
-   pages). An `https://` link cannot open the app — it only registers the custom scheme `ariba://`;
-   universal/app links would need associated-domain files on the frontend host.
-6. **Updates**: without `expo-updates`, every fix is a store build. If OTA is wanted, add
-   `expo-updates` and `eas update` **before** the first release, not after.
+**Variables** (see `frontend/employee-app/.env.example`):
 
-Testing a build against Railway: install the SDK 57 Expo Go on Android
-(<https://expo.dev/go?sdkVersion=57&platform=android&device=true>) and run `npx expo start --tunnel` from
-a machine that can reach the backend — the app then uses whichever `EXPO_PUBLIC_API_URL` the server was
-started with.
+| Variable | Value |
+|---|---|
+| `EXPO_PUBLIC_API_URL` | `https://<backend domain>` (**without** `/api/v1`; the app appends it) — **required**: the build stops without it (FOLLOW_UPS #19) |
+
+What the build already carries: `public/manifest.webmanifest` (name «أريبا», standalone, green theme, icons),
+the iPhone home-screen tags and icon, a service worker that keeps the app shell available offline and **never
+caches the API**, and `public/serve.json` (every path answers with the app, long caching for `/_expo/*`,
+`no-cache` for `index.html` / `sw.js` / the manifest, and security headers).
+
+As a web page it cannot do two things the native build could: Face ID / fingerprint sign-in, and push
+notifications (there is no sender anyway); the in-app bell works. Attendance punching by location needs HTTPS,
+which Railway gives. After a redeploy, an open app picks up the new version the next time it is reopened.
 
 ## 5. First sign-in
-Open the frontend URL → sign in with `emp084` and the bootstrap password → you are asked to choose a new
-password. Then **delete `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD`** from the backend variables.
-(The bootstrap only runs while the users table is empty, but the password should not stay in the settings.)
+The migrated accounts keep their passwords: the 110 migrated bcrypt hashes are verified and rehashed to Argon2 on
+the first successful login, so nobody has to reset a password. Sign in to `https://<hr-web domain>/login` with an
+admin account and check «الإعدادات» → «روابط الإشعارات»: set the HR portal and employee-app links to the two
+Railway domains.
 
 ## Notes
-- Every push to `main` redeploys both services. The backend **never** runs Alembic against the canonical
-  database: `app/main.py` only checks that the `public` schema is reachable and that the database role may
-  bypass RLS. Connect it as the `postgres` role of the Railway Postgres
-  (`${{Postgres.DATABASE_URL}}`) — a restricted role makes the service refuse to start.
+- Every push to `main` redeploys all three code services. The backend **never** migrates the canonical database:
+  `app/main.py` only checks that the `public` schema is reachable, that the role may bypass RLS and that every
+  table in its allowlist exists. Connect it as the `postgres` role (`${{Postgres.DATABASE_URL}}`) — a restricted
+  role makes the service refuse to start.
 - Backups: enable them on the Postgres service; the `/data` volume holds the uploaded files.
-- Sign-in after the move: the 110 migrated accounts keep their existing bcrypt hashes. The API verifies
-  bcrypt and rehashes the password to Argon2 on the first successful login, so nobody has to reset a
-  password.
 
 ## 6. The database (canonical schema)
 The backend does **not** create or migrate tables when it starts, so the canonical schema has to be in the
 Railway Postgres once, by one of these two routes.
+
+> **Go-live (owner, 5 Nov 2026): the live data is a fresh export taken from Supabase on go-live day**, not the
+> 7 Oct snapshot in `ariba_src` (FOLLOW_UPS #49). That export goes through the normalization path, then **every**
+> migration in `docs/db-migrations/` in order (001 to 007 today; `run_on_railway.sh` runs them all with their
+> `verify_NNN.sql`), and only then is it restored into Railway. Rehearse the whole path on a local copy first;
+> the step-by-step runbook is written once the export exists. After 003-007 the database has more tables than
+> the counts quoted below (they describe the 001-002 state): regenerate `tools/smoke/expected_counts.json` from
+> the verified copy (`railway_validate.py --write-expected`) before validating Railway (FOLLOW_UPS #52).
 
 ### A. The Postgres service is empty (new project) — restore the validated dump
 The dump is deliberately not in git (it contains personal data). Copy `_exports/ariba_public.dump`

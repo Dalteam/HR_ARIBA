@@ -52,11 +52,12 @@ Four blocks below cannot be seen without data, and the data is legitimate to cre
 - **A-2 a pending leave at the HR stage** → for 12-5, and for the 5.27 → 7.27 figure.
   Employee app → **`EMP102`** (no manager, so it reaches HR in one step) → **«سنوية»** → **15 → 16 Nov 2026**
   (2 workdays ≤ 5.27) → «إرسال».
-- **A-3 an overtime request** → for A1-3. Employee app → **`EMP102`** → «عمل إضافي» → «التاريخ» **12/11/2026**,
+- **A-3 an overtime request** → for A1-3. Employee app → **`EMP102`** → «المزيد» (the dock carries six tabs;
+  «عمل إضافي» sits behind «المزيد») → «عمل إضافي» → «التاريخ» **12/11/2026**,
   «عدد الساعات» **2**, «السبب / المهمة» anything → «⏱️ إرسال الطلب».
-- **A-4 two targets for 102** → for 15-1b, 15-2 and 15-6. HR web → «المستهدفات» → employee **102**, period
+- **A-4 two targets for 102** → for 15-1b, 15-2 and 15-6. HR web → «المستهدفات» (`/targets`) → employee **102**, period
   **«سنوي»** + year **2026** (the picker defaults to «ربع سنوي»; a target saved in another period never seeds the
-  annual evaluation) → «+ مستهدَف جديد» → title + «الوزن (الأهمية)» → «حفظ» (toast «✓ حُفظ المستهدف وأُشعر
+  annual evaluation) → «+ مستهدف جديد» → title + «الوزن (الأهمية)» → «حفظ» (toast «✓ حُفظ المستهدف وأُشعر
   الموظف»). Repeat for the second line.
 - **A-5 a temporary holiday on Tue 2026-11-17** → for A1-2 and A2-5b **only**. One row in
   `public.public_holidays`; ask me to insert and delete it while you watch — do not confuse it with a defect when

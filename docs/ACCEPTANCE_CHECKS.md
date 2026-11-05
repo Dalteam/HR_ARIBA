@@ -496,13 +496,13 @@ change; it is the difference between "the button is not there" and "there was no
 
 **5.13.2 an overtime request — for §5.11 A1-3** (7 Nov 2026: no overtime row exists anywhere)
 
-Employee app → `EMP102` → «عمل إضافي» → «التاريخ» **12/11/2026**, «عدد الساعات» **2**, «السبب / المهمة»
+Employee app → `EMP102` → «المزيد» → «عمل إضافي» → «التاريخ» **12/11/2026**, «عدد الساعات» **2**, «السبب / المهمة»
 anything → «⏱️ إرسال الطلب». The row then appears in «عمل إضافي» with its type, status badge, reason, sent date
 and 🗑 — and **not** in «طلباتي», which filters `type !== "overtime"` out (`app/(tabs)/leaves.tsx:61`).
 
 **5.13.3 two targets — for the evaluation form** (needs: §5.6 15-1, 15-2, 15-6)
 
-HR web → «المستهدفات» → employee **102**, period **«سنوي»** + year **2026** (the picker defaults to «ربع سنوي»,
+HR web → «المستهدفات» (`/targets`) → employee **102**, period **«سنوي»** + year **2026** (the picker defaults to «ربع سنوي»,
 and a target saved in another period never seeds the annual evaluation) → «+ مستهدف جديد» → title +
 «الوزن (الأهمية)» → «حفظ» (toast «✓ حُفظ المستهدف وأُشعر الموظف»). Then «التقييم» → 102 → «سنوي» 2026 opens with
 the two lines seeded instead of an empty form, `GET /targets?employee_id=102&year=2026` returns 2, and after you

@@ -79,7 +79,8 @@ def test_routes_are_mounted():
 
     paths = {route.path for route in create_app().routes}
     for path in ("/api/v1/settings/brand-colors", "/api/v1/settings/punch-logo", "/api/v1/settings/letterhead",
-                 "/api/v1/settings/greeting-templates", "/api/v1/settings/mail/{scope}"):
+                 "/api/v1/settings/greeting-templates", "/api/v1/settings/mail/{scope}",
+                 "/api/v1/settings/schedule", "/api/v1/settings/leave-rules"):
         assert path in paths, path
 
 

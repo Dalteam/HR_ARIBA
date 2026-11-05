@@ -6,10 +6,16 @@ Rules (as in the legacy code):
 - Accrual = min(annual, annual × workdays(start..end) / workdays(full year)), start = max(join, 1 Jan).
 - Used = baseline (imported history / override.used) + approved annual requests that start in the year
   (requests that start before override.asOf are already inside the imported baseline).
-- Carry into a year: override.carry → 0 in the join year → 2024: close(2023) − 10 → previous override.carryNext (≤10)
-  → min(10, close(previous year)).
-- Close = max(0, opening + entitlement + adjustment − used); carry to next = min(10, close); EOS excess = close − 10 (from 2024).
+- Carry into a year: override.carry → 0 in the join year → 2024: close(2023) − cap → previous override.carryNext (≤ cap)
+  → min(cap, close(previous year)).
+- Close = max(0, opening + entitlement + adjustment − used); carry to next = min(cap, close); EOS excess = close − cap
+  (from 2024).
 - Current = override.current, else max(0, carry + accrued(today) + manual(today) − used(today)).
+
+The cap and the accrual method are settings (Stage 20, `services/leave_rules.py`): `carry_days` with `carry_enabled`
+off means no cap and no EOS excess, and `accrual` is `workdays` (as every figure in the file), `calendar` or
+`monthly` - the reference (`reference/hr-v1` `engines/leave.js` `leaveAccruedForPeriod`, `leaveCarryCap`). An employee
+whose type has no leave right (`no_leave`) gets a zero ledger; `no_eos` zeroes the end-of-service leave excess only.
 
 Floats are used on purpose: the legacy code used JS numbers, and results are rounded only for display.
 
@@ -32,7 +38,8 @@ if TYPE_CHECKING:  # the engine is storage-agnostic; any object with id/join_dat
 
     from app.models import Employee
 
-CARRY_CAP = 10
+CARRY_CAP = 10  # the default cap, kept as the constant the first port used (Stage 20 makes it a setting)
+ACCRUAL_METHODS = ("workdays", "calendar", "monthly")
 
 
 def _d(v) -> date | None:
@@ -89,13 +96,48 @@ class LeaveBook:
         adjustments: list[dict],
         approved_annual: dict[str, list[tuple[date, date]]],
         today: date,
+        carry_enabled: bool = True,
+        carry_days: float = CARRY_CAP,
+        accrual: str = "workdays",
+        no_leave: frozenset[str] | set[str] = frozenset(),
+        no_eos: frozenset[str] | set[str] = frozenset(),
     ):
         self.holidays = holidays
         self.data = data or {}
         self.adjustments = adjustments or []
         self.approved = approved_annual
         self.today = today
+        self.carry_enabled = bool(carry_enabled)
+        try:
+            self.carry_days = max(0.0, float(carry_days))
+        except (TypeError, ValueError):
+            self.carry_days = float(CARRY_CAP)
+        self.accrual = accrual if accrual in ACCRUAL_METHODS else "workdays"
+        self.no_leave = frozenset(str(x) for x in (no_leave or ()))
+        self.no_eos = frozenset(str(x) for x in (no_eos or ()))
         self._memo: dict = {}
+
+    # ------------------------------------------------------------------ settings
+    @property
+    def carry_cap(self) -> float | None:
+        """The carry limit, or None when carrying is off (the whole balance carries; no EOS excess)."""
+        return self.carry_days if self.carry_enabled else None
+
+    def _capped(self, value: float) -> float:
+        cap = self.carry_cap
+        return max(0.0, value) if cap is None else min(cap, max(0.0, value))
+
+    def exceeds(self, value: float) -> float:
+        """What a closing balance carries beyond the cap (the EOS excess); 0 with no cap."""
+        cap = self.carry_cap
+        return 0.0 if cap is None else max(0.0, value - cap)
+
+    def exempt(self, emp: Employee) -> bool:
+        """No leave right at all (the design's «لا استحقاق» for a type with `leave` off)."""
+        return str(emp.id) in self.no_leave
+
+    def exempt_eos(self, emp: Employee) -> bool:
+        return str(emp.id) in self.no_eos
 
     # ------------------------------------------------------------------ calendar
     def count_workdays(self, start: date | None, end: date | None) -> int:
@@ -122,8 +164,9 @@ class LeaveBook:
         o = (self._emp(emp).get("years") or {}).get(str(int(y)))
         return o if isinstance(o, dict) else None
 
-    @staticmethod
-    def annual(emp: Employee) -> float:
+    def annual(self, emp: Employee) -> float:
+        if self.exempt(emp):
+            return 0.0
         return max(0.0, float(emp.annual_leave_days or 21) or 21.0)
 
     def start_year(self, emp: Employee) -> int:
@@ -131,6 +174,8 @@ class LeaveBook:
 
     # ------------------------------------------------------------------ pieces
     def accrued(self, emp: Employee, y: int, to: date | None = None) -> float:
+        if self.exempt(emp):
+            return 0.0
         end0 = to or date(y, 12, 31)
         y_start, y_end = date(y, 1, 1), date(y, 12, 31)
         annual, join = self.annual(emp), emp.join_date
@@ -140,6 +185,19 @@ class LeaveBook:
         end = min(end0, y_end)
         if end < start:
             return 0.0
+        if self.accrual == "calendar":
+            in_year = (date(y + 1, 1, 1) - y_start).days
+            return min(annual, max(0.0, annual * (((end - start).days + 1) / in_year)))
+        if self.accrual == "monthly":
+            months = 0.0
+            for m in range(12):
+                first = date(y, m + 1, 1)
+                last = date(y + 1, 1, 1) if m == 11 else date(y, m + 2, 1)
+                length = (last - first).days
+                a, b = (start if start > first else first), (end if end < last - timedelta(days=1) else last - timedelta(days=1))
+                if b >= a:
+                    months += ((b - a).days + 1) / length
+            return min(annual, max(0.0, annual / 12 * months))
         full = self.workdays_in_year(y)
         if full <= 0:
             return 0.0
@@ -176,22 +234,31 @@ class LeaveBook:
         return total
 
     def carry_forward(self, emp: Employee, y: int) -> float:
+        if self.exempt(emp):
+            return 0.0
         o = self.override(emp, y)
         if o and o.get("carry") is not None:
             return max(0.0, float(o["carry"] or 0))
         if y == self.start_year(emp):
             return 0.0
         if y == 2024:
-            return max(0.0, self.year_closing(emp, 2023) - CARRY_CAP)
+            cap = self.carry_cap
+            close = max(0.0, self.year_closing(emp, 2023))
+            return close if cap is None else max(0.0, close - cap)
         prev = self.override(emp, y - 1)
         if prev and prev.get("carryNext") is not None:
-            return min(CARRY_CAP, max(0.0, float(prev["carryNext"] or 0)))
-        return min(CARRY_CAP, max(0.0, self.year_closing(emp, y - 1)))
+            return self._capped(float(prev["carryNext"] or 0))
+        return self._capped(self.year_closing(emp, y - 1))
 
     def ledger(self, emp: Employee, y: int) -> dict:
         key = ("ledger", emp.id, y)
         if key in self._memo:
             return self._memo[key]
+        if self.exempt(emp):
+            out = {"year": y, "opening": 0.0, "entitlement": 0.0, "used": 0.0, "adjustment": 0.0,
+                   "close": 0.0, "carry": 0.0, "eos": 0.0, "override": self.override(emp, y)}
+            self._memo[key] = out
+            return out
         o = self.override(emp, y)
         opening = self.carry_forward(emp, y)
         has = lambda k: o is not None and o.get(k) is not None  # noqa: E731
@@ -210,14 +277,16 @@ class LeaveBook:
             "used": used,
             "adjustment": adjustment,
             "close": close,
-            "carry": min(CARRY_CAP, max(0.0, close)),
-            "eos": max(0.0, close - CARRY_CAP) if y >= 2024 else 0.0,
+            "carry": self._capped(close),
+            "eos": 0.0 if self.exempt_eos(emp) or y < 2024 else self.exceeds(close),
             "override": o,
         }
         self._memo[key] = out
         return out
 
     def year_closing(self, emp: Employee, y: int) -> float:
+        if self.exempt(emp):
+            return 0.0
         o = self.override(emp, y)
         if y < self.start_year(emp):
             return 0.0
@@ -234,6 +303,8 @@ class LeaveBook:
     def app_current(self, emp: Employee) -> float:
         """Employee-app balance today (server `ariba_leave_calc`): like `current`, but an approved annual leave that has
         started is deducted in full."""
+        if self.exempt(emp):
+            return 0.0
         y, now = self.today.year, self.today
         o = self.override(emp, y)
         if o and o.get("current") is not None:
@@ -246,6 +317,8 @@ class LeaveBook:
     def app_year_end(self, emp: Employee) -> float:
         """Employee-app year-end (server `ariba_leave_calc` V115): an imported yearEnd only stands when the override
         also has a carry, and approved annual leave after the snapshot (incl. future dates) is deducted from it."""
+        if self.exempt(emp):
+            return 0.0
         y = self.today.year
         o = self.override(emp, y) or {}
         has = lambda k: o.get(k) is not None  # noqa: E731
@@ -258,9 +331,13 @@ class LeaveBook:
         return max(0.0, self.carry_forward(emp, y) + ent + adj - used)
 
     def year_excess(self, emp: Employee, y: int) -> float:
-        return max(0.0, self.year_closing(emp, y) - CARRY_CAP)
+        if self.exempt(emp) or self.exempt_eos(emp):
+            return 0.0
+        return self.exceeds(self.year_closing(emp, y))
 
     def current(self, emp: Employee) -> float:
+        if self.exempt(emp):
+            return 0.0
         y, now = self.today.year, self.today
         o = self.override(emp, y)
         if o and o.get("current") is not None:
@@ -271,6 +348,8 @@ class LeaveBook:
         )
 
     def accumulated_eos(self, emp: Employee, end_year: int | None = None) -> float:
+        if self.exempt(emp) or self.exempt_eos(emp):
+            return 0.0
         start = max(2024, self.start_year(emp))
         end = end_year or self.today.year
         total = float(self._emp(emp).get("eos_excess") or 0)

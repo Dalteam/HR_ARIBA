@@ -6,6 +6,8 @@ mailboxes (details only).
     GET/PUT    /settings/letterhead          S3  letterhead {mode, page, head, foot, top, bottom, preset}
     GET/PUT    /settings/greeting-templates  S4  greeting_templates {birthday: {t, b}, anniversary: {t, b}}
     GET/PUT/DELETE /settings/mail/{scope}    S5  ariba_mail_accounts, scope `company` or `mine`
+    GET/PUT    /settings/schedule            S6  attendance_schedule {enabled, official, ramadan, ...}
+    GET/PUT    /settings/leave-rules         S7  leave_carry, leave_accrual_method, special_rights
 
 The design stored each of these with a free-form `setSetting`; here every key has its own route and its own closed
 field list, checked before it is written (BUSINESS_RULES § Small settings saves). `/public/brand` is unchanged: it still
@@ -26,6 +28,8 @@ from app.core.errors import ApiError
 from app.database import get_db
 from app.routers import canonical
 from app.services import brand
+from app.services import leave_rules
+from app.services import schedule
 
 router = APIRouter(tags=["settings-extra"])
 
@@ -290,3 +294,52 @@ def delete_mail(scope: str, request: Request, actor: dict[str, Any] = Depends(ca
     canonical._write_audit(db, actor, request, "settings", "mail_delete", "ariba_mail_accounts", scope)
     db.commit()
     return {"configured": False}
+
+
+# ------------------------------------------------------------------------------------------ S6 working hours
+@router.get("/settings/schedule")
+def get_schedule(actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
+    """The working-hours card: the saved shifts and the one that applies today."""
+    canonical._perm(actor, "settings")
+    return schedule.payload(schedule.read(db), canonical.today_riyadh())
+
+
+@router.put("/settings/schedule")
+def put_schedule(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(canonical.current_actor),
+                 db: Session = Depends(get_db)):
+    canonical._perm(actor, "settings", "edit")
+    value = schedule.schedule_in(body)
+    _save(db, actor, request, schedule.SETTING_KEY, value,
+          ["enabled", "official", "ramadan", "ramadan_auto", "ramadan_from", "ramadan_to"])
+    return schedule.payload(value, canonical.today_riyadh())
+
+
+# --------------------------------------------------------------------------------------- S7 leave rules
+def _rules_payload(db: Session) -> dict[str, Any]:
+    rules = leave_rules.read(db)
+    return {**rules, "employees": leave_rules.counts(db), "methods": list(leave_rules.METHODS),
+            "max_carry_days": leave_rules.MAX_CARRY_DAYS, "kinds": list(leave_rules.KINDS)}
+
+
+@router.get("/settings/leave-rules")
+def get_leave_rules(actor: dict[str, Any] = Depends(canonical.current_actor), db: Session = Depends(get_db)):
+    """The leave card: the carry cap, the accrual method and the special types' rights, with how many employees
+    each type holds (the count is what the switches act on)."""
+    canonical._perm(actor, "settings")
+    return _rules_payload(db)
+
+
+@router.put("/settings/leave-rules")
+def put_leave_rules(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depends(canonical.current_actor),
+                    db: Session = Depends(get_db)):
+    """Any of carry / accrual / rights; what the body leaves out keeps its saved row."""
+    canonical._perm(actor, "settings", "edit")
+    value = leave_rules.rules_in(body)
+    for name, key in (("carry", leave_rules.CARRY_KEY), ("accrual", leave_rules.ACCRUAL_KEY),
+                      ("rights", leave_rules.RIGHTS_KEY)):
+        if name in value:
+            canonical._set_app_setting(db, key, value[name], actor)
+    canonical._write_audit(db, actor, request, "settings", "update", "ariba_app_settings", "leave_rules",
+                           details={"fields": sorted(value)})
+    db.commit()
+    return _rules_payload(db)

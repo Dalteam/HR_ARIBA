@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services import leave_rules
 from app.services.leave import HolidayCalendar, LeaveBook
 
 
@@ -38,6 +39,11 @@ class EmpView:
     termination_date: date | None
     annual_leave_days: float
     data: dict
+    # The org columns the employee's type is read from (leave_rules.emp_kind) — the same fields the legacy
+    # ariba_is_noleave / ariba_emp_kind look at.
+    job_title: str = ""
+    department: str = ""
+    employer: str = ""
 
     @property
     def is_terminated(self) -> bool:
@@ -61,18 +67,28 @@ def emp_view(row: dict[str, Any]) -> EmpView:
         termination_date=end,
         annual_leave_days=annual,
         data=d,
+        job_title=str(row.get("job_title") or ""),
+        department=str(row.get("department") or ""),
+        employer=str(row.get("employer") or ""),
     )
 
 
+_EMP_FROM = """public.employee_directory d
+    LEFT JOIN public.employers er ON er.id=d.employer_id
+    LEFT JOIN public.departments dp ON dp.id=d.department_id
+    LEFT JOIN public.job_titles jt ON jt.id=d.job_title_id"""
+_EMP_COLS = "d.employee_id,d.name_ar,d.join_date,d.active,d.data,d.updated_at,er.name AS employer,dp.name AS department,jt.name AS job_title"
+
+
 def employees(db: Session, *, active_only: bool = False, employee_id: str | None = None) -> list[EmpView]:
-    sql = "SELECT employee_id,name_ar,join_date,active,data,updated_at FROM public.employee_directory"
+    sql = f"SELECT {_EMP_COLS} FROM {_EMP_FROM}"
     params: dict[str, Any] = {}
     if employee_id is not None:
-        sql += " WHERE employee_id=:eid"
+        sql += " WHERE d.employee_id=:eid"
         params["eid"] = employee_id
     elif active_only:
-        sql += " WHERE active"
-    rows = [dict(r) for r in db.execute(text(sql + " ORDER BY name_ar"), params).mappings()]
+        sql += " WHERE d.active"
+    rows = [dict(r) for r in db.execute(text(sql + " ORDER BY d.name_ar"), params).mappings()]
     return [emp_view(r) for r in rows]
 
 
@@ -94,10 +110,18 @@ def approved_annual(db: Session) -> dict[str, list[tuple[date, date]]]:
     return {k: sorted(v) for k, v in out.items()}
 
 
-def leave_book(db: Session, today: date, emps: list[EmpView] | None = None) -> LeaveBook:
-    """LeaveBook fed from employee_directory.data: leaveYearOverrides, leaveHistoryByYear, leaveEosExcess."""
+def leave_book(db: Session, today: date, emps: list[EmpView] | None = None,
+               rules: dict[str, Any] | None = None) -> LeaveBook:
+    """LeaveBook fed from employee_directory.data: leaveYearOverrides, leaveHistoryByYear, leaveEosExcess.
+
+    The Stage 20 settings are applied here, once, for every reader of the ledger: the carry cap
+    (leave_carry), the accrual method (leave_accrual_method) and the two exemptions of the special types
+    (special_rights × the employee's kind - no ledger, no end-of-service leave excess).
+    """
+    rules = leave_rules.read(db) if rules is None else rules
+    rows = emps if emps is not None else employees(db)
     data: dict[str, dict] = {}
-    for e in emps if emps is not None else employees(db):
+    for e in rows:
         d = e.data
         entry: dict[str, Any] = {}
         if isinstance(d.get("leaveYearOverrides"), dict):
@@ -111,4 +135,7 @@ def leave_book(db: Session, today: date, emps: list[EmpView] | None = None) -> L
             pass
         if entry:
             data[e.id] = entry
-    return LeaveBook(holidays=holidays(db), data=data, adjustments=[], approved_annual=approved_annual(db), today=today)
+    no_leave, no_eos = leave_rules.exemptions(rows, rules)
+    return LeaveBook(holidays=holidays(db), data=data, adjustments=[], approved_annual=approved_annual(db),
+                     today=today, carry_enabled=rules["carry"]["enabled"], carry_days=rules["carry"]["days"],
+                     accrual=rules["accrual"]["method"], no_leave=no_leave, no_eos=no_eos)

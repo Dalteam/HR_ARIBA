@@ -33,8 +33,10 @@ from app.services import canonical_data as cdata
 from app.services import employee_map as emap
 from app.services import gosi as gosi_calc
 from app.services import html_safety
+from app.services import leave_rules
 from app.services import permissions as perms
 from app.services import push as push_tokens
+from app.services import schedule as schedule_cfg
 from app.services import team_scope
 from app.services.request_envelope import Attachment, RequestInput
 
@@ -902,6 +904,22 @@ def _set_app_setting(db: Session, key: str, value: Any, actor: dict[str, Any] | 
         db.execute(text("INSERT INTO public.ariba_app_settings(key,value,updated_at,updated_by) VALUES(:k,CAST(:v AS jsonb),now(),:by)"), params)
 
 
+# Stage 20: the working-hours schedule and the three leave-rule rows. Both read the setting the way the rest of this
+# module does (`_app_setting`), so they work through the same session the request already holds.
+def _shift(day: date, db: Session) -> dict[str, Any] | None:
+    """The working-hours row that applies on `day` (start, end, hours, grace) — None while the schedule is off."""
+    return schedule_cfg.applied(day, schedule_cfg.norm(_app_setting(db, schedule_cfg.SETTING_KEY)))
+
+
+def _leave_rules(db: Session) -> dict[str, Any]:
+    """carry / accrual / rights, complete (`services/leave_rules.read` from the three rows this session sees)."""
+    return leave_rules.from_rows({
+        leave_rules.CARRY_KEY: _app_setting(db, leave_rules.CARRY_KEY),
+        leave_rules.ACCRUAL_KEY: _app_setting(db, leave_rules.ACCRUAL_KEY),
+        leave_rules.RIGHTS_KEY: _app_setting(db, leave_rules.RIGHTS_KEY),
+    })
+
+
 # The letter-signing chain is configured in one setting: `doc_sign_cfg`. `hr_closes` is **off**
 # unless HR turns it on (S10: today a letter ends with the last signature, not at an HR button) and
 # `manager_types` names the letter types that need the direct manager's signature (S3).
@@ -1278,8 +1296,9 @@ def my_attendance(actor: dict[str, Any] = Depends(current_actor), db: Session = 
     else:
         locs = _rows(db, "SELECT * FROM public.work_locations WHERE active AND (employer_id IS NULL OR employer_id=:employer_id)", employer_id=emp.get("employer_id"))
     settings = attendance_settings(actor, db)
-    expected = None
-    if settings["flexible_enabled"] and sessions and sessions[0].get("time_in"):
+    shift = _shift(today, db)
+    expected = shift["end"] if shift is not None and sessions else None
+    if expected is None and settings["flexible_enabled"] and sessions and sessions[0].get("time_in"):
         first = sessions[0]
         exp_t = (datetime.combine(today, first["time_in"]) + timedelta(hours=float(settings["shift_hours"] or 8))).time()
         if int(first.get("late_minutes") or 0) > 0 and settings["window_end"]:
@@ -1288,10 +1307,12 @@ def my_attendance(actor: dict[str, Any] = Depends(current_actor), db: Session = 
     remote_used = db.scalar(text("SELECT count(DISTINCT date) FROM public.attendance WHERE employee_id=:eid AND status='remote' AND date>=:year_start AND date<=:day"),
                             {"eid": eid, "year_start": date(today.year, 1, 1), "day": today}) or 0
     return {"today": [_attendance_row(db, row) for row in sessions], "history": [_attendance_row(db, row) for row in history],
-            "locations": locs, "flexible_enabled": settings["flexible_enabled"], "shift_hours": settings["shift_hours"],
+            "locations": locs, "flexible_enabled": settings["flexible_enabled"], "shift_hours": shift["hours"] if shift else settings["shift_hours"],
             "window_start": str(settings["window_start"] or "08:00")[:5], "window_end": str(settings["window_end"] or "17:00")[:5],
-            "work_start": str(settings["work_start"] or "08:00")[:5], "tolerance_minutes": settings["tolerance_minutes"],
-            "expected_checkout": expected, "remote_limit": settings["remote_days_per_year"], "remote_used": remote_used}
+            "work_start": shift["start"] if shift else str(settings["work_start"] or "08:00")[:5],
+            "tolerance_minutes": int(shift["grace"]) if shift else settings["tolerance_minutes"],
+            # Stage 20: the day's working-hours row (None while the schedule is not in use).
+            "schedule": shift, "expected_checkout": expected, "remote_limit": settings["remote_days_per_year"], "remote_used": remote_used}
 
 
 def _distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -1358,9 +1379,15 @@ def _tolerance(cs: dict[str, Any]) -> int:
     return 15 if v is None else int(v)
 
 
-def _punch_late(cs: dict[str, Any], t: time) -> int:
-    """Late minutes of the day's first check-in. Flexible: legacy ariba_punch_late — after (window end - shift hours +
-    tolerance), at least 1 minute, rounded. Fixed: ariba_attendance — after work start + tolerance, rounded."""
+def _punch_late(cs: dict[str, Any], t: time, shift: dict[str, Any] | None = None) -> int:
+    """Late minutes of the day's first check-in.
+
+    With the working-hours schedule in use (Stage 20 `attendance_schedule`), the day's row decides: late after
+    its start + its grace, rounded (the same rule as the fixed branch, only with the schedule's own times).
+    Otherwise legacy ariba_punch_late — flexible: after (window end - shift hours + tolerance), at least 1
+    minute, rounded; fixed: ariba_attendance — after work start + tolerance, rounded."""
+    if shift is not None:
+        return max(0, _round_half_up(_clock_minutes(t) - (schedule_cfg.minutes(shift["start"]) + int(shift["grace"]))))
     tol = _tolerance(cs)
     shift_hours = float(cs.get("shift_duration_minutes") or 480) / 60
     if cs.get("flexible_enabled"):
@@ -1369,9 +1396,16 @@ def _punch_late(cs: dict[str, Any], t: time) -> int:
     return max(0, _round_half_up(_clock_minutes(t) - (_clock_minutes(cs.get("work_start") or time(8)) + tol)))
 
 
-def _punch_early(cs: dict[str, Any], first_in: time, first_late: int, t: time) -> int:
-    """Early-leave minutes at check-out (legacy ariba_attendance 'out' / ariba_punch_early): flexible only — expected =
-    first check-in + shift hours, capped at the window end when that check-in was late. Fixed hours: 0."""
+def _punch_early(cs: dict[str, Any], first_in: time, first_late: int, t: time,
+                 shift: dict[str, Any] | None = None) -> int:
+    """Early-leave minutes at check-out.
+
+    With the working-hours schedule in use the shift has a stated end: leaving before it is early, and a check-in
+    later than start + grace is measured to that same end (never past it). Otherwise legacy ariba_attendance
+    'out' / ariba_punch_early: flexible only — expected = first check-in + shift hours, capped at the window end
+    when that check-in was late; fixed hours: 0."""
+    if shift is not None:
+        return max(0, _round_half_up(schedule_cfg.minutes(shift["end"]) - _clock_minutes(t)))
     if not cs.get("flexible_enabled"):
         return 0
     shift_hours = float(cs.get("shift_duration_minutes") or 480) / 60
@@ -1427,6 +1461,7 @@ def punch(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depend
         loc, d = remote[0], 0.0
     cs = _row(db, "SELECT * FROM public.company_settings WHERE id='default'") or {}
     today = today_riyadh()
+    shift = _shift(today, db)
     nowt = now_riyadh().time().replace(tzinfo=None, microsecond=0)
     flex = bool(cs.get("flexible_enabled"))
     w_start = cs.get("flex_window_start") or time(8)
@@ -1439,7 +1474,7 @@ def punch(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depend
             raise ApiError(409, "already_checked_in", "سجلت حضورك بالفعل — سجّل الانصراف أولاً")
         if flex and not first_rec and nowt < w_start:
             raise ApiError(409, "too_early_for_flexible_window", f"لا يمكن تسجيل الحضور قبل بداية الدوام المرن {w_start.strftime('%H:%M')}")
-        late = 0 if first_rec else _punch_late(cs, nowt)
+        late = 0 if first_rec else _punch_late(cs, nowt, shift)
         if first_rec:
             db.execute(text("""UPDATE public.attendance SET early_minutes=0 WHERE id=(
                 SELECT id FROM public.attendance WHERE employee_id=:e AND date=:d AND time_out IS NOT NULL
@@ -1456,7 +1491,7 @@ def punch(body: dict[str, Any], request: Request, actor: dict[str, Any] = Depend
         if not open_rec:
             raise ApiError(409, "not_checked_in", "لا يوجد سجل حضور مفتوح اليوم")
         first = first_rec or open_rec
-        early = _punch_early(cs, first["time_in"], int(first.get("late_minutes") or 0), nowt)
+        early = _punch_early(cs, first["time_in"], int(first.get("late_minutes") or 0), nowt, shift)
         row = _row(db, """UPDATE public.attendance SET time_out=:t,notes=coalesce(notes,'')||:n,early_minutes=:early WHERE id=:id RETURNING *""",
                    t=nowt, n=f" | GPS checkout distance: {round(d)} m", early=early, id=open_rec["id"])
     _write_audit(db, actor, request, "attendance", "punch_" + action, "attendance", row["id"])
@@ -1592,17 +1627,18 @@ def _apply_forgot_punch(db: Session, item: dict[str, Any]) -> None:
     if not day or not t1 or kind not in {"in", "out", "both"}:
         return
     cs = _row(db, "SELECT * FROM public.company_settings WHERE id='default'") or {}
+    shift = _shift(day, db)
     note, eid = " | أُضيفت بطلب نسيان بصمة معتمد من الموارد البشرية", item["employee_id"]
     first = lambda: _row(db, "SELECT * FROM public.attendance WHERE employee_id=:e AND date=:d ORDER BY time_in ASC NULLS LAST, created_at ASC LIMIT 1", e=eid, d=day)  # noqa: E731
     insert = """INSERT INTO public.attendance(employee_id,date,time_in,time_out,status,notes,late_minutes,early_minutes)
         VALUES(:e,:d,:t1,:t2,:st,:n,:late,:early)"""
     if kind == "in":
-        a, late = first(), _punch_late(cs, t1)
+        a, late = first(), _punch_late(cs, t1, shift)
         if not a:
             db.execute(text(insert), {"e": eid, "d": day, "t1": t1, "t2": None, "st": "late" if late else "present",
                                       "n": "طلب نسيان بصمة (دخول)" + note, "late": late, "early": 0})
         elif a["time_in"] is None or t1 < a["time_in"]:
-            early = _punch_early(cs, t1, late, a["time_out"]) if a["time_out"] else a["early_minutes"]
+            early = _punch_early(cs, t1, late, a["time_out"], shift) if a["time_out"] else a["early_minutes"]
             db.execute(text("UPDATE public.attendance SET time_in=:t,late_minutes=:late,status=:st,early_minutes=:early,notes=coalesce(notes,'')||:n WHERE id=:id"),
                        {"t": t1, "late": late, "st": "late" if late else "present", "early": early, "n": note, "id": a["id"]})
     elif kind == "out":
@@ -1611,22 +1647,22 @@ def _apply_forgot_punch(db: Session, item: dict[str, Any]) -> None:
             db.execute(text(insert), {"e": eid, "d": day, "t1": None, "t2": t1, "st": "present", "n": "طلب نسيان بصمة (خروج)" + note,
                                       "late": 0, "early": 0})
         elif a["time_out"] is None or "إغلاق تلقائي" in (a["notes"] or "") or t1 > a["time_out"]:
-            early = _punch_early(cs, a["time_in"], int(a["late_minutes"] or 0), t1) if a["time_in"] else 0
+            early = _punch_early(cs, a["time_in"], int(a["late_minutes"] or 0), t1, shift) if a["time_in"] else 0
             db.execute(text("UPDATE public.attendance SET time_out=:t,early_minutes=:early,notes=coalesce(notes,'')||:n WHERE id=:id"),
                        {"t": t1, "early": early, "n": note, "id": a["id"]})
     else:
         if not t2:
             return
-        a, late = first(), _punch_late(cs, t1)
+        a, late = first(), _punch_late(cs, t1, shift)
         if not a:
             db.execute(text(insert), {"e": eid, "d": day, "t1": t1, "t2": t2, "st": "late" if late else "present",
-                                      "n": "طلب نسيان بصمة (دخول وخروج)" + note, "late": late, "early": _punch_early(cs, t1, late, t2)})
+                                      "n": "طلب نسيان بصمة (دخول وخروج)" + note, "late": late, "early": _punch_early(cs, t1, late, t2, shift)})
         else:
             if a["time_in"] is not None and a["time_in"] <= t1:
                 t1 = a["time_in"]
-                late = a["late_minutes"] if a["late_minutes"] is not None else _punch_late(cs, t1)
+                late = a["late_minutes"] if a["late_minutes"] is not None else _punch_late(cs, t1, shift)
             db.execute(text("UPDATE public.attendance SET time_in=:t1,time_out=:t2,late_minutes=:late,status=:st,early_minutes=:early,notes=coalesce(notes,'')||:n WHERE id=:id"),
-                       {"t1": t1, "t2": t2, "late": late, "st": "late" if late else "present", "early": _punch_early(cs, t1, late, t2), "n": note, "id": a["id"]})
+                       {"t1": t1, "t2": t2, "late": late, "st": "late" if late else "present", "early": _punch_early(cs, t1, late, t2, shift), "n": note, "id": a["id"]})
 
 
 def _override(db: Session, actor: dict[str, Any], item: dict[str, Any], reason: str | None) -> None:
@@ -2800,12 +2836,18 @@ def _num(v: Any) -> float:
 def salary_basis(actor: dict[str, Any] = Depends(current_actor), db: Session = Depends(get_db)):
     _perm(actor, "payroll", "view")
     rows = _rows(db, f"SELECT {_EMPLOYEE_COLUMNS} FROM {_EMPLOYEE_FROM} ORDER BY d.name_ar")
+    rules = _leave_rules(db)
     result = []
     for row in rows:
         emp = _employee_dict(row)
         data = emp["data"]
         basic = float(data.get("salary") or 0)
         housing = float(data.get("housingAllowance") or 0)
+        # Stage 20: the special types' rights (special_rights). «لا يستحق» zeroes the end-of-service figure here,
+        # exactly where the design's payroll/EOS screens zero it; the type is the legacy kindOf.
+        kind = leave_rules.emp_kind(data, emp["job_title"], emp["department"], emp["employer"])
+        no_leave = bool(kind) and leave_rules.no_leave(kind, rules["rights"])
+        no_eos = bool(kind) and leave_rules.no_eos(kind, rules["rights"])
         # As the legacy HTML (settlement sOnSel / reports rptEOS, js/reports/042-v44-reports-terminated-eos.js):
         # years = the stored yearsOfService; EOS = the recorded eosLaborLaw (it already applies the termination
         # article), else — when nothing is recorded and no eosCategory — calcEOS(salary, yearsOfService, housing).
@@ -2818,6 +2860,8 @@ def salary_basis(actor: dict[str, Any] = Depends(current_actor), db: Session = D
         else:
             eos_base, y = basic + housing, max(0.0, years)
             eos = round(((eos_base / 2) * min(y, 5) + eos_base * max(0.0, y - 5)) * 100) / 100
+        if no_eos:
+            eos = 0.0
         result.append({"id": emp["employee_id"], "emp_no": emp["emp_no"], "name_ar": emp["name_ar"],
                        "workplace": emp["employer"], "department": emp["department"], "job_title": emp["job_title"],
                        "nationality": emp["nationality"], "is_saudi": bool(data.get("isSaudi")), "birth_date": emp["dob"],
@@ -2834,7 +2878,9 @@ def salary_basis(actor: dict[str, Any] = Depends(current_actor), db: Session = D
                        "is_terminated": not emp["active"], "termination_date": data.get("terminationDate") or data.get("lastDay"),
                        "termination_article": data.get("terminationArticle"), "termination_reason": data.get("terminationReason"),
                        "total_salary": data.get("salaryTotal", basic+housing), "gosi_employee": data.get("insuranceSub", 0),
-                       "net_salary": data.get("netSalaryLocal", data.get("netSalary", 0)), "years_of_service": years, "eos_basic": round(eos,2)})
+                       "net_salary": data.get("netSalaryLocal", data.get("netSalary", 0)), "years_of_service": years, "eos_basic": round(eos,2),
+                       # Stage 20 rights: the type read from the org columns and whether each right is withheld.
+                       "emp_kind": kind or None, "no_leave": no_leave, "no_eos": no_eos})
     return result
 
 

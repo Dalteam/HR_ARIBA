@@ -1194,7 +1194,8 @@ details saved only, **never a password**, sending stays off.
 | S3 | Letterhead (`letterhead`: `mode` default / page / hf, `page`, `head`, `foot`, `top`, `bottom`, `preset`) | every HR-portal role (`staff: view`): every print uses it | `settings: edit`; images as S2 (at most 1.5 MiB each), margins 0–120 mm |
 | S4 | Greeting texts (`greeting_templates`: birthday / anniversary `{t, b}`) | as the greetings switch (HR) | as the greetings switch; `{name}` = first name, `{years}` = years of service; empty = the built-in text; at most 200 / 2000 characters |
 | S5 | Mailboxes (`ariba_mail_accounts`, owner `company` or the user's employee id) | company: `settings: view`; mine: myself | company: `settings: edit`; mine: myself. Host, port, secure, username, sender name / address. **No password field exists**: the password stays in the server environment (`SMTP_PASSWORD`) |
-
+| S6 | Working-hours schedule (`attendance_schedule`: `enabled`, `official` / `ramadan` `{start, end, hours, grace}`, `ramadan_auto`, `ramadan_from`, `ramadan_to`) | `settings: view` | `settings: edit`; times `HH:MM`, the end after the start, hours 1–16, grace 0–120 minutes, and the two Ramadan dates together or not at all (§ Working-hours schedule and leave rules) |
+| S7 | Leave rules (`leave_carry` `{enabled, days}`, `leave_accrual_method` `{method}`, `special_rights` `{kind: {leave, eos}}`) | `settings: view` (+ how many employees each special type holds) | `settings: edit`; any of the three, and what the body leaves out keeps its saved row; `days` 0–365, the method `calendar` / `workdays` / `monthly` (§ Working-hours schedule and leave rules) |
 - Every save is audited (module `settings`), with the field names, never an image or an address book.
 - Prints: the forms, letters, payslip, offer letter and settlement read `letterhead`. With nothing saved they keep today's
   Ariba header and footer (the design's «ورق أريبا الجاهز»); `page` draws the saved A4 background with its margins;
@@ -1264,6 +1265,42 @@ already in the schema, empty.
   tells HR's stage people. A reason that is sent must be at least 5 characters; an old caller that sends none keeps
   today's default text. The portal asks for the reason.
 - **PY5** Editing an approved month stays refused (409), as before.
+
+## Working-hours schedule and leave rules — Stage 20, 5 Nov 2026 (`services/schedule.py`, `services/leave_rules.py`, `routers/settings_extra.py`, no migration)
+
+The design's working-hours card (`reference/hr-v1` `settings/ScheduleCard.jsx` + `lib/schedule.js`) and its leave
+rules (`settings/CarryCard.jsx`, the accrual switch of `lib/leave.js` × `leave_engine.js`, and
+`settings/RightsCard.jsx` × `engines/empkind.js`). Four saved rows in `ariba_app_settings`, all read **on the server**
+(`services/schedule.py`, `services/leave_rules.py`), so no screen and no engine can drift apart.
+
+- **W1** The schedule is **off** by default, and while it is off attendance keeps the company's `work_start`,
+  `tolerance_minutes` and shift hours exactly as before — no stored punch changes. Switched on, the day's row (official,
+  or Ramadan inside its window) is copied into a punch taken from then on: start, end, required hours and late grace.
+  A punch already stored keeps the values it was given.
+- **W2** Ramadan: the manual dates win when **both** are saved (`ramadan_from` / `ramadan_to`); otherwise the Hijri month
+  decides while `ramadan_auto` is on. Umm al-Qura is not in the standard library, so the arithmetic Islamic calendar is
+  used — it can be a day out, which is what the dates are for.
+- **W3** Checked before writing: `HH:MM` times, the end after the start, hours 1–16, grace 0–120 minutes, and the two
+  Ramadan dates together (in order). An **unreadable saved row** falls back to the defaults, so a hand-edited row can
+  never stop attendance.
+- **L1** The carry cap (`leave_carry` `{enabled: true, days: 10}`) is the `carry = min(10, close)` of § Leave, now a
+  setting: the excess over `days` is the end-of-service bank. With the switch off **the whole balance carries and there
+  is no end-of-service excess**; `days` is kept meanwhile, for switching it back on.
+- **L2** The accrual method (`leave_accrual_method`) is `workdays` unless HR chooses otherwise: every balance in the file
+  was accrued on working days (the legacy `ariba_leave_calc`, pinned by `tests_canonical/test_legacy_parity.py`), so the
+  design's own `calendar` default would have moved every figure the day it shipped. `calendar` pro-rates over the year's
+  365 days (366 in a leap year); `monthly` gives 1/12 of the entitlement per month, a partial month counted by its days.
+- **L3** The special rights (`special_rights` `{leave, eos}` per consultant / Tamheer / trainee) start with nothing
+  ticked, as the design. A type whose `leave` is not ticked keeps **no leave ledger at all** (entitlement, accrual, carry
+  and balance 0, and no end-of-service excess); an unchecked `eos` zeroes the end-of-service leave figure only — the
+  balance itself is untouched.
+- **L4** The type is the legacy `kindOf` the codebase already runs (`services/gosi.py` `exempt_kind`, as the database's
+  `ariba_emp_kind`): the WPS type first, then words in the job title / department / employer, the Excel category, and the
+  Arabic employment type. A WPS type other than `wps` (external, no_wps, remote) is on no card, so it keeps nothing —
+  the design's own rule.
+- **L5** Both cards are read with `settings: view` and saved with `settings: edit`, and every save is audited with the
+  field names. `GET /settings/leave-rules` also answers how many active employees each special type holds today, which
+  is what those switches act on.
 
 ## Open questions from the prototypes (to settle in their phases)
 

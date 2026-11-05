@@ -24,7 +24,7 @@ store.set('ariba-employee-v0', new Map([['x', 1]]));                   // an old
 await run(handlers.install, {}); assert.ok(log.includes('skipWaiting')); assert.ok(store.get('ariba-employee-v1').has(ORIGIN + '/'));
 await run(handlers.activate, {}); assert.ok(!store.has('ariba-employee-v0'), 'old cache removed'); assert.ok(log.includes('claim'));
 // other origins and non-GET are never touched (the API must always be live)
-let e = await run(handlers.fetch, { request: req('https://hrariba-production.up.railway.app/api/v1/me/payslips') }); assert.equal(e.responded, undefined, 'cross-origin API untouched');
+let e = await run(handlers.fetch, { request: req('https://api.example.com/api/v1/me/payslips') }); assert.equal(e.responded, undefined, 'cross-origin API untouched');
 e = await run(handlers.fetch, { request: req('/api/x', 'POST') }); assert.equal(e.responded, undefined, 'POST untouched');
 e = await run(handlers.fetch, { request: req('/some/other.json') }); assert.equal(e.responded, undefined, 'unknown same-origin GET untouched');
 // page loads: network first, the cached shell only when offline

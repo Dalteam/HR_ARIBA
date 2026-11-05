@@ -2,8 +2,11 @@
 // Tokens live in the device's secure store (Keychain / Keystore), never in plain storage.
 import { store } from "./store";
 
-// Defaults to the deployed backend (Railway) so Expo Go on a phone works without any setup.
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? "https://hrariba-production.up.railway.app").replace(/\/$/, "");
+// The backend's address, inlined by Expo at build time (FOLLOW_UPS #19). There is no default on purpose: the old
+// default was the client's previous production host, so a build without the variable silently talked to it.
+// `npm run build:web` refuses to build without it (scripts/require-api-url.mjs); locally set it in `.env`.
+export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+if (!API_URL) console.error("EXPO_PUBLIC_API_URL is not set: the app cannot reach a server (see .env.example).");
 const BASE = `${API_URL}/api/v1`;
 
 const ACCESS = "ariba.access_token";

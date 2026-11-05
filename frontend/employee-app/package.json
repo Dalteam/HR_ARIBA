@@ -44,7 +44,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "build:web": "expo export -p web",
+    "build:web": "node scripts/require-api-url.mjs && expo export -p web",
     "serve:web": "serve -s dist -l ${PORT:-3000}",
     "test:sw": "node tests/sw.test.mjs"
   },

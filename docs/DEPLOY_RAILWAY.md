@@ -7,7 +7,8 @@ Docker. Each service deploys only its own folder (its **Root Directory**), so `f
 `docs/` never reach Railway.
 
 Order of a first deploy: Postgres → load the database (section 6) → backend → hr-web → employee-app → put the two
-web addresses into the backend's `CORS_ORIGINS` → prove it (section 7).
+web addresses into the backend's `CORS_ORIGINS` → prove it (section 7). Railway builds the backend with Python
+3.12; run the backend tests on 3.12 too before a release.
 
 ## 1. Create the project
 1. railway.com → **New Project** → **Deploy from GitHub repo** → `Dalteam/HR_ARIBA` (grant Railway access to the
@@ -16,7 +17,10 @@ web addresses into the backend's `CORS_ORIGINS` → prove it (section 7).
 
 ## 2. Backend service
 Service **Settings**:
-- **Root Directory**: `backend` (Railway then reads `backend/railway.json`: start command, health check `/health`).
+- **Root Directory**: `/backend`.
+- **Config as code → file path**: `/backend/railway.json` (start command, health check `/health`). Railway looks
+  for the file at the repo root unless told, even with a root directory set; without this a build may fail with
+  «No start command detected».
 - **Networking → Generate Domain** (note it, e.g. `https://backend-xxx.up.railway.app`).
 - **Volumes → Add Volume**, mount path **`/data`** (uploaded photos and documents).
 
@@ -57,8 +61,9 @@ e-mail (Stage 8) is parked on the branch `stage-8-on-hold` until e-mail is switc
 
 ## 3. hr-web service (the HR portal and the public job-application page)
 Add the same repo again (**+ Create → GitHub Repo → Dalteam/HR_ARIBA**), then **Settings**:
-- **Root Directory**: `frontend/hr-web` (reads `frontend/hr-web/railway.json`: `npm run build`, `npm run start`,
-  health check `/login`).
+- **Root Directory**: `/frontend/hr-web`.
+- **Config as code → file path**: `/frontend/hr-web/railway.json` (`npm run build`, `npm run start`, health check
+  `/login`).
 - **Networking → Generate Domain**.
 
 **Variables** (see `frontend/hr-web/.env.example`). Both are baked in at **build** time: redeploy after a change.
@@ -78,8 +83,10 @@ iPhone Safari, «تثبيت التطبيق» on Android Chrome); it then opens f
 app. Nothing goes through an app store (owner, 5 Nov 2026).
 
 Add the repo a third time, then **Settings**:
-- **Root Directory**: `frontend/employee-app` (reads `frontend/employee-app/railway.json`: `npm run build:web`,
-  then `npm run serve:web`, health check `/manifest.webmanifest`).
+- **Root Directory**: `/frontend/employee-app` (no space before the slash: the build then fails with «directory
+  does not exist»).
+- **Config as code → file path**: `/frontend/employee-app/railway.json` (`npm run build:web`, then
+  `npm run serve:web`, health check `/manifest.webmanifest`).
 - **Networking → Generate Domain**.
 
 **Variables** (see `frontend/employee-app/.env.example`):
@@ -135,8 +142,11 @@ export DATABASE_PUBLIC_URL='postgresql://postgres:<password>@<host>:<port>/railw
 # 2. check the server version: the dump was taken from PostgreSQL 17
 psql "$DATABASE_PUBLIC_URL" -c 'SHOW server_version'
 
-# 3a. PostgreSQL 17 target: all-or-nothing restore
-pg_restore --no-owner --no-privileges --exit-on-error --single-transaction \
+# 3a. PostgreSQL 17 or newer target (Railway gave 18.6 on 5 Nov 2026): all-or-nothing restore. Railway's
+#     database already has the `public` schema, so skip that entry of the dump, or the restore stops at
+#     «schema "public" already exists» and keeps nothing.
+pg_restore -l _exports/ariba_public.dump | grep -v ' SCHEMA - public ' > restore.list
+pg_restore -L restore.list --no-owner --no-privileges --exit-on-error --single-transaction \
   -d "$DATABASE_PUBLIC_URL" _exports/ariba_public.dump
 
 # 3b. PostgreSQL 14-16 target: the portable plain dump instead (psql 17 meta-commands and the

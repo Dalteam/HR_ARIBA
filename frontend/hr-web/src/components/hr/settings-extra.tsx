@@ -107,8 +107,8 @@ export function BrandColoursCard() {
       </div>
       {edit && (
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-          <button type="button" className="btn bpl" disabled={busy || !ok} onClick={() => save(v, T("اتحفظت ألوان الهوية — تظهر عند الجميع", "Brand colours saved — everyone sees them"))}><i className="ti ti-device-floppy" /> {T("حفظ", "Save")}</button>
-          <button type="button" className="btn" disabled={busy || !custom} onClick={() => save({ reset: true }, T("رجعت الألوان الأصلية", "Original colours restored"))}>{T("رجوع للألوان الأصلية", "Back to the original colours")}</button>
+          <button type="button" className="btn bpl" disabled={busy || !ok} onClick={() => save(v, T("تم حفظ ألوان الهوية — تظهر لدى الجميع", "Brand colours saved — everyone sees them"))}><i className="ti ti-device-floppy" /> {T("حفظ", "Save")}</button>
+          <button type="button" className="btn" disabled={busy || !custom} onClick={() => save({ reset: true }, T("أُعيدت الألوان الأصلية", "Original colours restored"))}>{T("رجوع للألوان الأصلية", "Back to the original colours")}</button>
           {!ok && <span style={{ fontSize: 11, color: "var(--rd)" }}>{T("اكتب الألوان بصيغة #RRGGBB", "Write the colours as #RRGGBB")}</span>}
         </div>
       )}
@@ -166,10 +166,10 @@ export function PunchLogoCard() {
                 const f = e.target.files?.[0];
                 e.target.value = "";
                 if (!f) return;
-                try { await save(await readImage(f, 520, 520, "image/png"), T("اتغيّر الشعار", "Logo changed")); } catch (x) { toast(err(x), "err"); }
+                try { await save(await readImage(f, 520, 520, "image/png"), T("تم تغيير الشعار", "Logo changed")); } catch (x) { toast(err(x), "err"); }
               }} />
             </label>
-            <button type="button" className="btn bsm" disabled={busy || !data} onClick={() => save("", T("اتشال الشعار", "Logo removed"))}>{T("إزالة", "Remove")}</button>
+            <button type="button" className="btn bsm" disabled={busy || !data} onClick={() => save("", T("أُزيل الشعار", "Logo removed"))}>{T("إزالة", "Remove")}</button>
           </>
         )}
       </div>
@@ -210,8 +210,8 @@ export function LetterheadCard() {
     try {
       const data = field === "page" ? await readImage(f, 1240, 1754, "image/jpeg") : await readImage(f, 1800, field === "head" ? 700 : 500, "image/png");
       const base = { top: lh.top ?? 42, bottom: lh.bottom ?? 30 };
-      if (field === "page") await save({ mode: "page", page: data, ...base }, T("اتحفظت صورة الورقة", "Page image saved"));
-      else await save({ mode: "hf", head: field === "head" ? data : lh.head || "", foot: field === "foot" ? data : lh.foot || "", ...base }, T("اتحفظت الصورة", "Image saved"));
+      if (field === "page") await save({ mode: "page", page: data, ...base }, T("تم حفظ صورة الورقة", "Page image saved"));
+      else await save({ mode: "hf", head: field === "head" ? data : lh.head || "", foot: field === "foot" ? data : lh.foot || "", ...base }, T("تم حفظ الصورة", "Image saved"));
     } catch (x) {
       toast(err(x), "err");
     }
@@ -219,7 +219,7 @@ export function LetterheadCard() {
   const opt = (m: LetterheadMode | "ariba", ar: string, en: string) => (
     <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, padding: "3px 0" }}>
       <input type="radio" name="LH_MODE" checked={mode === m} disabled={!edit || busy} onChange={() => {
-        if (m === "ariba") void save({ mode: "hf", preset: "ariba" }, T("اتفعّل ورق أريبا الجاهز", "Ariba letterhead enabled"));
+        if (m === "ariba") void save({ mode: "hf", preset: "ariba" }, T("تم تفعيل ورق أريبا الجاهز", "Ariba letterhead enabled"));
         else if (m === "default") void save({ mode: "default" }, T("الطباعة بدون ورق رسمي", "Printing without letterhead"));
         else setLh({ ...(lh ?? { mode: null }), mode: m, preset: null });
       }} /> {T(ar, en)}
@@ -237,9 +237,9 @@ export function LetterheadCard() {
       <div className="ct" style={{ marginBottom: 8 }}><i className="ti ti-file-text" /> {T("الورق الرسمي للطباعة (النماذج والخطابات والمخالصة وكشف الراتب)", "Official letterhead (forms, letters, settlement & payslip)")}</div>
       {!lh ? <div style={{ color: "var(--mu)" }}>…</div> : (
         <>
-          {opt("ariba", "ورق أريبا الجاهز (هيدر وفوتر)", "Ariba letterhead (header + footer)")}
+          {opt("ariba", "ورق أريبا الجاهز (ترويسة وتذييل)", "Ariba letterhead (header + footer)")}
           {opt("page", "خلفية ورقة كاملة (A4)", "Full-page background (A4)")}
-          {opt("hf", "هيدر + فوتر من صورك", "Your own header + footer")}
+          {opt("hf", "ترويسة + تذييل من صورك", "Your own header + footer")}
           {opt("default", "بدون ورق رسمي", "No letterhead")}
           {lh.mode === "page" && (
             <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
@@ -247,14 +247,14 @@ export function LetterheadCard() {
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12 }}>
                 {T("الهامش العلوي (ملم)", "Top margin (mm)")} <input type="number" min={0} max={120} value={lh.top ?? 42} disabled={!edit} onChange={(e) => setLh({ ...lh, top: Number(e.target.value) })} style={{ width: 70 }} />
                 {T("السفلي", "Bottom")} <input type="number" min={0} max={120} value={lh.bottom ?? 30} disabled={!edit} onChange={(e) => setLh({ ...lh, bottom: Number(e.target.value) })} style={{ width: 70 }} />
-                {edit && <button type="button" className="btn bsm" disabled={busy || !lh.page} onClick={() => save({ mode: "page", page: lh.page, top: lh.top, bottom: lh.bottom }, T("اتحفظت الهوامش", "Margins saved"))}>{T("حفظ الهوامش", "Save margins")}</button>}
+                {edit && <button type="button" className="btn bsm" disabled={busy || !lh.page} onClick={() => save({ mode: "page", page: lh.page, top: lh.top, bottom: lh.bottom }, T("تم حفظ الهوامش", "Margins saved"))}>{T("حفظ الهوامش", "Save margins")}</button>}
               </div>
             </div>
           )}
           {lh.mode === "hf" && lh.preset !== "ariba" && (
             <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{pic(lh.head)}{file("head", "صورة الهيدر", "Header image")}</div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{pic(lh.foot)}{file("foot", "صورة الفوتر", "Footer image")}</div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{pic(lh.head)}{file("head", "صورة الترويسة", "Header image")}</div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{pic(lh.foot)}{file("foot", "صورة التذييل", "Footer image")}</div>
             </div>
           )}
           <div style={{ ...note, marginTop: 8, marginBottom: 0 }}>{T("يُطبَّق على كل المطبوعات الرسمية. جرّبه من صفحة النماذج أو كشف الراتب.", "Applies to every official print. Try it from the forms or payslip page.")}</div>
@@ -313,8 +313,8 @@ function MailForm({ scope }: { scope: "company" | "mine" }) {
       <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, marginTop: 6 }}><input type="checkbox" checked={f.secure} disabled={!edit} onChange={(e) => setF({ ...f, secure: e.target.checked })} /> SSL/TLS</label>
       {edit && (
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button type="button" className="btn bpl bsm" disabled={busy} onClick={() => act("PUT", T("اتحفظت بيانات البريد", "Mailbox saved"))}><i className="ti ti-device-floppy" /> {T("حفظ", "Save")}</button>
-          {configured && <button type="button" className="btn bsm" disabled={busy} onClick={() => window.confirm(T("حذف بيانات البريد المحفوظة؟", "Delete the saved mailbox?")) && void act("DELETE", T("اتحذفت بيانات البريد", "Mailbox deleted"))}>{T("حذف", "Delete")}</button>}
+          <button type="button" className="btn bpl bsm" disabled={busy} onClick={() => act("PUT", T("تم حفظ بيانات البريد", "Mailbox saved"))}><i className="ti ti-device-floppy" /> {T("حفظ", "Save")}</button>
+          {configured && <button type="button" className="btn bsm" disabled={busy} onClick={() => window.confirm(T("حذف بيانات البريد المحفوظة؟", "Delete the saved mailbox?")) && void act("DELETE", T("تم حذف بيانات البريد", "Mailbox deleted"))}>{T("حذف", "Delete")}</button>}
         </div>
       )}
     </div>

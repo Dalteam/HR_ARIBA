@@ -207,7 +207,7 @@ export default function Page() {
             </div>
             {reason === "m77" && (
               <div>
-                <label style={lbl}>نهاية العقد المحدد (فاضي = غير محدد المدة)</label>
+                <label style={lbl}>نهاية العقد المحدد (فارغ = غير محدد المدة)</label>
                 <DateField id="sContractEnd" value={contractEnd} onChange={(v) => setContractEnd(v)} style={inp} />
               </div>
             )}
@@ -345,7 +345,7 @@ export default function Page() {
                 title={"غير متاح بعد — يُفتح بعد " + (FEATURES.exportEmail.waits?.ar ?? "")}
                 onClick={() => window.alert("غير متاح بعد — يُفتح بعد " + (FEATURES.exportEmail.waits?.ar ?? ""))}
               >
-                <i className="ti ti-mail" /> إرسال إيميل للموظف
+                <i className="ti ti-mail" /> إرسال بريد إلكتروني للموظف
               </button>
               <button type="button" className="btn bsm" style={{ background: "var(--am)", color: "#fff" }} onClick={reset}>
                 <i className="ti ti-refresh" /> تصفير

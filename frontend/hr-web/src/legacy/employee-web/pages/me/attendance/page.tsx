@@ -119,8 +119,8 @@ export default function MeAttendance() {
   const CODES: Record<string, [string, string]> = {
     OUTSIDE_GEOFENCE: ["أنت خارج نطاق مواقع العمل المسموح بها", "You are outside the allowed work locations"],
     REMOTE_NOT_APPROVED: ["العمل عن بعد يحتاج طلب «عن بعد» معتمداً لهذا اليوم", "Remote work needs an approved remote request for today"],
-    TOO_EARLY_FOR_FLEXIBLE_WINDOW: ["لسه بدري — الحضور المرن يبدأ لاحقاً حسب إعدادات الشركة", "Too early — flexible check-in starts later per company settings"],
-    TOO_LATE_FOR_FLEXIBLE_WINDOW: ["الوقت متأخر — دوامك مش هيكمل جوه نطاق ساعات العمل المسموح بها", "Too late — your shift will not fit inside the allowed work window"],
+    TOO_EARLY_FOR_FLEXIBLE_WINDOW: ["الوقت مبكر — يبدأ الحضور المرن لاحقًا حسب إعدادات الشركة", "Too early — flexible check-in starts later per company settings"],
+    TOO_LATE_FOR_FLEXIBLE_WINDOW: ["الوقت متأخر — لن يكتمل دوامك داخل نطاق ساعات العمل المسموح بها", "Too late — your shift will not fit inside the allowed work window"],
     GPS_REQUIRED: ["يجب السماح بتحديد الموقع", "Location access is required"],
     NO_ACTIVE_LOCATION: ["لا يوجد موقع عمل مضبوط", "No work location is set"],
     EMPLOYEE_NOT_ACTIVE: ["الموظف غير نشط", "The employee is not active"],

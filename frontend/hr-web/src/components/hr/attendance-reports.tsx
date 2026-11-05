@@ -529,7 +529,7 @@ export function AttendanceReports({ emps: empsProp, terms, att }: { emps: E[]; t
     <div className="card crx" id="ariba117AttCard" style={{ marginTop: 12 }}>
       <div className="ch">
         <div className="ct"><i className="ti ti-report-analytics" /> <span>{T("منشئ تقرير الحضور والانصراف", "Attendance report builder")}</span></div>
-        <span style={{ fontSize: 11, color: "var(--mu)" }}>{T("اختر الفترة والأعمدة والموظفين ثم اطبع أو صدّر PDF أو Excel أو Word أو أرسله بالإيميل — مع الختم والتوقيع", "Pick period, columns & employees, then print / export / email — with stamp & signature")}</span>
+        <span style={{ fontSize: 11, color: "var(--mu)" }}>{T("اختر الفترة والأعمدة والموظفين ثم اطبع أو صدّر PDF أو Excel أو Word أو أرسله بالبريد الإلكتروني — مع الختم والتوقيع", "Pick period, columns & employees, then print / export / email — with stamp & signature")}</span>
       </div>
       <div className="cr-wrap">
         <div className="cr-side">
@@ -627,7 +627,7 @@ export function AttendanceReports({ emps: empsProp, terms, att }: { emps: E[]; t
             </div>
           </div>
           <div id="A117Out">
-            {busy === "run" && <div className="cr-empty">{T("جارٍ تحميل الحضور من السيرفر…", "Loading attendance…")}</div>}
+            {busy === "run" && <div className="cr-empty">{T("جارٍ تحميل الحضور من الخادم…", "Loading attendance…")}</div>}
             {msg && <div style={{ padding: 14, color: "var(--rd)" }}>{msg}</div>}
             {res && busy !== "run" && !res.r.length && <div className="cr-empty"><i className="ti ti-table-options" /><div>{T("لا توجد نتائج مطابقة للفلتر", "No matching results")}</div></div>}
             {res && busy !== "run" && res.r.length > 0 && !fields.length && <div className="cr-empty"><i className="ti ti-table-options" /><div>{T("اختر عموداً واحداً على الأقل لتظهر المعاينة", "Pick at least one column to see the preview")}</div></div>}
@@ -645,7 +645,7 @@ export function AttendanceReports({ emps: empsProp, terms, att }: { emps: E[]; t
               <input type="checkbox" id="XD_SEAL" checked={seal} onChange={(e) => setSeal(e.target.checked)} /> {T("ختم / توقيع (قابل للتحريك)", "Stamp / signature (movable)")}
             </label>
           </div>
-          <div className="al alb" style={{ marginBottom: 6 }}><i className="ti ti-mail-off" aria-hidden /><div><strong>{T("الإرسال بالإيميل غير متاح بعد", "E-mailing is not available yet")}</strong><div>{T("يُفتح بعد ", "Opens after ") + waits("exportEmail")}</div></div></div>
+          <div className="al alb" style={{ marginBottom: 6 }}><i className="ti ti-mail-off" aria-hidden /><div><strong>{T("الإرسال بالبريد الإلكتروني غير متاح بعد", "E-mailing is not available yet")}</strong><div>{T("يُفتح بعد ", "Opens after ") + waits("exportEmail")}</div></div></div>
         </Modal>
       )}
       {sealNode}

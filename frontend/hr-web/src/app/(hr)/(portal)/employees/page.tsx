@@ -42,7 +42,7 @@ export default function EmployeesPage() {
     setDel(null);
     try {
       await request(`/employees/${target.id}`, { method: "DELETE" });
-      toast("✓ " + (lang === "en" ? "Deleted — a copy is in the recycle bin" : "اتحذف الموظف — نسخته في سلة المهملات"), "ok");
+      toast("✓ " + (lang === "en" ? "Deleted — a copy is in the recycle bin" : "حُذف الموظف — توجد نسخة منه في سلة المهملات"), "ok");
       list.reload();
     } catch (x) {
       toast(x instanceof ApiError ? x.message : String(x), "err");

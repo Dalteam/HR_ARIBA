@@ -270,7 +270,7 @@ function Pending({ list: all, can, busy, type, onType, setDlg, att }: RowProps &
                       <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(14,165,233,.08)", borderRadius: 8, fontSize: 12, lineHeight: 1.8 }}>
                         <b>{KIND[r.punch_kind ?? ""] ?? ""}</b> — {fD(r.on_date)} — <span dir="ltr">{r.punch_kind === "both" ? t5(r.time_from) + " → " + t5(r.time_to) : t5(r.time_from)}</span>
                         {r.notes && <><br />{T("السبب", "Reason")}: {r.notes}</>}
-                        <br /><span style={{ color: "#0f766e" }}>{T("عند الموافقة يتسجل تلقائيًا في سجل حضور الموظف.", "On approval it is recorded automatically in the employee attendance.")}</span>
+                        <br /><span style={{ color: "#0f766e" }}>{T("عند الموافقة يُسجَّل تلقائيًا في سجل حضور الموظف.", "On approval it is recorded automatically in the employee attendance.")}</span>
                       </div>
                     ) : (
                       r.notes && <div style={{ fontSize: 11, color: "var(--dm)" }}>{r.notes}</div>
@@ -644,7 +644,7 @@ function BalanceEditor({ emp, onClose, onSaved }: { emp: EmployeeListItem; onClo
     setBusy(true);
     try {
       await undoBalance(emp.id);
-      toast("↩ " + T("رجعت الأرصدة لما قبل آخر حفظ", "Balances restored to before the last save"), "ok");
+      toast("↩ " + T("أُعيدت الأرصدة إلى ما قبل آخر حفظ", "Balances restored to before the last save"), "ok");
       onSaved();
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");

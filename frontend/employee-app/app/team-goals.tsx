@@ -153,7 +153,7 @@ function EvalForm({ id, type, keyv }: { id: string; type: PeriodType; keyv: stri
     try { await goals.saveEvaluation(id, type, keyv, items, comments, submit); toast(submit ? "✓ أُرسل التقييم للاعتماد" : "✓ حُفظت المسودة", "ok"); await load(); }
     catch (e) { toast(e instanceof ApiError ? e.message : "تعذر الحفظ", "err"); } finally { setBusy(false); }
   }
-  const approve = () => Alert.alert("اعتماد التقييم نهائياً؟", "سيصل الموظف إشعار وإيميل بالنتيجة.", [{ text: "إلغاء", style: "cancel" }, { text: "اعتماد", onPress: async () => {
+  const approve = () => Alert.alert("اعتماد التقييم نهائياً؟", "سيصل الموظف إشعار وبريد إلكتروني بالنتيجة.", [{ text: "إلغاء", style: "cancel" }, { text: "اعتماد", onPress: async () => {
     setBusy(true);
     try { await goals.approve(ev!.id); toast("✅ اعتُمد التقييم وأُرسلت النتيجة للموظف", "ok"); await load(); }
     catch (e) { toast(e instanceof ApiError ? e.message : "تعذر الاعتماد", "err"); } finally { setBusy(false); }

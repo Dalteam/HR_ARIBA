@@ -253,7 +253,7 @@ function ComposerSheet({ visible, first, onClose, onForgot }: { visible: boolean
             {step === 1 ? (
               <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
                 <T size={11.5} color={t.mu} style={{ marginBottom: 6 }}>
-                  {twoStage ? "المسار: المدير المباشر ← الموارد البشرية (اعتماد نهائي). يصلك إشعار وإيميل عند كل خطوة." : "المسار: المدير المباشر ← الموارد البشرية ← الرئيس التنفيذي."}
+                  {twoStage ? "المسار: المدير المباشر ← الموارد البشرية (اعتماد نهائي). يصلك إشعار وبريد إلكتروني عند كل خطوة." : "المسار: المدير المباشر ← الموارد البشرية ← الرئيس التنفيذي."}
                 </T>
                 <Btn kind="primary" title="أرسل الطلب" icon={<Icon name="send" size={16} color="#012A21" />} onPress={submit} busy={busy} style={{ marginTop: 0 }} />
               </View>

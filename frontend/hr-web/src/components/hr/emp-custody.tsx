@@ -31,7 +31,7 @@ export function EmpCustody({ employeeId, lang }: { employeeId: string | null; la
     // eslint-disable-next-line react-hooks/exhaustive-deps -- T only changes with lang, which does not change the data
   }, [employeeId]);
 
-  if (!employeeId) return <div style={{ color: "var(--mu)", fontSize: 12, padding: 14 }}>{T("احفظ الموظف الأول عشان تقدر تسجّل عليه عهدة.", "Save the employee first to register custody.")}</div>;
+  if (!employeeId) return <div style={{ color: "var(--mu)", fontSize: 12, padding: 14 }}>{T("احفظ الموظف أولًا لتتمكن من تسجيل عهدة عليه.", "Save the employee first to register custody.")}</div>;
   if (st.denied) return <div className="al alb" style={{ margin: 10 }}><i className="ti ti-lock" /> {T("لا تملك صلاحية عرض الأصول والعهد.", "You may not view assets & custody.")}</div>;
 
   const assets = st.data?.assets || [];
@@ -57,7 +57,7 @@ export function EmpCustody({ employeeId, lang }: { employeeId: string | null; la
           </tbody>
         </table>
       ) : (
-        <div style={{ color: "var(--mu)", fontSize: 12 }}>{st.err ? st.err : st.loaded ? T("مفيش عهدة على الموظف ده", "No custody registered to this employee") : T("جاري التحميل…", "Loading…")}</div>
+        <div style={{ color: "var(--mu)", fontSize: 12 }}>{st.err ? st.err : st.loaded ? T("لا توجد عهدة مسجّلة على هذا الموظف", "No custody registered to this employee") : T("جاري التحميل…", "Loading…")}</div>
       )}
       {hist.length > 0 && (
         <div style={{ fontSize: 11, color: "var(--mu)", marginTop: 8 }}>

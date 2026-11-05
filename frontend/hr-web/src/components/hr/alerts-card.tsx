@@ -25,7 +25,7 @@ const ROWS: [Kind, string, string][] = [
   ["natAddr", "انتهاء العنوان الوطني", "National address expiry"],
   ["gosiCert", "انتهاء شهادة التأمينات الاجتماعية", "Social insurance certificate expiry"],
 ];
-const CH: [string, string, string][] = [["program", "إشعار البرنامج", "Program"], ["app", "إشعار التطبيق", "App"], ["email", "الإيميل", "Email"]];
+const CH: [string, string, string][] = [["program", "إشعار البرنامج", "Program"], ["app", "إشعار التطبيق", "App"], ["email", "البريد الإلكتروني", "Email"]];
 const TO: [string, string, string][] = [["hr", "الموارد البشرية", "HR"], ["employee", "الموظف نفسه", "The employee"]];
 const err = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 const dmy = (s: string) => { const a = String(s || "").slice(0, 10).split("-"); return a.length === 3 ? `${a[2]}/${a[1]}/${a[0]}` : ""; };
@@ -68,7 +68,7 @@ export function AlertsCard() {
     try {
       const r = await request<{ cfg: Cfg }>("/settings/alerts", { method: "PUT", body: { cfg: v } });
       setV(r.cfg);
-      toast("✓ " + T("اتحفظت إعدادات التنبيهات", "Alert settings saved"), "ok");
+      toast("✓ " + T("تم حفظ إعدادات التنبيهات", "Alert settings saved"), "ok");
       return true;
     } catch (e) {
       toast(err(e), "err");

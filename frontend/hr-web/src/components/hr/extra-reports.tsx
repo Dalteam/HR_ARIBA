@@ -61,7 +61,7 @@ export function CustomReport() {
   if (!rows) return <div className="card" style={{ marginBottom: 14 }}><PageState loading={!error} error={error} /></div>;
   return (
     <ReportBuilder<CR, { en: boolean }>
-      id="CR_BOX" icon="ti-adjustments-horizontal" title={["منشئ التقارير المخصص", "Custom report builder"]} sub={["اختر الأعمدة والموظفين ثم صدّر PDF أو Excel أو Word أو أرسله بالإيميل", "Pick columns & employees, then export or email"]}
+      id="CR_BOX" icon="ti-adjustments-horizontal" title={["منشئ التقارير المخصص", "Custom report builder"]} sub={["اختر الأعمدة والموظفين ثم صدّر PDF أو Excel أو Word أو أرسله بالبريد الإلكتروني", "Pick columns & employees, then export or email"]}
       catalog={CUSTOM} rows={rows} ctx={(en) => ({ en })} storageKey="ariba_cr_templates_v1" allowTerminated
       groupsEn={{ "البيانات الشخصية": "Personal", "الوظيفة": "Job", "الوثائق": "Documents", "العقد والإجازات": "Contract & leave", "الراتب": "Salary", "البنك": "Bank" }}
       groupIcons={{ "البيانات الشخصية": "ti-user", "الوظيفة": "ti-briefcase", "الوثائق": "ti-id", "العقد والإجازات": "ti-file-text", "الراتب": "ti-cash", "البنك": "ti-building-bank" }}

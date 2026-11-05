@@ -153,7 +153,7 @@ function ForgotSheet({ onClose }: { onClose: () => void }) {
       <View style={{ alignItems: "center" }}><Icon name="key" size={34} color="#014D3D" stroke={1.8} /></View>
       <T weight={800} size={16} center style={{ marginVertical: 8 }}>استرجاع بيانات الدخول</T>
       <T size={13} color="#555" style={{ marginBottom: 10 }}>
-        {mode === "user" ? "اكتب اسم المستخدم وسنرسل لك كلمة مرور مؤقتة على الإيميل المسجّل." : "اكتب رقم الإقامة / الهوية وسنرسل لك اسم المستخدم وكلمة مرور مؤقتة على الإيميل المسجّل."}
+        {mode === "user" ? "اكتب اسم المستخدم وسنرسل لك كلمة مرور مؤقتة على بريدك الإلكتروني المسجّل." : "اكتب رقم الإقامة / الهوية وسنرسل لك اسم المستخدم وكلمة مرور مؤقتة على بريدك الإلكتروني المسجّل."}
       </T>
       <TextInput value={v} onChangeText={setV} autoCapitalize="none" keyboardType={mode === "iq" ? "number-pad" : "default"} placeholder={tr(mode === "user" ? "اسم المستخدم" : "رقم الإقامة")}
         style={{ borderWidth: 1, borderColor: "#ccc", borderRadius: 10, padding: 11, fontSize: 15, textAlign: inputAlign(), fontFamily: fonts.medium }} />

@@ -86,7 +86,7 @@ export const CAT: Record<AssetCategory, [string, string, number]> = {
 export const CATS = Object.keys(CAT) as AssetCategory[];
 
 export const STS: Record<AssetStatus, [string, string]> = {
-  active: ["شغال", "Active"],
+  active: ["قيد الاستخدام", "Active"],
   sold: ["مباع", "Sold"],
   disposed: ["مستبعد", "Disposed"],
   lost: ["مفقود", "Lost"],

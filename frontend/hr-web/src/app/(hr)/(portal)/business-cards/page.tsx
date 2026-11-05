@@ -165,7 +165,7 @@ export default function Page() {
     setBusy(true);
     try {
       await saveEmployeeDesign(current.id, null);
-      toast("رجعت البطاقة لتصميم الشركة", "ok");
+      toast("أُعيدت البطاقة إلى تصميم الشركة", "ok");
       await load();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : String(e), "err");

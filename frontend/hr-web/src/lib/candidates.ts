@@ -125,7 +125,7 @@ export const FILE_LABEL: Record<string, string> = {
 /** The twenty-one fields the drawer prints, in the design's order. */
 export const FIELDS: [keyof CandidateData, string][] = [
   ["nameAr", "الاسم"], ["nameEn", "بالإنجليزي"], ["nationality", "الجنسية"], ["dob", "الميلاد"],
-  ["mobile", "الجوال"], ["email", "الإيميل"], ["idNo", "الهوية/الإقامة"], ["idExpiry", "انتهاؤها"],
+  ["mobile", "الجوال"], ["email", "البريد الإلكتروني"], ["idNo", "الهوية/الإقامة"], ["idExpiry", "انتهاؤها"],
   ["passportNo", "الجواز"], ["passportExpiry", "انتهاؤه"], ["position", "الوظيفة"], ["education", "المؤهل"],
   ["experienceYears", "سنوات الخبرة"], ["currentEmployer", "جهة العمل الحالية"], ["expectedSalary", "الراتب المتوقع"],
   ["availability", "جاهزية المباشرة"], ["city", "المدينة"], ["address", "العنوان"], ["bank", "البنك"],

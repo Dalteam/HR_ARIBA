@@ -83,7 +83,7 @@ export default function Page() {
   const short = (s: string) => s.split(" ").slice(0, 3).join(" ");
   const tot = (r: PayRow) => (Number(r.insEmp) || 0) + (Number(r.insEr) || 0);
   function xlsx() {
-    if (!data.rows.length) return toast(T("لا يوجد موظفين", "No employees"), "err");
+    if (!data.rows.length) return toast(T("لا يوجد موظفون", "No employees"), "err");
     const hh = [T("م", "#"), T("الرقم", "No."), T("الاسم", "Employee"), T("جهة العمل", "Employer"), T("الجنسية", "Nationality"), T("حالة التأمينات", "Status"), T("الأجر الخاضع", "Insurable wage"), T("أيام التأمينات", "Ins. days"), T("حصة الموظف", "Employee share"), T("حصة الشركة", "Company share"), T("الإجمالي", "Total")];
     const rows = [[T("حاسبة التأمينات الاجتماعية — ", "Social insurance calculation — ") + mn + " " + m.y], [], hh, ...data.rows.map((x, i) => [i + 1, x.empNo, short(x.name), x.employer, x.nat, x.insStatus, r2(x.insBase), x.insDays, r2(x.insEmp), r2(x.insEr), r2(tot(x))]), [T("الإجمالي", "Total"), "", "", "", "", "", "", "", r2(data.tot.emp), r2(data.tot.co), r2(data.tot.total)]];
     const blob = buildXlsx([{ name: T("التأمينات", "Insurance"), rows, widths: [6, 10, 28, 14, 14, 16, 14, 12, 14, 14, 14] }]);
@@ -91,7 +91,7 @@ export default function Page() {
   }
   function gosi(csv: boolean) {
     const rows = data.rows.filter((x) => x.insStatus !== "غير خاضع" && x.insStatus !== "لا يطبق" && Number(x.insBase) > 0);
-    if (!rows.length) return toast(T("لا يوجد مشتركين خاضعين في هذا الشهر", "No subject subscribers this month"), "err");
+    if (!rows.length) return toast(T("لا يوجد مشتركون خاضعين في هذا الشهر", "No subject subscribers this month"), "err");
     const idOf = (id: string) => docs.find((x) => String(x.id) === String(id))?.national_id ?? "";
     const h = [T("رقم الهوية/الإقامة", "ID / Iqama"), T("اسم المشترك", "Subscriber name"), T("الجنسية", "Nationality"), T("تاريخ الميلاد", "Date of birth"), T("تاريخ الالتحاق", "Joining date"), T("الأجر الأساسي", "Basic wage"), T("بدل السكن", "Housing"), T("الأجر الخاضع", "Insurable wage"), T("أيام الاشتراك", "Days"), T("حصة المشترك", "Employee share"), T("حصة المنشأة", "Employer share"), T("الإجمالي", "Total")];
     const body = rows.map((x) => { const e = byId.get(String(x.id)); return [idOf(x.id), short(x.name), x.nat, String(e?.birth_date ?? "").slice(0, 10), String(e?.join_date ?? "").slice(0, 10), r2(e?.basic_salary), r2(e?.housing_allowance), r2(x.insBase), x.insDays, r2(x.insEmp), r2(x.insEr), r2(tot(x))] as (string | number)[]; });
@@ -103,7 +103,7 @@ export default function Page() {
     saveBlob({ blob, name: name + ".xlsx", mime: blob.type });
   }
   function print() {
-    if (!data.rows.length) return toast(T("لا يوجد موظفين", "No employees"), "err");
+    if (!data.rows.length) return toast(T("لا يوجد موظفون", "No employees"), "err");
     const title = T("حاسبة التأمينات الاجتماعية — ", "Social insurance calculation — ") + mn + " " + m.y;
     const th = "background:#014D3D;color:#fff;padding:4px 3px;font-size:9px;text-align:center;border:1px solid #014D3D", td = "padding:3px 4px;border:1px solid #d9e3df;text-align:center;font-size:9.5px", tdn = "padding:3px 4px;border:1px solid #d9e3df;text-align:right;font-size:9.5px;font-weight:700";
     let body = "", i = 0, cur: string | null = null, grp: { emp: number; co: number; total: number; n: number } | null = null;
@@ -147,7 +147,7 @@ export default function Page() {
       <div className="card" style={{ padding: 14 }}>
         <div className="ct" style={{ marginBottom: 10 }}><i className="ti ti-shield-check" /> {T("حاسبة التأمينات الاجتماعية الشهرية", "Monthly social insurance calculator")}</div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div>{L(T("التاريخ (الشهر اللي هيتحسب)", "Date (month to calculate)"))}<DateField value={date} onChange={(v) => setDate(v)} style={INP} /></div>
+          <div>{L(T("التاريخ (الشهر المراد احتسابه)", "Date (month to calculate)"))}<DateField value={date} onChange={(v) => setDate(v)} style={INP} /></div>
           <div style={{ display: "flex", gap: 6 }}>
             <button type="button" className="btn bsm" onClick={() => shift(-1)}>‹</button>
             <button type="button" className="btn bsm" onClick={() => setDate(todayIso())}>{T("الشهر الحالي", "This month")}</button>
@@ -171,7 +171,7 @@ export default function Page() {
         <Kpi l={T("عدد الموظفين", "Employees")} v={data.rows.length} c="var(--cy)" />
       </div>
       <div className="card" style={{ padding: 0, overflow: "auto" }}>
-        {!calc ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>…</div> : !data.rows.length ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>{T("لا يوجد موظفين", "No employees")}</div> : (
+        {!calc ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>…</div> : !data.rows.length ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>{T("لا يوجد موظفون", "No employees")}</div> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>{head.map((x) => <th key={x} style={{ background: "var(--c2)", padding: "7px 8px", textAlign: "right", fontSize: 10.5, fontWeight: 700, borderBottom: "2px solid var(--bl)", whiteSpace: "nowrap" }}>{x}</th>)}</tr></thead>
             <tbody>{out}</tbody>

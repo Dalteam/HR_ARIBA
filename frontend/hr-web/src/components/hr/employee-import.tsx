@@ -56,12 +56,12 @@ export function EmployeeImport({ onClose, onDone }: { onClose: () => void; onDon
     if (!file) return;
     setFailed([]);
     if (file.size > MAX_BYTES) {
-      toast(T("الملف أكبر من 5 ميجا — قسّمه", "The file is larger than 5 MB — split it"), "err");
+      toast(T("الملف أكبر من 5 ميغابايت — قسّمه إلى ملفات أصغر", "The file is larger than 5 MB — split it"), "err");
       return;
     }
     try {
       const read = await readFile(file);
-      if (!read.length || !read[0].rows.length) throw new Error(T("الملف فاضي", "the file is empty"));
+      if (!read.length || !read[0].rows.length) throw new Error(T("الملف فارغ", "the file is empty"));
       let best = 0;
       read.forEach((s, i) => {
         if (s.rows.length > (read[best]?.rows.length ?? 0)) best = i;
@@ -88,7 +88,7 @@ export function EmployeeImport({ onClose, onDone }: { onClose: () => void; onDon
 
   async function run() {
     if (!todo.length) {
-      toast(T("مفيش حاجة تتضاف أو تتحدّث", "Nothing to add or update"), "info");
+      toast(T("لا يوجد ما يُضاف أو يُحدَّث", "Nothing to add or update"), "info");
       return;
     }
     setBusy(true);
@@ -118,7 +118,7 @@ export function EmployeeImport({ onClose, onDone }: { onClose: () => void; onDon
     // something failed: re-read the list so the preview shows what really exists now
     if (errors.length) employees.reload();
     const done = T(
-      `اتضاف ${added} موظف${updated ? ` واتحدّث ${updated}` : ""}${errors.length ? ` — ${errors.length} مرفوض: ${errors[0]}` : ""}`,
+      `أُضيف ${added} موظف${updated ? ` وحُدِّث ${updated}` : ""}${errors.length ? ` — ${errors.length} مرفوض: ${errors[0]}` : ""}`,
       `Added ${added}${updated ? `, updated ${updated}` : ""}${errors.length ? `, rejected ${errors.length}: ${errors[0]}` : ""}`,
     );
     toast((errors.length ? "" : "✓ ") + done, errors.length ? "err" : "ok");
@@ -165,7 +165,7 @@ export function EmployeeImport({ onClose, onDone }: { onClose: () => void; onDon
       </div>
       <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 10, lineHeight: 1.8 }}>
         {T(
-          "الموظف الموجود بيتعرّف عليه بالرقم الوظيفي فقط، لأن قائمة الموظفين بتخفي رقم الهوية والبريد.",
+          "يُتعرَّف على الموظف الموجود بالرقم الوظيفي فقط، لأن قائمة الموظفين تُخفي رقم الهوية والبريد.",
           "An existing employee is recognised by employee number only, because our employee list masks the ID and the e-mail.",
         )}
       </div>

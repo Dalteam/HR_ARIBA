@@ -135,7 +135,7 @@ export function build(v: Values, ctx: Ctx, forUpdate: boolean): Built {
   const nameAr = String(v.nameAr ?? "").trim() || String(v.nameEn ?? "").trim();
   const nameEn = String(v.nameEn ?? "").trim();
   if (nameAr.length >= 2) body.name_ar = nameAr;
-  else if (nameAr) warns.push(t(`الاسم «${nameAr}» أقصر من حرفين — اتساب`, `Name "${nameAr}" is shorter than two letters — left out`));
+  else if (nameAr) warns.push(t(`الاسم «${nameAr}» أقصر من حرفين — تُرك`, `Name "${nameAr}" is shorter than two letters — left out`));
   if (nameEn) body.name_en = nameEn;
 
   if (!forUpdate) {
@@ -164,15 +164,15 @@ export function build(v: Values, ctx: Ctx, forUpdate: boolean): Built {
     const raw = v[from];
     if (raw === undefined || raw === "") continue;
     if (to === "mobile" && !MOBILE.test(String(raw))) {
-      warns.push(t(`الجوال «${raw}» غير صالح — اتساب`, `Mobile "${raw}" is not valid — left out`));
+      warns.push(t(`الجوال «${raw}» غير صالح — تُرك`, `Mobile "${raw}" is not valid — left out`));
       continue;
     }
     if (to === "email" && !EMAIL.test(String(raw))) {
-      warns.push(t(`البريد «${raw}» غير صالح — اتساب`, `E-mail "${raw}" is not valid — left out`));
+      warns.push(t(`البريد «${raw}» غير صالح — تُرك`, `E-mail "${raw}" is not valid — left out`));
       continue;
     }
     if (to === "iban" && !IBAN.test(String(raw))) {
-      warns.push(t(`الآيبان «${raw}» غير صالح — اتساب`, `IBAN "${raw}" is not valid — left out`));
+      warns.push(t(`الآيبان «${raw}» غير صالح — تُرك`, `IBAN "${raw}" is not valid — left out`));
       continue;
     }
     body[to] = String(raw) as never;
@@ -195,7 +195,7 @@ export function build(v: Values, ctx: Ctx, forUpdate: boolean): Built {
   const gosi = String(v.insSystem ?? "");
   if (gosi === "matching" || gosi === "non_matching" || gosi === "non_saudi") {
     if (nat?.is_saudi && gosi === "non_saudi") {
-      warns.push(t("الجنسية سعودية ونظام التأمينات مكتوب «غير سعودي» — اتحوّل إلى «يطابق»", "A Saudi employee cannot be on the non-Saudi GOSI system — set to matching"));
+      warns.push(t("الجنسية سعودية ونظام التأمينات مسجّل «غير سعودي» — حُوِّل إلى «يطابق»", "A Saudi employee cannot be on the non-Saudi GOSI system — set to matching"));
       body.gosi_system = "matching";
     } else body.gosi_system = gosi;
   }
@@ -215,7 +215,7 @@ export function build(v: Values, ctx: Ctx, forUpdate: boolean): Built {
 
   const rate = Number(v.exchRate ?? 0);
   if (rate > 0) body.exchange_rate = String(rate);
-  if (currency && currency !== "SAR" && !(rate > 0)) warns.push(t("العملة أجنبية وسعر الصرف ناقص — خُد 1", "Foreign currency without an exchange rate — taken as 1"));
+  if (currency && currency !== "SAR" && !(rate > 0)) warns.push(t("العملة أجنبية وسعر الصرف ناقص — اعتُمد 1", "Foreign currency without an exchange rate — taken as 1"));
 
   const religion = String(v.religion ?? "");
   if (religion) body.religion = religion as never;
@@ -254,12 +254,12 @@ export function planRows(body: string[][], map: (FieldKey | "")[], ctx: Ctx): Pl
     // outside what the API accepts for these numbers: drop the cell and say so
     const months = Number(v.contractDuration ?? 0);
     if (months > 120) {
-      warns.push(t("مدة العقد أكبر من 120 شهر — اتشالت", "Contract duration over 120 months — left out"));
+      warns.push(t("مدة العقد أكبر من 120 شهرًا — حُذفت", "Contract duration over 120 months — left out"));
       delete v.contractDuration;
     }
     const leave = Number(v.leaveDaysContract ?? -1);
     if (leave > 60) {
-      warns.push(t("الإجازة السنوية أكبر من 60 يوم — اتشالت", "Annual leave over 60 days — left out"));
+      warns.push(t("الإجازة السنوية أكبر من 60 يومًا — حُذفت", "Annual leave over 60 days — left out"));
       delete v.leaveDaysContract;
     }
 
@@ -275,21 +275,21 @@ export function planRows(body: string[][], map: (FieldKey | "")[], ctx: Ctx): Pl
       if (!v.contractJoin) issues.push(t("تاريخ المباشرة مطلوب", "The joining date is required"));
     }
     if (v.empNo && !EMP_NO.test(normalEmpNo(v.empNo))) issues.push(t(`الرقم الوظيفي «${v.empNo}» غير مقبول (مثال emp047)`, `Employee number "${v.empNo}" is not accepted (like emp047)`));
-    if (v.iqamaNo && !/^\d{10}$/.test(String(v.iqamaNo))) issues.push(t("رقم الهوية لازم 10 أرقام", "The ID must be 10 digits"));
-    if (v.contractNature === "fixed" && !(months >= 1)) issues.push(t("العقد محدد المدة ومحتاج عدد الشهور", "A fixed-term contract needs its months"));
+    if (v.iqamaNo && !/^\d{10}$/.test(String(v.iqamaNo))) issues.push(t("يجب أن يتكون رقم الهوية من 10 أرقام", "The ID must be 10 digits"));
+    if (v.contractNature === "fixed" && !(months >= 1)) issues.push(t("العقد محدد المدة ويحتاج إلى عدد الشهور", "A fixed-term contract needs its months"));
 
-    if ((keyNo && seenNo.has(keyNo)) || (keyId && seenId.has(keyId))) issues.push(t("مكرر جوه الملف (نفس الرقم الوظيفي أو الهوية)", "Duplicate inside the file (same number or ID)"));
+    if ((keyNo && seenNo.has(keyNo)) || (keyId && seenId.has(keyId))) issues.push(t("مكرر داخل الملف (الرقم الوظيفي أو الهوية نفسها)", "Duplicate inside the file (same number or ID)"));
     if (keyNo) seenNo.set(keyNo, index);
     if (keyId) seenId.set(keyId, index);
 
     const built = build(v, ctx, willUpdate);
     warns.push(...built.warns);
-    if (built.missing.employer) issues.push(t(`جهة العمل «${built.missing.employer}» مش في قوائمنا`, `Employer "${built.missing.employer}" is not in our lists`));
-    if (built.missing.nationality) warns.push(t(`الجنسية «${built.missing.nationality}» مش في قوائمنا — اتسابت فاضية`, `Nationality "${built.missing.nationality}" is not in our lists — left empty`));
-    if (built.missing.department) warns.push(t(`القسم «${built.missing.department}» مش في قوائمنا — اتساب فاضي`, `Department "${built.missing.department}" is not in our lists — left empty`));
-    if (built.missing.manager) warns.push(t(`المدير «${built.missing.manager}» مش موجود — اتساب فاضي`, `Manager "${built.missing.manager}" was not found — left empty`));
+    if (built.missing.employer) issues.push(t(`جهة العمل «${built.missing.employer}» غير موجودة في قوائمنا`, `Employer "${built.missing.employer}" is not in our lists`));
+    if (built.missing.nationality) warns.push(t(`الجنسية «${built.missing.nationality}» غير موجودة في قوائمنا — تُركت فارغة`, `Nationality "${built.missing.nationality}" is not in our lists — left empty`));
+    if (built.missing.department) warns.push(t(`القسم «${built.missing.department}» غير موجود في قوائمنا — تُرك فارغًا`, `Department "${built.missing.department}" is not in our lists — left empty`));
+    if (built.missing.manager) warns.push(t(`المدير «${built.missing.manager}» غير موجود — تُرك فارغًا`, `Manager "${built.missing.manager}" was not found — left empty`));
 
-    if (!willUpdate && v.salary === undefined) warns.push(t("الراتب الأساسي ناقص — هيبدأ بصفر", "Basic salary missing — will start at zero"));
+    if (!willUpdate && v.salary === undefined) warns.push(t("الراتب الأساسي ناقص — سيبدأ بصفر", "Basic salary missing — will start at zero"));
     else if (!willUpdate && Number(v.salary) <= 0) warns.push(t("الراتب الأساسي صفر", "Basic salary is zero"));
     if (!v.nationality && !willUpdate) warns.push(t("الجنسية ناقصة", "Nationality missing"));
 
@@ -298,7 +298,7 @@ export function planRows(body: string[][], map: (FieldKey | "")[], ctx: Ctx): Pl
     if (action === "update" && Object.keys(built.body).length === 0) {
       action = "skip";
       send = null;
-      warns.push(t("مفيش عمود يتحدّث", "No column to update"));
+      warns.push(t("لا يوجد عمود للتحديث", "No column to update"));
     }
 
     plans.push({ row: index + 2, v, action, issues, warns, existing, body: send });

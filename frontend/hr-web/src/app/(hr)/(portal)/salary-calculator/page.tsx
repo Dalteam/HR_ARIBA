@@ -117,7 +117,7 @@ export default function Page() {
           {(mode === "basic" || mode === "target") && <div><Lb t={T("الراتب الأساسي", "Basic salary")} />{numIn("B")}</div>}
           <div><Lb t={T("الجنسية", "Nationality")} /><select value={f.nat} onChange={(e) => set("nat", e.target.value)} style={INP}><option value="sa">{T("سعودي", "Saudi")}</option><option value="ns">{T("غير سعودي", "Non-Saudi")}</option></select></div>
           {sau && <div><Lb t={T("نظام التأمينات / العمل", "Insurance / labor system")} /><select value={f.sys} onChange={(e) => set("sys", e.target.value)} style={INP}><option value="new">{T("الجديد (يطابق)", "New (matching)")}</option><option value="old">{T("القديم (لا يطابق)", "Old (non-matching)")}</option></select></div>}
-          {sau && <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 8 }}><label style={{ fontSize: 12 }}><input type="checkbox" checked={f.a55} onChange={(e) => set("a55", e.target.checked)} /> {T("عمره 55 سنة أو أكتر", "Age 55 or above")}</label></div>}
+          {sau && <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 8 }}><label style={{ fontSize: 12 }}><input type="checkbox" checked={f.a55} onChange={(e) => set("a55", e.target.checked)} /> {T("عمره 55 سنة أو أكثر", "Age 55 or above")}</label></div>}
         </div>
         <div style={{ marginTop: 10, fontWeight: 700, fontSize: 12, color: "var(--mu)" }}>{T("البدلات (كل بدل: نسبة من الأساسي أو مبلغ ثابت)", "Allowances (each one: % of basic or a fixed amount)")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginTop: 6 }}>
@@ -129,12 +129,12 @@ export default function Page() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 10, marginTop: 10, alignItems: "end" }}>
           <div><Lb t={T("تاريخ الحساب (يحدد نسب التأمينات)", "Calculation date (selects the insurance rates)")} /><DateField value={f.date} onChange={(v) => set("date", v)} style={INP} /></div>
-          <div><Lb t={T("نسبة خصم الموظف % (تعدّلها يدوي لو عايز)", "Employee deduction % (editable)")} /><input type="number" step="0.01" value={rateShown} onChange={(e) => set("rate", e.target.value)} style={INP} /></div>
+          <div><Lb t={T("نسبة خصم الموظف % (يمكن تعديلها يدويًا)", "Employee deduction % (editable)")} /><input type="number" step="0.01" value={rateShown} onChange={(e) => set("rate", e.target.value)} style={INP} /></div>
           <div style={{ fontSize: 11, color: "var(--mu)", paddingBottom: 8 }}>{nfo}</div>
         </div>
       </div>
       <div className="card" style={{ padding: 14, maxWidth: 1000, marginTop: 12 }}>
-        {!c ? <div style={{ padding: 22, textAlign: "center", color: "var(--mu)" }}>{T("اكتب الرقم المطلوب فوق وهتظهر النتيجة", "Enter the figure above to see the result")}</div> : (
+        {!c ? <div style={{ padding: 22, textAlign: "center", color: "var(--mu)" }}>{T("اكتب الرقم المطلوب في الأعلى لتظهر النتيجة", "Enter the figure above to see the result")}</div> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               {rows.map(([l, v], i) => <tr key={i}><td style={TD}>{l}</td><td style={{ ...TD, textAlign: "left", fontWeight: 700, direction: "ltr" }}>{money(v)}</td></tr>)}

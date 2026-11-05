@@ -149,7 +149,7 @@ export function EmployeeForm({
     if (!window.confirm(T("استرجاع كل البيانات لآخر قيمة محفوظة؟ ستضيع التعديلات غير المحفوظة.", "Restore every field to its saved value? Unsaved changes are lost."))) return;
     setV(start);
     setWl(wlBase);
-    toast("↺ " + T("رجعت كل البيانات للقيم المحفوظة", "Every field restored"), "info");
+    toast("↺ " + T("أُعيدت كل البيانات إلى القيم المحفوظة", "Every field restored"), "info");
   }
 
   // Photo preview (protected file -> object URL).
@@ -305,7 +305,7 @@ export function EmployeeForm({
     if (!window.confirm(T("حذف هذا المستند نهائيًا؟", "Delete this document for good?"))) return;
     try {
       await deleteDocument(id);
-      toast("✓ " + T("اتحذف", "Deleted"), "ok");
+      toast("✓ " + T("تم الحذف", "Deleted"), "ok");
       docs.reload();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : t("common.error"), "err");
@@ -344,7 +344,7 @@ export function EmployeeForm({
               <div style={{ fontSize: 10.5, color: "var(--mu)", lineHeight: 1.7, marginBottom: 6 }}>
                 {isNew
                   ? T("احفظ الموظف أولًا، ثم اختر مواقع البصمة الخاصة به.", "Save the employee first, then choose their fingerprint locations.")
-                  : T("اختار موقع أو أكتر — الموظف هيبصم في المواقع دي بس. لو سيبتها فاضية، هيبصم في مواقع جهة عمله زي الأول.", "Pick one or more — the employee punches only there. Left empty, they punch at their workplace's locations as before.")}
+                  : T("اختر موقعًا أو أكثر — سيبصم الموظف في هذه المواقع فقط. وإذا تُركت فارغة فسيبصم في مواقع جهة عمله كما كان.", "Pick one or more — the employee punches only there. Left empty, they punch at their workplace's locations as before.")}
               </div>
               {!isNew && (
                 <div id="WL_LIST" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: "4px 12px" }}>
@@ -354,7 +354,7 @@ export function EmployeeForm({
                       <span>{l.name}</span>
                       <span style={{ fontSize: 9.5, background: "rgba(41,179,94,.15)", color: "#1f9a4f", borderRadius: 8, padding: "0 6px" }}>{l.type === "hq" ? T("مقر رئيسي", "HQ") : T("مشروع", "Project")}</span>
                     </label>
-                  )) : <div style={{ fontSize: 11, color: "var(--mu)" }}>{T("مفيش مواقع بصمة — أضف من \"مواقع البصمة\".", "No fingerprint locations — add them on the locations page.")}</div>}
+                  )) : <div style={{ fontSize: 11, color: "var(--mu)" }}>{T("لا توجد مواقع بصمة — أضفها من «مواقع البصمة».", "No fingerprint locations — add them on the locations page.")}</div>}
                 </div>
               )}
             </div>

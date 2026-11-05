@@ -31,7 +31,7 @@ export function PageExport({ title }: { title: string }) {
 
   return (
     <>
-      <button className="ib" id="PAGE_EXPORT" type="button" onClick={open} title={T("تصدير هذه الصفحة (Excel / PDF / Word / إيميل)", "Export this page (Excel / PDF / Word / e-mail)")}>
+      <button className="ib" id="PAGE_EXPORT" type="button" onClick={open} title={T("تصدير هذه الصفحة (Excel / PDF / Word / بريد إلكتروني)", "Export this page (Excel / PDF / Word / e-mail)")}>
         <i className="ti ti-file-export" />
       </button>
       {specs && !cur && (
@@ -99,7 +99,7 @@ export function ExportDialog({ spec, onClose }: { spec: ExportSpec; onClose: () 
           <i className="ti ti-download" /> {busy ? "…" : T("تنزيل", "Download")}
         </button>
       </div>
-      <div className="fsec">{T("إرسال بالإيميل تلقائياً (بدون فتح برنامج بريد)", "Send by e-mail automatically (no mail program needed)")}</div>
+      <div className="fsec">{T("إرسال بالبريد الإلكتروني تلقائيًا (دون فتح برنامج بريد)", "Send by e-mail automatically (no mail program needed)")}</div>
       <div className="al alb" id="XD_MAIL_PENDING" style={{ marginTop: 6 }}>
         <i className="ti ti-hourglass" aria-hidden />
         <div>

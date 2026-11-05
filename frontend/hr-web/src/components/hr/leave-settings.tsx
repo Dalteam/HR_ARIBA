@@ -43,7 +43,7 @@ export function LeavePolicyCard() {
     setBusy(true);
     try {
       setV(await putLeavePolicy(v));
-      toast("✓ " + T("اتحفظت سياسة الإجازات", "Leave policy saved"), "ok");
+      toast("✓ " + T("تم حفظ سياسة الإجازات", "Leave policy saved"), "ok");
     } catch (e) {
       toast(err(e), "err");
     } finally {
@@ -104,7 +104,7 @@ export function WorkflowCard() {
         extra_hr_emails: emails.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean),
       });
       setW({ ...w, ...saved });
-      toast("✓ " + T("اتحفظت إعدادات سير الطلبات", "Workflow settings saved"), "ok");
+      toast("✓ " + T("تم حفظ إعدادات سير الطلبات", "Workflow settings saved"), "ok");
     } catch (e) {
       toast(err(e), "err");
     } finally {
@@ -236,7 +236,7 @@ export function LeaveRulesCard() {
         accrual: { method: v.accrual.method },
         rights: v.rights,
       }));
-      toast("✓ " + T("اتحفظت قواعد الإجازات", "Leave rules saved"), "ok");
+      toast("✓ " + T("تم حفظ قواعد الإجازات", "Leave rules saved"), "ok");
     } catch (e) {
       toast(err(e), "err");
     } finally {

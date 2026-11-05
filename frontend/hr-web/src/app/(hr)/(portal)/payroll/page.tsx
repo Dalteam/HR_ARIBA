@@ -313,14 +313,14 @@ export default function Page() {
   }
 
   async function reopen(reason: string) {
-    if (reason.length < 5) return toast("اكتب سبب واضح (5 حروف على الأقل)", "err");
+    if (reason.length < 5) return toast("اكتب سببًا واضحًا (5 أحرف على الأقل)", "err");
     setDlg(null);
     try {
       await unapproveSheet(key, reason);
       setApproved(false);
       setApprovedAt(null);
       setStTick((n) => n + 1);
-      toast("✓ اتفتح المسير", "ok");
+      toast("✓ أُعيد فتح المسير", "ok");
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), "err");
     }
@@ -440,7 +440,7 @@ export default function Page() {
         setRows(sheet.approved ? saved.map((row) => recalc(cloneRow(row), empMap.get(String(row.id)), m, rates)) : buildRows(basis, m, saved).map((row) => recalc(row, empMap.get(String(row.id)), m, rates)));
         setApproved(sheet.approved);
         setApprovedAt(sheet.approved_at);
-        toast("🔄 اتحدّث المسير من مستخدم تاني", "info");
+        toast("🔄 حدّث مستخدم آخر المسير", "info");
       })
       .catch(() => undefined);
   };
@@ -676,7 +676,7 @@ export default function Page() {
       ? "جهّزه " + (pst?.prepared_by || "الموارد البشرية") + " — " + when(pst?.prepared_at) + (pst?.prepare_note ? " — " + pst.prepare_note : "") + " — بانتظار اعتماد المالية"
       : state === "reopened"
         ? "فتحه " + (pst?.reopened_by || "") + " — " + when(pst?.reopened_at) + (pst?.reopen_reason ? " — السبب: " + pst.reopen_reason : "")
-        : canPrepare ? "جهّز المسير ثم أرسله للمالية للاعتماد" : "مستني تجهيز الموارد البشرية";
+        : canPrepare ? "جهّز المسير ثم أرسله للمالية للاعتماد" : "بانتظار تجهيز الموارد البشرية";
   // the design's rule (the API enforces it): finance approves a prepared month only
   const approveBlocked = user?.role === "finance" && state !== "prepared";
   const kpis: [string, string, string][] = [
@@ -875,7 +875,7 @@ function PrintCols({ onClose, onPrint }: { onClose: () => void; onPrint: (keys: 
         </div>
       }
     >
-      <div style={{ fontSize: 12, color: "var(--mu)", marginBottom: 8 }}>علّم الأعمدة المطلوبة في الورقة المطبوعة فقط. اختيارك بيتحفظ للمرات الجاية.</div>
+      <div style={{ fontSize: 12, color: "var(--mu)", marginBottom: 8 }}>علّم الأعمدة المطلوبة في الورقة المطبوعة فقط. يُحفظ اختيارك للمرات القادمة.</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(170px,1fr))", gap: 6 }}>
         {PRINT_COLS.map((c) => (
           <label key={c.k} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", border: "1px solid var(--bd)", borderRadius: 8, cursor: "pointer", background: on.has(c.k) ? "rgba(41,179,94,.12)" : "transparent", fontSize: 12 }}>

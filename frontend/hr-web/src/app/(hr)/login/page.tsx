@@ -98,7 +98,7 @@ function HrLogin() {
       const next = params.get("next");
       router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : homeFor(user.role));
     } catch (x) {
-      setErr((x instanceof ApiError ? x.message : T("تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول تاني.", "Could not reach the server. Check your connection.")));
+      setErr((x instanceof ApiError ? x.message : T("تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مرة أخرى.", "Could not reach the server. Check your connection.")));
     } finally {
       setBusy(false);
     }
@@ -225,7 +225,7 @@ function ForgotDialog({ onClose }: { onClose: () => void }) {
     } catch (x) {
       if (x instanceof ApiError && x.status === 404) setMsg({ t: T("الخدمة غير متاحة حاليًا. كلّم الموارد البشرية.", "The service is unavailable right now. Contact HR."), ok: false });
       else if (x instanceof ApiError) setMsg({ t: x.message || T("تعذر تنفيذ الطلب", "Request failed"), ok: false });
-      else setMsg({ t: T("تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول تاني.", "Could not reach the server. Check your connection."), ok: false });
+      else setMsg({ t: T("تعذر الاتصال بالخادم. تأكد من الإنترنت وحاول مرة أخرى.", "Could not reach the server. Check your connection."), ok: false });
     }
     setBusy(false);
   }
@@ -237,8 +237,8 @@ function ForgotDialog({ onClose }: { onClose: () => void }) {
         <div style={{ fontWeight: 800, fontSize: 16, margin: "8px 0", textAlign: "center" }}>{T("استرجاع بيانات الدخول", "Recover your login")}</div>
         <div style={{ fontSize: 13, color: "#555", marginBottom: 10 }}>
           {mode === "user"
-            ? T("اكتب اسم المستخدم وهنبعتلك كلمة مرور مؤقتة على الإيميل المسجّل.", "Enter your username and we will email you a temporary password.")
-            : T("اكتب رقم الإقامة وهنبعتلك اسم المستخدم وكلمة مرور مؤقتة على الإيميل المسجّل.", "Enter your Iqama number and we will email you your username and a temporary password.")}
+            ? T("اكتب اسم المستخدم وسنرسل لك كلمة مرور مؤقتة على بريدك الإلكتروني المسجّل.", "Enter your username and we will email you a temporary password.")
+            : T("اكتب رقم الإقامة وسنرسل لك اسم المستخدم وكلمة مرور مؤقتة على بريدك الإلكتروني المسجّل.", "Enter your Iqama number and we will email you your username and a temporary password.")}
         </div>
         <label style={{ fontSize: 12, color: "#444", fontWeight: 700 }}>{mode === "user" ? T("اسم المستخدم", "Username") : T("رقم الإقامة", "Iqama number")}</label>
         <input

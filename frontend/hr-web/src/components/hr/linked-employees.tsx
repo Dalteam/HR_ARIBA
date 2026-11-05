@@ -45,7 +45,7 @@ export function LinkedEmployees({ locs }: { locs: Location[] }) {
   return (
     <div className="card" style={{ marginTop: 12 }}>
       <div className="ct" style={{ padding: "0 0 8px" }}><i className="ti ti-users" /> الموظفين المربوطين بمواقع البصمة</div>
-      <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>الموظف هيبصم في المواقع دي بس. لو سيبتها فاضية، هيبصم في مواقع جهة عمله زي الأول.</div>
+      <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>سيبصم الموظف في هذه المواقع فقط. وإذا تُركت فارغة فسيبصم في مواقع جهة عمله كما كان.</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 10 }}>
         <select value={emp} onChange={(e) => choose(e.target.value)} style={{ minWidth: 220 }}>
           <option value="">اختر...</option>
@@ -53,7 +53,7 @@ export function LinkedEmployees({ locs }: { locs: Location[] }) {
         </select>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", flex: 1 }}>
           {sites.length === 0 ? (
-            <span style={{ fontSize: 11, color: "var(--mu)" }}>مفيش مواقع بصمة — أضف من مواقع البصمة</span>
+            <span style={{ fontSize: 11, color: "var(--mu)" }}>لا توجد مواقع بصمة — أضفها من «مواقع البصمة»</span>
           ) : (
             sites.map((l) => (
               <label key={l.id} style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}>
@@ -69,7 +69,7 @@ export function LinkedEmployees({ locs }: { locs: Location[] }) {
           <thead><tr><th>الموظف</th><th>الموقع</th></tr></thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={2} style={{ textAlign: "center", color: "var(--mu)" }}>لا يوجد موظفين مربوطين بمواقع محددة</td></tr>
+              <tr><td colSpan={2} style={{ textAlign: "center", color: "var(--mu)" }}>لا يوجد موظفون مربوطون بمواقع محددة</td></tr>
             ) : (
               rows.map((r) => <tr key={r.employee_id}><td>{r.name_ar}</td><td>{r.location_ids.map(name).join("، ")}</td></tr>)
             )}

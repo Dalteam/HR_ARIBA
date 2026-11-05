@@ -78,7 +78,7 @@ export function ScheduleCard() {
         ramadan_auto: v.ramadan_auto, ramadan_from: v.ramadan_from, ramadan_to: v.ramadan_to,
       });
       setV(saved);
-      toast("✓ " + T("اتحفظ جدول الدوام", "Working schedule saved"), "ok");
+      toast("✓ " + T("تم حفظ جدول الدوام", "Working schedule saved"), "ok");
     } catch (e) {
       toast(err(e), "err");
     } finally {

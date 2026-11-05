@@ -102,7 +102,7 @@ export default function Page() {
     printDoc(title, tfWrap(title, "", html));
   }
   function xlsx() {
-    if (!rows.length) return toast(T("لا يوجد موظفين", "No employees"), "err");
+    if (!rows.length) return toast(T("لا يوجد موظفون", "No employees"), "err");
     const head = [T("الرقم", "No."), T("الاسم", "Employee"), T("جهة العمل", "Employer"), T("تاريخ المباشرة", "Joined"), T("مدة الخدمة", "Service"), T("أجر أساسي + سكن", "Basic + housing"), T("مخصص نهاية الخدمة", "EOS provision"), T("أيام الإجازة", "Leave days"), T("مخصص الإجازات", "Leave provision"), T("الإجمالي", "Total"), T("زيادة نهاية الخدمة", "EOS increase"), T("زيادة الإجازات", "Leave increase"), T("زيادة الشهر", "Month increase")];
     const d: (string | number)[][] = rows.map((r) => [r.no, r.name, r.employer, r.join, r.svc, r2(r.base), r2(r.eos), r2(r.leaveDays), r2(r.leave), r2(r.total), r2(r.incEos), r2(r.incLeave), r2(r.incTotal)]);
     d.push([T("الإجمالي", "Total"), "", "", "", "", "", r2(tot.eos), "", r2(tot.leave), r2(tot.total), r2(tot.incEos), r2(tot.incLeave), r2(tot.incTotal)]);
@@ -136,7 +136,7 @@ export default function Page() {
         <Kpi l={T("المطلوب توفيره عن هذا الشهر", "To set aside for this month")} v={money(tot.incTotal)} c="var(--cy)" unit={T("ر.س", "SAR")} />
       </div>
       <div className="card" style={{ padding: 0, overflow: "auto" }}>
-        {!calc || calc.key !== key ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>…</div> : !rows.length ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>{T("لا يوجد موظفين", "No employees")}</div> : (
+        {!calc || calc.key !== key ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>…</div> : !rows.length ? <div style={{ padding: 26, textAlign: "center", color: "var(--mu)" }}>{T("لا يوجد موظفون", "No employees")}</div> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr>{heads.map((x) => <th key={x} style={{ background: "var(--c2)", padding: "7px 8px", textAlign: "right", fontSize: 10.5, fontWeight: 700, borderBottom: "2px solid var(--bl)", whiteSpace: "nowrap" }}>{x}</th>)}</tr></thead>
             <tbody>

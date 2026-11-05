@@ -45,7 +45,7 @@ export function PermsCard({ onChanged }: { onChanged?: () => void }) {
     setBusy(true);
     try {
       await setLevel(role, module, level);
-      toast("✓ " + T("اتحفظت الصلاحية", "Permission saved"), "ok");
+      toast("✓ " + T("تم حفظ الصلاحية", "Permission saved"), "ok");
       const key = role + "." + module;
       setSaved(key);
       setTimeout(() => setSaved((current) => (current === key ? "" : current)), 4000);

@@ -227,7 +227,7 @@ function AppLinksCard({ initial, run }: { initial: AppLinks | null; run: Run }) 
         <i className="ti ti-link" /> <span>روابط الإشعارات</span>
       </div>
       <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>
-        الروابط التي تُرسل داخل إيميلات الإشعارات: الموارد البشرية تستلم رابط بوابة HR، وباقي الموظفين رابط تطبيق الموظف.
+        الروابط التي تُرسل داخل رسائل البريد للإشعارات: الموارد البشرية تستلم رابط بوابة HR، وباقي الموظفين رابط تطبيق الموظف.
         اتركها فارغة لاستخدام الرابط الافتراضي{form.fallback ? ` (${form.fallback})` : ""}.
       </div>
       <div className="fg">
@@ -456,7 +456,7 @@ function RolesCard({ emps, accounts, run }: { emps: EmployeeListItem[]; accounts
           <thead>
             <tr>
               <th>الاسم</th>
-              <th>اليوزر</th>
+              <th>اسم المستخدم</th>
               <th>الصلاحية</th>
             </tr>
           </thead>
@@ -492,7 +492,7 @@ function PasswordsCard({ emps }: { emps: EmployeeListItem[] }) {
   const list = emps.filter((e) => !q || e.name_ar.includes(q) || e.emp_no.includes(q));
   async function reset() {
     const e = emps.find((x) => x.id === emp);
-    if (!e) return toast("اختر الموظف الأول", "err");
+    if (!e) return toast("اختر الموظف أولًا", "err");
     if (!window.confirm(`سيتم إنشاء كلمة مرور مؤقتة جديدة للموظف ${e.name_ar}، وسيتم إلغاء كلمة المرور الحالية. هل أنت متأكد؟`)) return;
     try {
       let t;
@@ -522,7 +522,7 @@ function PasswordsCard({ emps }: { emps: EmployeeListItem[] }) {
         </div>
         <div>
           <b>إعادة تعيين كلمة مرور موظف</b>
-          <div style={{ fontSize: 11, color: "var(--mu)", margin: "4px 0 8px" }}>بتطلع كلمة مرور مؤقتة، والقديمة بتبطل، والموظف بيغيّرها أول ما يدخل تطبيق الموظف.</div>
+          <div style={{ fontSize: 11, color: "var(--mu)", margin: "4px 0 8px" }}>تُنشأ كلمة مرور مؤقتة وتُلغى القديمة، ويغيّرها الموظف عند أول دخول إلى تطبيق الموظف.</div>
           <input placeholder="بحث بالاسم أو الرقم الوظيفي" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 6 }} />
           <select value={emp} onChange={(e) => setEmp(e.target.value)}>
             <option value="">اختر الموظف</option>
@@ -599,7 +599,7 @@ function SignerCard({ signer, emps, run }: { signer: Signer; emps: EmployeeListI
         <i className="ti ti-signature" /> مدير الموارد البشرية والتوقيع والختم (لكل النماذج)
       </div>
       <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 10, lineHeight: 1.7 }}>
-        الاسم والمسمى والتوقيع والختم اللي هنا بيظهروا في كل النماذج وخطابات الراتب بعد كده (على يسار الورقة في العربي، وعلى اليمين في الإنجليزي). الافتراضي: عبد الله العنبر بتوقيعه الأصلي والختم الرسمي.
+        يظهر الاسم والمسمى والتوقيع والختم المحددة هنا في جميع النماذج وخطابات الراتب من الآن فصاعدًا (على يسار الورقة في النسخة العربية، وعلى يمينها في الإنجليزية). الافتراضي: عبد الله العنبر بتوقيعه الأصلي والختم الرسمي.
       </div>
       <div className="fg">
         <div>
@@ -625,7 +625,7 @@ function SignerCard({ signer, emps, run }: { signer: Signer; emps: EmployeeListI
           <label>توقيع المدير المختار</label>
           <input type="file" accept="image/png,image/jpeg" onChange={(e) => pick("signature", e.target.files?.[0])} />
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {s.signature ? <img src={s.signature} alt="" style={{ maxHeight: 50, marginTop: 6, background: "#fff" }} /> : <div style={{ fontSize: 10, color: "var(--mu)" }}>لسه ما اترفعش توقيع للمدير ده — هيظهر اسمه بخط للتوقيع لحد ما ترفعه.</div>}
+          {s.signature ? <img src={s.signature} alt="" style={{ maxHeight: 50, marginTop: 6, background: "#fff" }} /> : <div style={{ fontSize: 10, color: "var(--mu)" }}>لم يُرفع توقيع لهذا المدير بعد — سيظهر اسمه مع سطر للتوقيع حتى ترفعه.</div>}
         </div>
         <div>
           <label>ختم الشركة</label>
@@ -652,7 +652,7 @@ function SignerCard({ signer, emps, run }: { signer: Signer; emps: EmployeeListI
           </button>
         )}
       </div>
-      <button type="button" className="btn bpl" style={{ marginTop: 10 }} onClick={() => run(() => putSheet("hr_signer", s), "اتحفظ على السيرفر")}>
+      <button type="button" className="btn bpl" style={{ marginTop: 10 }} onClick={() => run(() => putSheet("hr_signer", s), "تم الحفظ على الخادم")}>
         حفظ
       </button>
     </div>
@@ -728,7 +728,7 @@ function Organizer({ sections, ro }: { sections: Record<string, React.ReactNode[
   const T = (a: string, b: string) => (en ? b : a);
   return (
     <>
-      {ro && <div style={{ margin: "6px 0", fontSize: 11.5, color: "var(--am)" }}>👁 {T("اطلاع فقط — مفيش تعديل في الصفحة دي", "View only — no editing on this page")}</div>}
+      {ro && <div style={{ margin: "6px 0", fontSize: 11.5, color: "var(--am)" }}>👁 {T("اطلاع فقط — لا يمكن التعديل في هذه الصفحة", "View only — no editing on this page")}</div>}
       <fieldset disabled={ro} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <div id="SET_ORG" ref={org} data-l={en ? "en" : "ar"}>
           <div className="so-bar">
@@ -746,7 +746,7 @@ function Organizer({ sections, ro }: { sections: Record<string, React.ReactNode[
               <div className="so-body">{sections[s[0]]}</div>
             </section>
           ))}
-          <div className="so-empty" id="SO_EMPTY">{T("مفيش نتائج مطابقة", "No matching settings")}</div>
+          <div className="so-empty" id="SO_EMPTY">{T("لا توجد نتائج مطابقة", "No matching settings")}</div>
         </div>
       </fieldset>
     </>
@@ -787,7 +787,7 @@ function CompanyCard({ company, att, run }: { company: Company; att: AttendanceS
         <div><label>هامش التأخير (دقيقة)</label><input type="number" id="CO_TOL" min={0} max={240} value={a.tolerance_minutes} onChange={(e) => setA({ ...a, tolerance_minutes: Number(e.target.value) || 0 })} /></div>
         <div><label>حد العمل عن بعد (يوم/سنة)</label><input type="number" id="CO_RMT" min={0} max={366} value={a.remote_days_per_year} onChange={(e) => setA({ ...a, remote_days_per_year: Number(e.target.value) || 0 })} /></div>
       </div>
-      <button type="button" className="btn bpl" id="CO_SAVE" style={{ marginTop: 12 }} onClick={() => run(async () => { await putCompany(c); await putAttendanceSettings({ ...att, work_start: a.work_start, tolerance_minutes: a.tolerance_minutes, remote_days_per_year: a.remote_days_per_year }); }, "✓ اتحفظت بيانات الشركة")}>
+      <button type="button" className="btn bpl" id="CO_SAVE" style={{ marginTop: 12 }} onClick={() => run(async () => { await putCompany(c); await putAttendanceSettings({ ...att, work_start: a.work_start, tolerance_minutes: a.tolerance_minutes, remote_days_per_year: a.remote_days_per_year }); }, "✓ تم حفظ بيانات الشركة")}>
         <i className="ti ti-check" /> <span>حفظ</span>
       </button>
     </div>
@@ -799,7 +799,7 @@ function LogoCard({ logo, run }: { logo: string | null; run: Run }) {
   return (
     <div className="card" style={{ ...card, maxWidth: 900, padding: 14 }}>
       <div className="ct" style={{ marginBottom: 12 }}><i className="ti ti-photo" /> <span>شعار الشركة</span></div>
-      <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>بيستبدل اللوجو الظاهر في الشريط الجانبي وفي طباعة المسير، ويتحفظ على السيرفر.</div>
+      <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8 }}>يحل محل الشعار الظاهر في الشريط الجانبي وفي طباعة المسير، ويُحفظ على الخادم.</div>
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ width: 160, height: 70, border: "1px dashed var(--bd)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff" }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -807,7 +807,7 @@ function LogoCard({ logo, run }: { logo: string | null; run: Run }) {
         </div>
         <span className="b bb">{logo ? "شعار مخصص" : "الشعار الافتراضي"}</span>
         <label className="btn bsm" style={{ cursor: "pointer" }}>
-          اختار صورة الشعار
+          اختر صورة الشعار
           <input
             type="file"
             accept="image/*"
@@ -817,14 +817,14 @@ function LogoCard({ logo, run }: { logo: string | null; run: Run }) {
               if (!f) return;
               try {
                 const data = await readImage(f, 600);
-                await run(() => putSheet("company_logo", data), "اتغيّر الشعار");
+                await run(() => putSheet("company_logo", data), "تم تغيير الشعار");
               } catch (x) {
                 toast(x instanceof Error ? x.message : String(x), "err");
               }
             }}
           />
         </label>
-        {logo && <button type="button" className="btn bsm" onClick={() => run(() => putSheet("company_logo", null), "رجع الشعار الافتراضي")}>رجوع للشعار الافتراضي</button>}
+        {logo && <button type="button" className="btn bsm" onClick={() => run(() => putSheet("company_logo", null), "أُعيد الشعار الافتراضي")}>رجوع للشعار الافتراضي</button>}
       </div>
     </div>
   );
@@ -840,7 +840,7 @@ function FlexCard({ att, run }: { att: AttendanceSettings; run: Run }) {
         <span>{att.flexible_enabled ? `الساعة المرنة مفعّلة الآن — نطاق ${hhmm(att.window_start)} إلى ${hhmm(att.window_end)} — ${Number(att.shift_hours)} ساعات دوام` : "الساعة المرنة غير مفعّلة (وقت حضور ثابت)"}</span>
       </div>
       <div style={{ fontSize: 11, color: "var(--mu)", marginBottom: 8, lineHeight: 1.7 }}>
-        لما تتفعّل، الموظف يدخل أي وقت داخل نطاق الدوام المحدد تحت، ووقت انصرافه المفروض = وقت دخوله + عدد الساعات (مثال: نطاق 8 إلى 5، دوام 8 ساعات ← دخل 8 يمشي 4، دخل 9 يمشي 5). لو الدخول هيخلي الانصراف يعدي نهاية النطاق، البصمة بترفض.
+        عند تفعيلها يمكن للموظف الحضور في أي وقت داخل نطاق الدوام المحدد أدناه، ويكون وقت انصرافه = وقت حضوره + عدد الساعات (مثال: نطاق 8 إلى 5، ودوام 8 ساعات ← من حضر 8 ينصرف 4، ومن حضر 9 ينصرف 5). وإذا كان الحضور سيجعل الانصراف بعد نهاية النطاق، تُرفض البصمة.
       </div>
       <div className="fg">
         <div><label>من الساعة</label><TimeField id="V86_FROM" value={hhmm(a.window_start)} onChange={(v) => setA({ ...a, window_start: v })} /></div>
@@ -848,8 +848,8 @@ function FlexCard({ att, run }: { att: AttendanceSettings; run: Run }) {
         <div><label>عدد ساعات الدوام</label><input type="number" id="V86_HOURS" min={1} max={16} step={0.5} value={a.shift_hours} onChange={(e) => setA({ ...a, shift_hours: e.target.value })} /></div>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button type="button" className="btn bpl" onClick={() => run(() => putAttendanceSettings({ ...a, flexible_enabled: true }), `اتفعّلت الساعة المرنة (${Number(a.shift_hours)} ساعات)`)}>تفعيل الساعة المرنة</button>
-        <button type="button" className="btn" onClick={() => run(() => putAttendanceSettings({ ...a, flexible_enabled: false }), "اتلغت الساعة المرنة، رجعنا لوقت الحضور الثابت")}>إلغاء الساعة المرنة</button>
+        <button type="button" className="btn bpl" onClick={() => run(() => putAttendanceSettings({ ...a, flexible_enabled: true }), `تم تفعيل الساعة المرنة (${Number(a.shift_hours)} ساعات)`)}>تفعيل الساعة المرنة</button>
+        <button type="button" className="btn" onClick={() => run(() => putAttendanceSettings({ ...a, flexible_enabled: false }), "أُلغيت الساعة المرنة، وعاد العمل بوقت الحضور الثابت")}>إلغاء الساعة المرنة</button>
       </div>
     </div>
   );
@@ -888,7 +888,7 @@ function ManagerPermsCard({ run }: { run: Run }) {
     setBusy(r.manager_id);
     const full: Record<string, boolean> = {};
     MGR_PERM_KEYS.forEach(([k]) => { full[k] = !!r.perms[k]; });
-    await run(() => request(`/settings/manager-perms/${r.manager_id}`, { method: "PUT", body: { perms: full } }), "✓ " + T("اتحفظت صلاحيات ", "Saved permissions for ") + r.name);
+    await run(() => request(`/settings/manager-perms/${r.manager_id}`, { method: "PUT", body: { perms: full } }), "✓ " + T("تم حفظ صلاحيات ", "Saved permissions for ") + r.name);
     setBusy("");
     load();
   }
@@ -903,7 +903,7 @@ function ManagerPermsCard({ run }: { run: Run }) {
         </label>
       )}
       {rows === null && <div style={{ color: "var(--mu)" }}>…</div>}
-      {rows && !rows.length && <div style={{ color: "var(--mu)", fontSize: 12 }}>{T("لا يوجد مديرون مباشرون (لا موظفين لهم مدير مُعيَّن).", "No direct managers (no employee has a manager assigned).")}</div>}
+      {rows && !rows.length && <div style={{ color: "var(--mu)", fontSize: 12 }}>{T("لا يوجد مديرون مباشرون (لا يوجد موظف له مدير مُعيَّن).", "No direct managers (no employee has a manager assigned).")}</div>}
       {rows && rows.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table className="tbl" style={{ width: "100%", fontSize: 12 }}>

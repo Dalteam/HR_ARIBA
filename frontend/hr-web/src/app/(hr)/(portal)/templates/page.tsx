@@ -300,7 +300,7 @@ export default function Page() {
     if (!window.confirm(`سيتم إرسال "${b.title}" إلى الموظف ${emp?.nameAr ?? ""} عبر التطبيق للموافقة عليه أو الاعتراض. هل أنت متأكد؟`)) return;
     request("/letters", { method: "POST", body: { employee_id: empId, type: b.type, title: b.title, html: emp ? withEnglish(b, emp) : b.html } })
       .then(() => {
-        toast("اتبعت للموظف وبيقدر يوافق أو يعترض من تطبيقه", "ok");
+        toast("أُرسل إلى الموظف، ويمكنه الموافقة أو الاعتراض من تطبيقه", "ok");
         if (b.type === "salary_cert") consumeRef();
         refresh();
       })
@@ -407,7 +407,7 @@ export default function Page() {
       }
       setStat(`تم ${ok} من ${ids.length}`);
     }
-    setStat(`اتبعت لـ ${ok} موظف` + (fail.length ? ` — تعذر ${fail.length}: ${fail.join(" | ")}` : ""));
+    setStat(`أُرسل إلى ${ok} موظف` + (fail.length ? ` — تعذر ${fail.length}: ${fail.join(" | ")}` : ""));
     refresh();
   }
 
@@ -434,7 +434,7 @@ export default function Page() {
           <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
             <input type="checkbox" checked={f1.first} onChange={(e) => setF1({ ...f1, first: e.target.checked })} /> مباشرة لأول مرة
           </label>
-          <Field label="نوع الإجازة (لو عائد من إجازة)"><input placeholder="سنوية / مرضية / أمومة..." style={STY} value={f1.leaveType} onChange={(e) => setF1({ ...f1, leaveType: e.target.value })} /></Field>
+          <Field label="نوع الإجازة (إن كان عائدًا من إجازة)"><input placeholder="سنوية / مرضية / أمومة..." style={STY} value={f1.leaveType} onChange={(e) => setF1({ ...f1, leaveType: e.target.value })} /></Field>
           <Buttons label="طباعة نموذج المباشرة" onPrint={() => out(builders.onboarding(), "print")} onSend={() => out(builders.onboarding(), "send")} />
         </Card>
 
@@ -442,7 +442,7 @@ export default function Page() {
           <div id="TF2_ROWS">
             {custody.map((r, i) => (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 6, marginBottom: 6 }}>
-                <input placeholder="اسم العهدة (لابتوب، جوال...)" style={{ ...STY, fontSize: 11 }} value={r.n} onChange={(e) => setCustody(custody.map((x, j) => (j === i ? { ...x, n: e.target.value } : x)))} />
+                <input placeholder="اسم العهدة (حاسب محمول، جوال...)" style={{ ...STY, fontSize: 11 }} value={r.n} onChange={(e) => setCustody(custody.map((x, j) => (j === i ? { ...x, n: e.target.value } : x)))} />
                 <input placeholder="الموديل / الرقم التسلسلي" style={{ ...STY, fontSize: 11 }} value={r.s} onChange={(e) => setCustody(custody.map((x, j) => (j === i ? { ...x, s: e.target.value } : x)))} />
                 <input placeholder="الحالة (جديد/مستعمل)" style={{ ...STY, fontSize: 11 }} value={r.c} onChange={(e) => setCustody(custody.map((x, j) => (j === i ? { ...x, c: e.target.value } : x)))} />
                 <button type="button" className="btn bsm" style={{ color: "var(--rd)" }} onClick={() => setCustody(custody.filter((_, j) => j !== i))}>
@@ -479,7 +479,7 @@ export default function Page() {
               <option value="other">أخرى</option>
             </select>
           </Field>
-          <Field label="توضيح (لو أخرى)"><input style={STY} value={f5.other} onChange={(e) => setF5({ ...f5, other: e.target.value })} /></Field>
+          <Field label="توضيح (إن كانت أخرى)"><input style={STY} value={f5.other} onChange={(e) => setF5({ ...f5, other: e.target.value })} /></Field>
           <Buttons label="طباعة إخلاء الطرف" onPrint={() => out(builders.clearance(), "print")} onSend={() => out(builders.clearance(), "send")} />
         </Card>
 
@@ -488,7 +488,7 @@ export default function Page() {
           <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 6, margin: "4px 0" }}>
             <input type="checkbox" checked={f6.still} onChange={(e) => setF6({ ...f6, still: e.target.checked })} /> لا يزال على رأس العمل
           </label>
-          <Field label="تاريخ نهاية التعاقد (لو انتهى)"><DateField disabled={f6.still} style={STY} value={f6.end} onChange={(v) => setF6({ ...f6, end: v })} /></Field>
+          <Field label="تاريخ نهاية التعاقد (إن انتهى)"><DateField disabled={f6.still} style={STY} value={f6.end} onChange={(v) => setF6({ ...f6, end: v })} /></Field>
           <Field label="طبيعة التعاقد"><input style={STY} value={f6.nature} onChange={(e) => setF6({ ...f6, nature: e.target.value })} /></Field>
           <Field label="رقم الشهادة الصادر"><input placeholder="AR-000-2026" style={STY} value={f6.no} onChange={(e) => setF6({ ...f6, no: e.target.value })} /></Field>
           <Buttons label="طباعة شهادة الخبرة" onPrint={() => out(builders.experience(), "print")} onSend={() => out(builders.experience(), "send")} />
@@ -523,7 +523,7 @@ export default function Page() {
         </Card>
 
         <Card title="إشعار انتهاء عقد العمل" icon="ti-file-off">
-          <Field label="تاريخ بداية العقد (لو فاضي ياخده من ملف الموظف)"><DateField style={STY} value={ce.join} onChange={(v) => setCe({ ...ce, join: v })} /></Field>
+          <Field label="تاريخ بداية العقد (إذا تُرك فارغًا يؤخذ من ملف الموظف)"><DateField style={STY} value={ce.join} onChange={(v) => setCe({ ...ce, join: v })} /></Field>
           <Field label="تاريخ آخر يوم عمل"><DateField style={STY} value={ce.last} onChange={(v) => setCe({ ...ce, last: v })} /></Field>
           <Field label="السند النظامي (من مواد نظام العمل)">
             <select style={STY} value={ce.law} onChange={(e) => setCe({ ...ce, law: e.target.value })}>
@@ -601,7 +601,7 @@ export default function Page() {
               id="OF_FROMCALC"
               onClick={() => {
                 const d = getLastOffer();
-                if (!d) return toast("احسب في حاسبة الراتب الأول", "err");
+                if (!d) return toast("احسب في حاسبة الراتب أولًا", "err");
                 fillFrom(d);
               }}
             >

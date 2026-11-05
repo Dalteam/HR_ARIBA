@@ -46,3 +46,7 @@ logs/
 /_*.txt
 /_*.json
 /_*.log
+
+# Local assistant / editor state (the colleague notes are docs/HANDOVER.md)
+.claude/
+/CLAUDE.md

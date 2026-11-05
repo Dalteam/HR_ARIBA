@@ -23,8 +23,9 @@ Three rules, unchanged from `ACCEPTANCE_CHECKS.md`:
 | Employee app as a web app | **http://localhost:8081** | yes, pid 44852 |
 
 Open **`localhost`**, never `127.0.0.1`, on the two front ends: the backend's `CORS_ORIGINS` is
-`http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:8081`. (Two older Metro servers from 3 Nov
-still answer on `8090` and `8082` — stale code, do not use them.)
+`http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:8081`. (The two older Metro servers from 3 Nov —
+`8090` and `8082` — were killed on 5 Nov 2026 and those ports are free; if something answers there now, it is a server
+you started yourself, and it is not this stack.)
 
 Password for **every** account: **`SmokeTest!2026`** (throw-away copy only; `tools/smoke/smoke_setup.py`).
 
@@ -42,8 +43,9 @@ requests (3 approved, 3 rejected, **none pending**), payroll **10/2026** = 23 ro
 
 ## A. Make the rows this copy is missing (do this first — 15 minutes)
 
-Four blocks below cannot be seen without data, and the data is legitimate to create (§5.13 of
-`ACCEPTANCE_CHECKS.md`). Use the employee app for the first two.
+Five blocks below cannot be seen without data, and the data is legitimate to create (§5.13 of
+`ACCEPTANCE_CHECKS.md`). A-1 … A-3 happen in the employee app, A-4 in the HR web, A-5 is one row I insert for you;
+all of it is put back at the end (§D).
 
 - **A-1 a pending leave at the manager stage** → for 12-4, 14-1b, 14-3, 14-5.
   Employee app (`:8081`) → **`EMP002`** → «طلباتي» → the dock's **«+»** → group «إجازات» → **«عن بعد»**
@@ -55,10 +57,15 @@ Four blocks below cannot be seen without data, and the data is legitimate to cre
 - **A-3 an overtime request** → for A1-3. Employee app → **`EMP102`** → «المزيد» (the dock carries six tabs;
   «عمل إضافي» sits behind «المزيد») → «عمل إضافي» → «التاريخ» **12/11/2026**,
   «عدد الساعات» **2**, «السبب / المهمة» anything → «⏱️ إرسال الطلب».
+  Two things that are not defects: the row will **not** appear in «طلباتي» (that tab drops `type !== "overtime"`,
+  `app/(tabs)/leaves.tsx:61`) — it appears in «عمل إضافي» with its type, status badge, reason, sent date and 🗑;
+  and «عمل إضافي» is not on the dock at all, which is why the step above goes through «المزيد».
 - **A-4 two targets for 102** → for 15-1b, 15-2 and 15-6. HR web → «المستهدفات» (`/targets`) → employee **102**, period
   **«سنوي»** + year **2026** (the picker defaults to «ربع سنوي»; a target saved in another period never seeds the
   annual evaluation) → «+ مستهدف جديد» → title + «الوزن (الأهمية)» → «حفظ» (toast «✓ حُفظ المستهدف وأُشعر
-  الموظف»). Repeat for the second line.
+  الموظف»). Repeat for the second line. «الوزن» must be **0.1 or more** (`min="0.1"`; an empty box is saved as
+  **1**), and «المستهدفات» opens on its own card «مستهدفات الموظفين» — the same page's other mode is «تقييم
+  الموظفين», which is §B5's screen, not this one.
 - **A-5 a temporary holiday on Tue 2026-11-17** → for A1-2 and A2-5b **only**. One row in
   `public.public_holidays`; ask me to insert and delete it while you watch — do not confuse it with a defect when
   the line stays hidden without it.
@@ -276,7 +283,9 @@ on «سنوية».
       stays at **2** — the control, because the holiday sits outside that range.
 - [ ] **A2-6 the English strings** — switch the app to English: the home reads **"Carried: 0 day(s)"** (not
       `{#}`), the composer reads "Counted: 2 working day(s)" and "Fridays, Saturdays and official holidays are
-      not counted". The overtime row's **"Sent 17/11/2026"** can be seen once A-3 is done.
+      not counted". The overtime row's «أُرسل …» → **"Sent …"** line is the request's `created_at`, the day you
+      submitted it (`overtime.tsx:66`) — so after A-3 it reads the day you ran A-3, **not** A-3's «التاريخ»
+      12/11/2026.
 - [ ] **14-2 no buttons where they do not belong** — `EMP102`'s rejected row and `EMP010`'s two rejected rows show
       «سبب الرفض: test» and **no** action button; 🗑 appears only on rows that are not approved.
 - [ ] **14-3 the pending pair** ⌫ — «تعديل التواريخ» / «إلغاء الطلب» exist only on a `pending` leave (A-1/A-2):
@@ -330,7 +339,9 @@ on «سنوية».
 | 19-2 / 19-3 / 19-6 | a month prepared / approved / reopened | «فتح المسير» with a ≥5-letter reason is the only way back — **expect 10/2026 to stay approved** |
 | 15-2 / 15-4 | an evaluation drafted / approved | an approved one is final (409 on a second save); a draft can simply stay |
 | 12-5 | a request cancelled | nothing to undo: the days are back in the balance and the row keeps its reason |
-| A-1 … A-4 | pending and extra rows | cancel the requests from «الإجازات والطلبات» (HR); the targets may stay |
+| A-1 / A-2 | the two pending leaves | cancel them in «الإجازات والطلبات» (HR) with a reason — the days go back to the balance by themselves |
+| A-3 | the overtime request | 🗑 on its row in «عمل إضافي» (the app's own delete asks «هل تريد حذف طلب العمل الإضافي؟») |
+| A-4 | two targets for 102 | «حذف المستهدف» in «المستهدفات» (`/targets`) — or leave them: §B5 is the only screen that reads them |
 
 ## E. Lines that cannot be closed from your chair (and why)
 
@@ -342,7 +353,9 @@ on «سنوية».
   not "a run must succeed".
 - **15-5** — needs an evaluation a manager submitted; no such row exists.
 - **A1-2 / A2-5b / A1-1's second pill** — need the temporary holiday row (A-5).
-- **A2-6's "Sent 17/11/2026"** — needs the overtime row (A-3).
+- **A2-6's "Sent …"** — needs the overtime row (A-3) to exist at all; the date it prints is the row's `created_at`,
+  i.e. the day you ran A-3, not A-3's «التاريخ».
+
 
 ## F. Sign-off
 

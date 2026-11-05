@@ -20,8 +20,9 @@ Two rules we keep in this file:
 | Employee app as a web app | **http://localhost:8081** | `cd design-port\frontend\employee-app; npx.cmd expo start --web --port 8081` | yes, pid 44852 |
 | HR web | **http://localhost:3000** | `cd design-port\frontend\hr-web; npm.cmd run dev` (`next dev`, its default port) | yes, pid 43532 (it picks 3000, then 3001; if both are taken it prints the port it took) |
 
-- Two **older** Metro servers from 3 Nov are still alive — `8090` (same design-port `employee-app` folder) and `8082`
-  (the main worktree's `frontend\employee-app`, started with `--clear`). They serve stale code; use **8081** only.
+- The two **older** Metro servers from 3 Nov — `8090` (same design-port `employee-app` folder) and `8082` (the main
+  worktree's `frontend\employee-app`, started with `--clear`) — were **killed on 5 Nov 2026**; those ports are free.
+  Use **8081** only. If something answers on 8090/8082 now, it is a server you started yourself.
 - Open **exactly** these origins: the backend's CORS list today (`backend\.env`) is
   `http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:8081`. So the app must be opened on
   **`localhost:8081`** — `127.0.0.1:8081` is *not* in the list and every call would fail on CORS. hr-web belongs on
@@ -462,7 +463,7 @@ gained `holidays` (the whole announced calendar) because an employee cannot read
 - [ ] **A2-6 the three English strings.** Switch the app to English:
       - home, under the leave tiles: **"Carried: 0 day(s)"** (Arabic «مرحّل: 0 يوم») — not `{#}`;
       - the nearest-holiday pill is hidden today (no future holiday), see `§9` note 1;
-      - an overtime row's «أُرسل 17/11/2026» → **"Sent 17/11/2026"** — no overtime request exists yet (§9 note 5),
+      - an overtime row's «أُرسل …» → **"Sent …"** — the date is the row's `created_at` (`overtime.tsx:66`), so it reads the day you ran §5.13.2; no overtime request exists yet (§9 note 5),
         so this one cannot be seen on screen today (the harness proves the string, §6).
       The composer's own two lines in English read "Counted: 2 working day(s)" and "Fridays, Saturdays and
       official holidays are not counted".
@@ -498,7 +499,9 @@ change; it is the difference between "the button is not there" and "there was no
 
 Employee app → `EMP102` → «المزيد» → «عمل إضافي» → «التاريخ» **12/11/2026**, «عدد الساعات» **2**, «السبب / المهمة»
 anything → «⏱️ إرسال الطلب». The row then appears in «عمل إضافي» with its type, status badge, reason, sent date
-and 🗑 — and **not** in «طلباتي», which filters `type !== "overtime"` out (`app/(tabs)/leaves.tsx:61`).
+and 🗑 — and **not** in «طلباتي», which filters `type !== "overtime"` out (`app/(tabs)/leaves.tsx:61`). «عمل إضافي» is
+not a dock tab either: the dock carries six and this one sits behind «المزيد» (`app/(tabs)/_layout.tsx:46`).
+- *put it back:* 🗑 on the row in «عمل إضافي» (the app asks «هل تريد حذف طلب العمل الإضافي؟»).
 
 **5.13.3 two targets — for the evaluation form** (needs: §5.6 15-1, 15-2, 15-6)
 
@@ -506,7 +509,10 @@ HR web → «المستهدفات» (`/targets`) → employee **102**, period **
 and a target saved in another period never seeds the annual evaluation) → «+ مستهدف جديد» → title +
 «الوزن (الأهمية)» → «حفظ» (toast «✓ حُفظ المستهدف وأُشعر الموظف»). Then «التقييم» → 102 → «سنوي» 2026 opens with
 the two lines seeded instead of an empty form, `GET /targets?employee_id=102&year=2026` returns 2, and after you
-approve, `EMP102`'s «أهدافي وتقييمي» shows them read-only.
+approve, `EMP102`'s «أهدافي وتقييمي» shows them read-only. «الوزن» must be **0.1 or more** (`min="0.1"` on the
+box; an empty weight is saved as **1**), and the page's other mode, «تقييم الموظفين», is §5.6's screen — the two
+lines are written in «مستهدفات الموظفين».
+- *put it back:* «حذف المستهدف» on each row in «المستهدفات» — or leave them: nothing else in the copy reads them.
 
 **5.13.4 a temporary holiday — for §5.12 A2-5b and §5.11 A1-2.** One row in `public.public_holidays`
 (**Tue 2026-11-17**, 1 day) while you watch, deleted afterwards; §5.12 A2-5b carries the expected numbers.

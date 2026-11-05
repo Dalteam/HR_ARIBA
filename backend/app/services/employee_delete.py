@@ -34,7 +34,7 @@ _BLOCKERS: tuple[tuple[str, str], ...] = (
     ("SELECT count(*) FROM public.employee_directory WHERE manager_id=:e AND employee_id<>:e",
      "مدير مباشر لموظفين آخرين — انقلهم لمدير آخر أولًا"),
     ("SELECT count(*) FROM public.workflow_approvers WHERE employee_id=:e", "معتمد في مسار الطلبات — أزله من المعتمدين أولًا"),
-    ("SELECT count(*) FROM public.ariba_delegations WHERE manager_id=:e", "عنده تفويض صلاحيات لموظفين"),
+    ("SELECT count(*) FROM public.ariba_delegations WHERE manager_id=:e", "لديه تفويض صلاحيات من موظفين"),
     ("SELECT count(*) FROM public.ariba_doc_signing WHERE manager_id=:e AND employee_id<>:e", "مدير موقّع على خطابات موظفين آخرين"),
     ("SELECT count(*) FROM public.ariba_tasks WHERE created_by=:e AND assignee_id<>:e", "أنشأ مهامًا لموظفين آخرين"),
     ("SELECT count(*) FROM public.workflow_requests WHERE submitted_by_employee_id=:e AND employee_id<>:e",

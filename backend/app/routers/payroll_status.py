@@ -121,5 +121,5 @@ def after_reopen(db: Session, actor: dict[str, Any], year: int, month: int, reas
             reopened_by_name=EXCLUDED.reopened_by_name, reopened_at=now(), reopen_reason=EXCLUDED.reopen_reason, updated_at=now()"""),
         {"y": year, "m": month, "by": actor.get("employee_id"), "name": who, "r": reason})
     for person in canonical._stage_people(db, "hr"):
-        canonical._insert_notification(db, person, None, f"اتفتح مسير {month}/{year} بعد الاعتماد",
+        canonical._insert_notification(db, person, None, f"أُعيد فتح مسير {month}/{year} بعد اعتماده",
                                        f"فتحه {who} — السبب: {reason}", "hr", "payroll")

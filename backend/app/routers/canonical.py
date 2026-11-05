@@ -1908,7 +1908,7 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
         if not t1:
             raise bad("اختر الوقت")
         if kind == "both" and (not t2 or t2[:5] <= t1[:5]):
-            raise bad("وقت الخروج لازم يكون بعد وقت الدخول")
+            raise bad("يجب أن يكون وقت الخروج بعد وقت الدخول")
         if not notes:
             raise bad("اكتب سبب نسيان البصمة")
         if _row(db, "SELECT id FROM public.workflow_requests WHERE employee_id=:e AND request_type='forgot_punch' AND status='pending' AND payload->>'date'=:d AND payload->>'kind'=:k", e=eid, d=d.isoformat(), k=kind):
@@ -1992,7 +1992,7 @@ def submit_request(body: dict[str, Any], request: Request, actor: dict[str, Any]
         for h in _stage_people(db, "hr"):
             if h not in {eid, manager}:
                 _insert_notification(db, h, row["id"], f"طلب جديد من {emp.get('name_ar') or eid}",
-                                     "الطلب بانتظار المدير المباشر — تقدر تعتمده بالنيابة عنه من طلبات الموظفين", "hr", "request")
+                                     "الطلب بانتظار المدير المباشر — يمكنك اعتماده نيابةً عنه من طلبات الموظفين", "hr", "request")
     if form.attachment:  # stored only after the request row exists (ariba_documents.request_id)
         _save_request_document(db, eid, row["id"], _attachment_doc_type(t, payload), form.attachment)
     _write_audit(db, actor, request, "workflow", "submit", "workflow_request", row["id"], details={"type": t})
@@ -2023,7 +2023,7 @@ def delete_my_request(request_id: uuid.UUID, request: Request, actor: dict[str, 
         name = _row(db, "SELECT coalesce(name_ar,employee_id) AS n FROM public.employee_directory WHERE employee_id=:e", e=item["employee_id"])
         title = f"{(name or {}).get('n') or item['employee_id']} حذف طلباً معلقاً: {(item.get('payload') or {}).get('title') or item['request_type']}"
         for h in _role_employees(db, "hr"):
-            _insert_notification(db, h, None, title, "اتحذف من طرف الموظف ومتسجّل في أرشيف المحذوفات.", "hr", "request")
+            _insert_notification(db, h, None, title, "حذفه الموظف، وهو مسجّل في أرشيف المحذوفات.", "hr", "request")
     _write_audit(db, actor, request, "workflow", "delete", "workflow_request", request_id)
     db.commit()
 

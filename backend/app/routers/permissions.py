@@ -60,7 +60,7 @@ def matrix_change(body: Any) -> tuple[str, str, str]:
         raise _invalid("المستوى يجب أن يكون none أو view أو edit")
     cap = perms.CAPPED.get(module)
     if cap and perms.RANK[level] > perms.RANK[cap]:
-        raise _invalid("تعديل الصلاحيات يبقى للمدير (Admin) ورئيس المجلس فقط")
+        raise _invalid("تعديل الصلاحيات مقصور على المدير (Admin) ورئيس المجلس")
     return role, module, level
 
 

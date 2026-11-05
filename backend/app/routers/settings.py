@@ -157,7 +157,7 @@ def get_attendance_settings(_: User = Depends(get_current_user), db: Session = D
 @router.put("/attendance", response_model=AttendanceIO)
 def put_attendance_settings(body: AttendanceIO, request: Request, user: User = Depends(_HR), db: Session = Depends(get_db)):
     if body.window_end <= body.window_start:
-        raise ApiError(422, "invalid_window", "نهاية النطاق لازم تكون بعد بدايته")
+        raise ApiError(422, "invalid_window", "يجب أن تكون نهاية النطاق بعد بدايته")
     a = _att(db)
     for k, v in body.model_dump().items():
         setattr(a, k, v)

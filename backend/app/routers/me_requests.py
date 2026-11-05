@@ -141,7 +141,7 @@ def submit_request(body: MyRequestIn, request: Request, user: User = Depends(get
         if not body.time_from:
             raise _bad("اختر الوقت")
         if body.punch_kind == PunchKind.both and (not body.time_to or body.time_to <= body.time_from):
-            raise _bad("وقت الخروج لازم يكون بعد وقت الدخول")
+            raise _bad("يجب أن يكون وقت الخروج بعد وقت الدخول")
         if not r.notes:
             raise _bad("اكتب السبب")
         r.punch_kind, r.on_date, r.time_from = body.punch_kind, body.on_date, body.time_from
